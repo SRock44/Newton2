@@ -42,7 +42,7 @@ Update this file as work lands — it's the source of truth for what's actually 
 
 ## Phase 4 — Depth, breadth, and native polish
 - # Flashcard/Quiz agent with FSRS scheduling — uses the real `fsrs` library (not hand-rolled scheduling math), generated from documents the same way as the Study Planner, a review panel (front → reveal → rate Again/Hard/Good/Easy) plus browse/delete. FlashcardReviewLog is the audit trail FSRS itself doesn't keep. Tested at every layer (pure parsing, Card↔row round-trip, real scheduling math, generation, router auth/ownership, frontend review/browse/delete/empty-state) and verified live: real model-generated cards from real notes, a real review call that visibly advanced the due date
-- ! Adaptive practice-exam generation
+- # Adaptive practice-exam generation — difficulty picked per-generation from the average of the user's last 3 *completed* exam scores, not fixed; multiple-choice, generated from a document like Study Planner/Flashcards. Answer key (correct_index/explanation) is never sent by the API until the exam is actually completed — verified specifically at the router level, not just assumed. Take-exam and review UI, plus a generate action next to Study Plan/Flashcards on each document. Tested at every layer including the adaptive logic and answer-leak guard; verified live: real model-generated applied-reasoning questions (correctly harder than plain recall at "medium"), a real graded submission (2/3 correct)
 - ! Writing/Essay agent (LanguageTool + citation formatter)
 - ! Composite "Study Session" multi-agent workflow
 - ! Global hotkey capture ("Newton Snip")
