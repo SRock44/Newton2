@@ -2,6 +2,10 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::time::{Duration, Instant};
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{Emitter, Manager, WindowEvent};
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -125,6 +129,52 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![greet, wait_for_oauth_callback])
+        .setup(|app| {
+            // Quick actions reachable without opening the full window -- "Review
+            // flashcards" shows the window and asks the frontend (via an emitted event
+            // it listens for) to jump straight to that panel, rather than just Show/Quit.
+            let show_i = MenuItem::with_id(app, "show", "Open Newton", true, None::<&str>)?;
+            let flashcards_i =
+                MenuItem::with_id(app, "flashcards", "Review flashcards", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &flashcards_i, &quit_i])?;
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .tooltip("Newton")
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => app.exit(0),
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "flashcards" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                        let _ = app.emit("tray-open-flashcards", ());
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+
+            Ok(())
+        })
+        // The window closing hides it rather than quitting the whole app -- the tray
+        // icon (and whatever's in progress, e.g. a chat) stays alive, matching the point
+        // of having tray quick actions at all. "Quit" in the tray menu (or the OS's own
+        // quit-the-process shortcuts) is the actual way out.
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

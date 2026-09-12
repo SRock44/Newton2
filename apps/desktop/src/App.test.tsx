@@ -45,6 +45,20 @@ vi.mock("./notifications", () => ({
   notifyStudyReminders: vi.fn(async () => undefined),
 }));
 
+const trayEventListeners: Record<string, Array<() => void>> = {};
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn((event: string, callback: () => void) => {
+    (trayEventListeners[event] ??= []).push(callback);
+    return Promise.resolve(() => {
+      trayEventListeners[event] = (trayEventListeners[event] ?? []).filter((cb) => cb !== callback);
+    });
+  }),
+}));
+
+function fireTrayEvent(event: string) {
+  (trayEventListeners[event] ?? []).forEach((cb) => cb());
+}
+
 vi.mock("./auth", async () => {
   const actual = await vi.importActual<typeof import("./auth")>("./auth");
   return {
@@ -245,5 +259,21 @@ describe("App", () => {
 
     await waitFor(() => expect(vi.mocked(listStudyPlan)).toHaveBeenCalled());
     await waitFor(() => expect(vi.mocked(notifyStudyReminders)).toHaveBeenCalledWith(0, 0));
+  });
+
+  it("opens the Flashcards panel when the system tray's quick action fires", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    expect(screen.queryByRole("heading", { name: "Flashcards" })).not.toBeInTheDocument();
+
+    // The listener registers via an async dynamic import — wait for it to actually be
+    // attached before firing, rather than racing it.
+    await waitFor(() => expect(trayEventListeners["tray-open-flashcards"]?.length).toBeGreaterThan(0));
+    act(() => {
+      fireTrayEvent("tray-open-flashcards");
+    });
+
+    expect(await screen.findByRole("heading", { name: "Flashcards" })).toBeInTheDocument();
   });
 });

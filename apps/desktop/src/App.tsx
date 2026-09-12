@@ -87,6 +87,29 @@ function App() {
     remindersCheckedRef.current = false;
   }
 
+  // System tray "Review flashcards" quick action: the Rust side shows/focuses the
+  // window itself and emits this event, so all the frontend needs to do is open the
+  // right panel once it arrives. Dynamically imported and defensively caught since
+  // there's no real Tauri IPC bridge under a test runner (jsdom) — listen() would have
+  // nothing to attach to there.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    import("@tauri-apps/api/event")
+      .then(({ listen }) => listen("tray-open-flashcards", () => setShowFlashcards(true)))
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // No Tauri context — nothing to listen to.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   // Keeps the displayed/passed-down `token` fresh even when nothing is actively
   // fetching — otherwise a session left idle for over an hour would only discover
   // its token expired the next time some component happened to make a request.
