@@ -17,19 +17,19 @@ Update this file as work lands — it's the source of truth for what's actually 
 - # Memory Tier 1: Redis working-memory bundle — verified (TTL-refreshed, reused across turns)
 - # Memory Tier 2: Memory Consolidator session-summary job (arq, Redis-queued) — verified (runs on session end, writes structured summary)
 - # Memory Tier 3: typed + deduplicated profile fact table with pgvector retrieval — verified both directions: write (dedup-by-construction upsert) and read (top-k similarity retrieval injected into the Tier 1 bundle before the Tutor answers)
-- ! Document upload → MinIO + pgvector → RAG-aware chat (schema exists; upload/chunk/embed pipeline not built)
+- # Document upload → MinIO + pgvector → RAG-aware chat — upload (txt/md/PDF via `pypdf`, 20MB cap) → chunk → embed (fastembed) → pgvector retrieval, injected into the Tutor's context via the same Tier-1-bundle pattern as profile facts. Cross-user isolation specifically tested (two users, identical content, each only ever retrieves their own chunks)
 - # Tool-calling framework — provider-agnostic ToolSpec/ToolCall types, real OpenAI-compatible SSE tool-call delta accumulation (unit-tested standalone since there's no live key to test the wire format against), Anthropic tool-use translation, and a Tutor agent loop that actually executes tools and feeds results back — verified against a scripted fake model (tool-call → result → final answer, error handling, round-limit) since Echo can't exercise real tool-calling
-- # Tool belt v1: calculator/unit converter — real AST-restricted (no `eval()`) arithmetic + length/mass/volume/temperature conversion, wired into the Tutor's tool belt, unit-tested
-- ! Tool belt v1: Code Interpreter sandbox
-- ! Tool belt v1: SearXNG web search
+- # Tool belt v1: calculator/unit converter — real AST-restricted (no `eval()`) arithmetic + length/mass/volume/temperature conversion, unit-tested, registered in the live tool belt
+- # Tool belt v1: Code Interpreter sandbox — `services/sandbox-runner`, subprocess-in-a-locked-down-container isolation (non-root, dropped capabilities, read-only fs, `resource.setrlimit` + an independent wall-clock watchdog that kills blocking-not-just-CPU-bound code, no state leak between requests) deployed on a dedicated Docker-internal-only network with **zero** route to the internet or any other service — verified live, in the real deployed topology (not just a standalone test), that it genuinely can't resolve or reach postgres or the open internet, while `api` can reach it and get real results
+- # Tool belt v1: SearXNG web search — self-hosted metasearch, JSON API enabled, verified returning real results from real upstream engines in the live deployment; graceful "search failed" string (not a crash) on upstream failure
 - ! Tool belt v1: Vision capture-to-solve (photo/screenshot)
 - # Minimal chat UI in the desktop app — rebuilt into a real sidebar/session/markdown/KaTeX/code-highlighted streaming chat UI, PM-reviewed and screenshot-verified against the live backend
 
 ## Phase 2 — Math notepad + visualization
-- ! Math Solver agent (SymPy + Code Interpreter verification)
-- ! Progressive-reveal Notepad UI
-- ! Visualizer agent (Plotly.js specs, SVG diagram specs, RDKit chemistry structures)
-- ! Visualization panel in app
+- # Math Solver tool — exact solve/differentiate/integrate/simplify/factor/expand via SymPy, parses natural math notation (`^` as power, implicit multiplication like `2x`), registered in the live tool belt and reachable through the Tutor's tool-calling loop end-to-end. "Code Interpreter verification" cross-checking is not yet wired in as a distinct step (the Code Interpreter tool exists and is separately callable, just not chained automatically after a symbolic-math call)
+- ! Progressive-reveal Notepad UI (no frontend work yet for step-by-step reveal — SymPy doesn't natively produce pedagogical steps either, only exact answers; a real step-by-step explainer is a bigger design task, not just a wiring one)
+- # Visualizer tool — numeric function plotting (SymPy `lambdify` + numpy sampling → Plotly.js figure spec), registered in the live tool belt, discontinuities rendered as gaps rather than crashing. SVG diagram generation and RDKit chemistry structures are not built
+- # Visualization panel in app — `plot_function` tool output (a fenced ` ```plotly-figure ` block) renders as an actual interactive chart (plotly.js-basic-dist-min, lazy-loaded so most sessions never download it) instead of raw JSON; theme-aware (light/dark)
 
 ## Phase 3 — Integrations
 - ! Keycloak-mediated OAuth2 for Canvas

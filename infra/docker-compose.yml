@@ -8,12 +8,17 @@ name: newton2
 networks:
   newton_net:
     name: newton2_net
+  sandbox_net:
+    name: newton2_sandbox_net
+    internal: true  # no route to the internet or to any other service on newton_net —
+                     # this is the load-bearing line for the code interpreter's isolation.
 
 volumes:
   newton_pgdata:
   newton_miniodata:
   newton_keycloakdata:
   newton_embedcache:
+  newton_searxngdata:
 
 x-api-env: &api-env
   DATABASE_URL: postgresql+asyncpg://newton:${POSTGRES_PASSWORD:-newton-dev-secret}@postgres:5432/newton
@@ -29,6 +34,8 @@ x-api-env: &api-env
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct}
+  SANDBOX_RUNNER_URL: http://sandbox-runner:8000
+  SEARXNG_URL: http://searxng:8080
 
 services:
   postgres:
@@ -115,8 +122,34 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:58001:8000"
-    networks: [newton_net]
+    # newton_net for postgres/redis/minio/keycloak/searxng; sandbox_net *only* to reach
+    # sandbox-runner — sandbox-runner itself is never on newton_net (see below).
+    networks: [newton_net, sandbox_net]
     mem_limit: 640m
+
+  sandbox-runner:
+    build: ../services/sandbox-runner
+    restart: unless-stopped
+    networks: [sandbox_net]  # never newton_net — must not reach postgres/redis/minio/keycloak
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+    mem_limit: 300m
+    pids_limit: 100
+    # no ports: — only `api`, over sandbox_net, ever calls this
+
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - newton_searxngdata:/var/cache/searxng
+    networks: [newton_net]  # needs real internet egress to actually search — unlike
+                             # sandbox-runner, this is deliberately not on sandbox_net
+    mem_limit: 512m
+    # no ports: — only `api`, over newton_net, ever calls this
 
   worker:
     build: ../services/api

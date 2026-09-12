@@ -1,12 +1,26 @@
 from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
+from app.tools.code_interpreter import CodeInterpreterTool
+from app.tools.symbolic_math import SymbolicMathTool
 from app.tools.unit_converter import UnitConverterTool
+from app.tools.visualizer import VisualizerTool
+from app.tools.web_search import WebSearchTool
 
 # Add a new tool by instantiating it here — nothing else in this file should need to
 # change. Kept as an explicit list (not directory auto-discovery) so it's obvious at a
 # glance what's live, and so adding a tool never requires editing agent/tutor code.
-_TOOLS: dict[str, Tool] = {t.name: t for t in [CalculatorTool(), UnitConverterTool()]}
+_TOOLS: dict[str, Tool] = {
+    t.name: t
+    for t in [
+        CalculatorTool(),
+        UnitConverterTool(),
+        SymbolicMathTool(),
+        VisualizerTool(),
+        CodeInterpreterTool(),
+        WebSearchTool(),
+    ]
+}
 
 
 def get_tool_specs() -> list[ToolSpec]:
