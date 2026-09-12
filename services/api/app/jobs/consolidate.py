@@ -8,7 +8,7 @@ from app.db.base import SessionLocal
 from app.db.models import ChatMessage, ChatSession, SessionSummary
 from app.memory import profile as profile_memory
 from app.memory.working import invalidate
-from app.providers.base import ChatTurn
+from app.providers.base import ChatTurn, TextDelta
 from app.providers.registry import get_provider
 
 SUMMARY_PROMPT = """You are summarizing a tutoring session for long-term memory. \
@@ -58,8 +58,10 @@ async def consolidate_session(ctx: dict, session_id: str) -> None:
 
         provider, model = get_provider()
         raw = ""
-        async for chunk in provider.stream_chat([ChatTurn(role="user", content=prompt)], model):
-            raw += chunk
+        # No `tools=` passed, so this will only ever yield TextDelta events.
+        async for event in provider.stream_chat([ChatTurn(role="user", content=prompt)], model):
+            if isinstance(event, TextDelta):
+                raw += event.text
 
         parsed = _parse_summary(raw)
 

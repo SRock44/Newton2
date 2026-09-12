@@ -1,5 +1,5 @@
 from app.core.config import get_settings
-from app.providers.base import ChatTurn
+from app.providers.base import ChatTurn, TextDelta
 from app.providers.echo import EchoProvider
 from app.providers.registry import get_provider
 
@@ -20,20 +20,32 @@ async def test_echo_provider_streams_expected_content():
     provider = EchoProvider()
     message = "what is a derivative?"
 
-    chunks = []
-    async for chunk in provider.stream_chat([ChatTurn(role="user", content=message)], "echo-dev"):
-        chunks.append(chunk)
+    events = [e async for e in provider.stream_chat([ChatTurn(role="user", content=message)], "echo-dev")]
 
-    full = "".join(chunks)
+    assert all(isinstance(e, TextDelta) for e in events)
+    full = "".join(e.text for e in events)
     assert full == f"[echo/no-provider-configured] you said: {message} "
 
 
 async def test_echo_provider_handles_no_user_message():
     provider = EchoProvider()
 
-    chunks = []
-    async for chunk in provider.stream_chat([ChatTurn(role="system", content="setup only")], "echo-dev"):
-        chunks.append(chunk)
+    events = [
+        e async for e in provider.stream_chat([ChatTurn(role="system", content="setup only")], "echo-dev")
+    ]
 
-    full = "".join(chunks)
+    full = "".join(e.text for e in events)
     assert full == "[echo/no-provider-configured] (empty message) "
+
+
+async def test_echo_provider_never_calls_tools_even_when_offered():
+    from app.providers.base import ToolSpec
+
+    provider = EchoProvider()
+    tools = [ToolSpec(name="calculator", description="test", parameters={"type": "object"})]
+
+    events = [
+        e async for e in provider.stream_chat([ChatTurn(role="user", content="2+2")], "echo-dev", tools=tools)
+    ]
+
+    assert all(isinstance(e, TextDelta) for e in events)

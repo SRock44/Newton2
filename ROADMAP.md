@@ -18,11 +18,12 @@ Update this file as work lands — it's the source of truth for what's actually 
 - # Memory Tier 2: Memory Consolidator session-summary job (arq, Redis-queued) — verified (runs on session end, writes structured summary)
 - # Memory Tier 3: typed + deduplicated profile fact table with pgvector retrieval — verified both directions: write (dedup-by-construction upsert) and read (top-k similarity retrieval injected into the Tier 1 bundle before the Tutor answers)
 - ! Document upload → MinIO + pgvector → RAG-aware chat (schema exists; upload/chunk/embed pipeline not built)
+- # Tool-calling framework — provider-agnostic ToolSpec/ToolCall types, real OpenAI-compatible SSE tool-call delta accumulation (unit-tested standalone since there's no live key to test the wire format against), Anthropic tool-use translation, and a Tutor agent loop that actually executes tools and feeds results back — verified against a scripted fake model (tool-call → result → final answer, error handling, round-limit) since Echo can't exercise real tool-calling
+- # Tool belt v1: calculator/unit converter — real AST-restricted (no `eval()`) arithmetic + length/mass/volume/temperature conversion, wired into the Tutor's tool belt, unit-tested
 - ! Tool belt v1: Code Interpreter sandbox
 - ! Tool belt v1: SearXNG web search
 - ! Tool belt v1: Vision capture-to-solve (photo/screenshot)
-- ! Tool belt v1: calculator/unit converter
-- ! Minimal chat UI in the desktop app (currently still the Phase 0 health-check screen)
+- # Minimal chat UI in the desktop app — rebuilt into a real sidebar/session/markdown/KaTeX/code-highlighted streaming chat UI, PM-reviewed and screenshot-verified against the live backend
 
 ## Phase 2 — Math notepad + visualization
 - ! Math Solver agent (SymPy + Code Interpreter verification)
