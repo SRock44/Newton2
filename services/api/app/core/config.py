@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     keycloak_issuer: str = "http://keycloak:8080/realms/newton"
     keycloak_audience: str = "newton-api"
 
+    # Origins the Tauri webview runs under: Vite dev server, and the custom-protocol
+    # origins WebView2/WKWebView use for a packaged app in production.
+    cors_allow_origins: list[str] = [
+        "http://localhost:1420",
+        "tauri://localhost",
+        "https://tauri.localhost",
+    ]
+
 
 @lru_cache
 def get_settings() -> Settings:
