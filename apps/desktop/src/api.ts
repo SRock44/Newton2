@@ -1,4 +1,12 @@
-import type { ChatMessage, ChatSession, ClassroomStatus, StudyPlanItem, ToolInfo, UploadedDocument } from "./types";
+import type {
+  ChatMessage,
+  ChatSession,
+  ClassroomStatus,
+  Flashcard,
+  StudyPlanItem,
+  ToolInfo,
+  UploadedDocument,
+} from "./types";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:58001";
 export const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL ?? "http://127.0.0.1:58180";
@@ -169,4 +177,40 @@ export async function disconnectClassroom(token: string): Promise<void> {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't disconnect Google Classroom."));
+}
+
+export async function generateFlashcards(token: string, documentId: string): Promise<Flashcard[]> {
+  const res = await fetch(`${API_URL}/flashcards/generate/${documentId}`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't generate flashcards for this document."));
+  return (await res.json()) as Flashcard[];
+}
+
+export async function listFlashcards(token: string, dueOnly = false): Promise<Flashcard[]> {
+  const url = new URL(`${API_URL}/flashcards`);
+  if (dueOnly) url.searchParams.set("due_only", "true");
+  const res = await fetch(url, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your flashcards."));
+  return (await res.json()) as Flashcard[];
+}
+
+/** `rating`: 1=Again, 2=Hard, 3=Good, 4=Easy (matches the FSRS scheduler backing this). */
+export async function reviewFlashcard(token: string, cardId: string, rating: 1 | 2 | 3 | 4): Promise<Flashcard> {
+  const res = await fetch(`${API_URL}/flashcards/${cardId}/review`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ rating }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't record that review."));
+  return (await res.json()) as Flashcard;
+}
+
+export async function deleteFlashcard(token: string, cardId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/flashcards/${cardId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this flashcard."));
 }

@@ -14,6 +14,7 @@ interface SidebarProps {
   onSignOut: () => void;
   onOpenDocuments: () => void;
   onOpenStudyPlan: () => void;
+  onOpenFlashcards: () => void;
   connectionStatus: ConnectionStatus;
 }
 
@@ -41,6 +42,7 @@ function Sidebar({
   onSignOut,
   onOpenDocuments,
   onOpenStudyPlan,
+  onOpenFlashcards,
   connectionStatus,
 }: SidebarProps) {
   const [now, setNow] = useState(new Date());
@@ -127,9 +129,9 @@ function Sidebar({
         <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenStudyPlan}>
           Study plan
         </button>
-        <div className="sidebar-nav-more" aria-disabled="true" title="Coming soon">
-          Flashcards — coming soon
-        </div>
+        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenFlashcards}>
+          Flashcards
+        </button>
         <div className="sidebar-user">
           <span className="sidebar-user-name">{username}</span>
           <button type="button" className="sidebar-signout" onClick={onSignOut}>

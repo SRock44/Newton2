@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, deleteDocument, generateStudyPlan, listDocuments, uploadDocument } from "../api";
+import {
+  ApiError,
+  deleteDocument,
+  generateFlashcards,
+  generateStudyPlan,
+  listDocuments,
+  uploadDocument,
+} from "../api";
 import type { UploadedDocument } from "../types";
 
 interface DocumentsPanelProps {
@@ -21,6 +28,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [planStatusByDoc, setPlanStatusByDoc] = useState<Record<string, string>>({});
+  const [cardStatusByDoc, setCardStatusByDoc] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -79,6 +87,25 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
       setPlanStatusByDoc((prev) => ({
         ...prev,
         [doc.id]: err instanceof ApiError ? err.message : "Couldn't generate a study plan.",
+      }));
+    }
+  }
+
+  async function handleGenerateFlashcards(doc: UploadedDocument) {
+    setCardStatusByDoc((prev) => ({ ...prev, [doc.id]: "Reading…" }));
+    try {
+      const cards = await generateFlashcards(token, doc.id);
+      setCardStatusByDoc((prev) => ({
+        ...prev,
+        [doc.id]:
+          cards.length > 0
+            ? `Added ${cards.length} card${cards.length === 1 ? "" : "s"} — see Flashcards`
+            : "Nothing flashcard-worthy found in this document",
+      }));
+    } catch (err) {
+      setCardStatusByDoc((prev) => ({
+        ...prev,
+        [doc.id]: err instanceof ApiError ? err.message : "Couldn't generate flashcards.",
       }));
     }
   }
@@ -142,6 +169,14 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                     <button
                       type="button"
                       className="sidebar-signout"
+                      onClick={() => handleGenerateFlashcards(doc)}
+                      disabled={cardStatusByDoc[doc.id] === "Reading…"}
+                    >
+                      Flashcards
+                    </button>
+                    <button
+                      type="button"
+                      className="sidebar-signout"
                       onClick={() => handleDelete(doc.id)}
                       aria-label={`Delete ${doc.filename}`}
                     >
@@ -151,6 +186,9 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                 </div>
                 {planStatusByDoc[doc.id] && (
                   <div className="document-item-plan-status">{planStatusByDoc[doc.id]}</div>
+                )}
+                {cardStatusByDoc[doc.id] && (
+                  <div className="document-item-plan-status">{cardStatusByDoc[doc.id]}</div>
                 )}
               </li>
             ))}

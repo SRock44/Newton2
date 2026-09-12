@@ -169,3 +169,47 @@ class GoogleClassroomConnection(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Flashcard(Base):
+    """Scheduling state mirrors the `fsrs` library's own `Card` fields (see
+    app/services/flashcards.py's _card_from_row/_apply_card_to_row) rather than
+    reinventing spaced-repetition math -- a freshly generated card with no fsrs_stability/
+    fsrs_difficulty yet is exactly what the library itself considers "never reviewed",
+    which conveniently also means there's no separate "new" bucket to track by hand.
+    `reps`/`lapses` aren't stored here since FlashcardReviewLog already answers those
+    (count of rows, count of rows with rating=Again) without a redundant counter to
+    keep in sync."""
+
+    __tablename__ = "flashcards"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    front: Mapped[str] = mapped_column(Text)
+    back: Mapped[str] = mapped_column(Text)
+    fsrs_state: Mapped[str] = mapped_column(String, default="learning")
+    fsrs_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fsrs_stability: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fsrs_difficulty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    due: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    last_review: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FlashcardReviewLog(Base):
+    """One row per review, ever -- the audit trail FSRS scheduling itself doesn't keep,
+    and what streak/XP gamification will read from later without needing its own
+    separate activity log."""
+
+    __tablename__ = "flashcard_review_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    flashcard_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("flashcards.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    rating: Mapped[int] = mapped_column(Integer)  # 1=Again, 2=Hard, 3=Good, 4=Easy (fsrs.Rating)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

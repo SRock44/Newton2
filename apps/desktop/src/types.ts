@@ -47,3 +47,14 @@ export interface ClassroomStatus {
   google_email?: string | null;
   connected_at?: string | null;
 }
+
+export interface Flashcard {
+  id: string;
+  document_id: string | null;
+  front: string;
+  back: string;
+  due: string;
+  state: string;
+  last_review: string | null;
+  created_at: string;
+}

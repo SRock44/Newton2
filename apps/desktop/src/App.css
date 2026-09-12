@@ -1211,3 +1211,118 @@ button {
 .context-menu-item--danger:hover:not(:disabled) {
   background-color: var(--color-danger-tint);
 }
+
+/* ---------- Flashcards ---------- */
+
+.flashcards-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.flashcards-tab {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  padding: 6px 4px 8px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+}
+
+.flashcards-tab:hover {
+  color: var(--color-text);
+}
+
+.flashcards-tab--active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+  font-weight: 500;
+}
+
+.flashcard-review {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.flashcard-box {
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 24px 18px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.flashcard-box-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-faint);
+}
+
+.flashcard-box-text {
+  font-size: 14px;
+  color: var(--color-text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.flashcard-box-hint {
+  font-size: 11px;
+  color: var(--color-text-faint);
+}
+
+.flashcard-ratings {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.flashcard-rate {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 9px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.flashcard-rate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.flashcard-rate--again:hover:not(:disabled) {
+  background-color: var(--color-danger-tint);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.flashcard-rate--hard:hover:not(:disabled) {
+  background-color: var(--color-warning);
+  border-color: var(--color-warning);
+  color: var(--color-accent-contrast);
+}
+
+.flashcard-rate--good:hover:not(:disabled) {
+  background-color: var(--color-accent-tint);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.flashcard-rate--easy:hover:not(:disabled) {
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--color-accent-contrast);
+}
