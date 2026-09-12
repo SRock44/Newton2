@@ -26,6 +26,14 @@ async def run_tutor(
     if bundle["profile_facts"]:
         facts_text = "\n".join(bundle["profile_facts"])
         turns.append(ChatTurn(role="system", content=f"What you know about this student:\n{facts_text}"))
+    if bundle.get("retrieved_chunks"):
+        chunks_text = "\n".join(bundle["retrieved_chunks"])
+        turns.append(
+            ChatTurn(
+                role="system",
+                content=f"Relevant material from the student's uploaded documents:\n{chunks_text}",
+            )
+        )
     for turn in bundle["turns"]:
         turns.append(ChatTurn(role=turn["role"], content=turn["content"]))
     turns.append(ChatTurn(role="user", content=user_message))

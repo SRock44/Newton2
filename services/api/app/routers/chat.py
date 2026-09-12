@@ -12,7 +12,8 @@ from app.db.base import SessionLocal, get_db
 from app.db.models import ChatMessage, ChatSession
 from app.jobs.pool import get_arq_pool
 from app.memory import profile as profile_memory
-from app.memory.working import append_turn, set_profile_facts
+from app.memory import rag as rag_memory
+from app.memory.working import append_turn, set_profile_facts, set_retrieved_chunks
 from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -140,6 +141,11 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                 await set_profile_facts(
                     str(session_id), [f"{f.subject_key}: {f.value}" for f in relevant_facts]
                 )
+
+                # Same shape, for the student's uploaded documents: retrieve only what's
+                # relevant to this message and stash it in the Tier 1 bundle for the Tutor.
+                relevant_chunks = await rag_memory.retrieve_relevant_chunks(db, user.id, user_message)
+                await set_retrieved_chunks(str(session_id), [c.content for c in relevant_chunks])
 
                 plan = route(user_message)
                 if plan.agent != "tutor":

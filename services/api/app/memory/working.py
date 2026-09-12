@@ -24,12 +24,12 @@ def _bundle_key(session_id: str) -> str:
 
 async def get_bundle(session_id: str) -> dict:
     """Tier 1: the assembled context bundle for an active session — recent turns plus
-    retrieved profile facts, cached in Redis and reused across turns instead of being
-    rebuilt from Postgres on every message."""
+    retrieved profile facts and retrieved document chunks, cached in Redis and reused
+    across turns instead of being rebuilt from Postgres on every message."""
     raw = await _get_redis().get(_bundle_key(session_id))
     if raw:
         return json.loads(raw)
-    return {"turns": [], "profile_facts": [], "updated_at": None}
+    return {"turns": [], "profile_facts": [], "retrieved_chunks": [], "updated_at": None}
 
 
 async def _save(session_id: str, bundle: dict) -> None:
@@ -48,6 +48,13 @@ async def append_turn(session_id: str, role: str, content: str) -> dict:
 async def set_profile_facts(session_id: str, facts: list[str]) -> dict:
     bundle = await get_bundle(session_id)
     bundle["profile_facts"] = facts
+    await _save(session_id, bundle)
+    return bundle
+
+
+async def set_retrieved_chunks(session_id: str, chunks: list[str]) -> dict:
+    bundle = await get_bundle(session_id)
+    bundle["retrieved_chunks"] = chunks
     await _save(session_id, bundle)
     return bundle
 
