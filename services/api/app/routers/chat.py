@@ -106,6 +106,11 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
     try:
         claims = await decode_token(token)
     except HTTPException:
+        # Accept first: closing before accept collapses to a bare 403 at the HTTP
+        # upgrade layer (uvicorn/Starlette reject the handshake outright), so a
+        # client would never see this close code or get an error frame to read.
+        await websocket.accept()
+        await websocket.send_json({"type": "error", "content": "invalid or expired token"})
         await websocket.close(code=4401)
         return
 
@@ -113,6 +118,8 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
         user = await get_or_create_user(db, claims)
         session = await db.get(ChatSession, session_id)
         if session is None or session.user_id != user.id:
+            await websocket.accept()
+            await websocket.send_json({"type": "error", "content": "session not found"})
             await websocket.close(code=4404)
             return
         await db.commit()  # persist user row if it was just created

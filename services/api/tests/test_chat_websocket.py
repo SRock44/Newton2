@@ -61,18 +61,32 @@ async def test_websocket_rejects_bad_token(http_client, auth_headers, db_session
     uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token=not-a-real-token"
 
     try:
-        # NOTE: chat_ws calls `await websocket.close(code=4401)` on an invalid token
-        # *before* ever calling `websocket.accept()`. Starlette/uvicorn turn a close()
-        # issued pre-accept into a bare HTTP-level handshake rejection (403) rather than
-        # a completed WS handshake followed by a close frame — so the custom 4401 code
-        # never actually reaches a client. This asserts the real observed behavior
-        # (403), not the code's apparent intent; see the test run report for details.
-        with pytest.raises(websockets.exceptions.InvalidStatus) as exc_info:
-            async with websockets.connect(uri):
-                pass
-        assert exc_info.value.response.status_code == 403
+        # chat_ws accepts the handshake first, then sends a real error frame and
+        # closes with 4401 — a client can distinguish "bad token" from "session not
+        # found" (test below) instead of both collapsing into an opaque 403.
+        async with websockets.connect(uri) as ws:
+            raw = await asyncio.wait_for(ws.recv(), timeout=5)
+            frame = json.loads(raw)
+            assert frame == {"type": "error", "content": "invalid or expired token"}
+
+            with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+                await asyncio.wait_for(ws.recv(), timeout=5)
+            assert exc_info.value.rcvd.code == 4401
     finally:
         # No messages were ever added to this session; just drop the session row.
         session_uuid = uuid.UUID(session_id)
         await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
         await db_session.commit()
+
+
+async def test_websocket_rejects_missing_session(keycloak_token):
+    uri = f"{WS_BASE_URL}/chat/ws/{uuid.uuid4()}?token={keycloak_token}"
+
+    async with websockets.connect(uri) as ws:
+        raw = await asyncio.wait_for(ws.recv(), timeout=5)
+        frame = json.loads(raw)
+        assert frame == {"type": "error", "content": "session not found"}
+
+        with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+            await asyncio.wait_for(ws.recv(), timeout=5)
+        assert exc_info.value.rcvd.code == 4404

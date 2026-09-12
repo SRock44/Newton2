@@ -12,7 +12,20 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "redirectUris": ["*"],
-      "webOrigins": ["*"]
+      "webOrigins": ["*"],
+      "protocolMappers": [
+        {
+          "name": "audience-newton-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "newton-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
