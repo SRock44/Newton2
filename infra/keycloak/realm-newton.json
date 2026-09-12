@@ -1,0 +1,32 @@
+{
+  "realm": "newton",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "clients": [
+    {
+      "clientId": "newton-api",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"]
+    }
+  ],
+  "users": [
+    {
+      "username": "student1",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "student1@example.test",
+      "firstName": "Student",
+      "lastName": "One",
+      "requiredActions": [],
+      "credentials": [
+        { "type": "password", "value": "newton-dev", "temporary": false }
+      ]
+    }
+  ]
+}

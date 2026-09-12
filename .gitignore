@@ -1,0 +1,34 @@
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!infra/**/*.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Rust / Tauri
+target/
+apps/desktop/src-tauri/target/
+Cargo.lock
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Data
+infra/data/
+*.log

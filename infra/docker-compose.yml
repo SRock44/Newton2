@@ -1,0 +1,120 @@
+name: newton2
+
+# Isolated dev stack: every published port is bound to 127.0.0.1 only (no LAN/public
+# exposure) on high, deliberately non-colliding ports, and every resource lives on its
+# own "newton_net" network + "newton2" compose project — nothing here touches any other
+# stack on the host.
+
+networks:
+  newton_net:
+    name: newton2_net
+
+volumes:
+  newton_pgdata:
+  newton_miniodata:
+  newton_keycloakdata:
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: newton
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-newton-dev-secret}
+      POSTGRES_DB: newton
+    volumes:
+      - newton_pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+    networks: [newton_net]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newton -d newton"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:56379:6379"
+    networks: [newton_net]
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-newton}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-newton-dev-secret}
+    volumes:
+      - newton_miniodata:/data
+    ports:
+      - "127.0.0.1:59000:9000"
+      - "127.0.0.1:59001:9001"
+    networks: [newton_net]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-newton-dev-secret}
+      KC_HOSTNAME: keycloak
+      KC_HOSTNAME_PORT: "8080"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - newton_keycloakdata:/opt/keycloak/data
+      - ./keycloak/realm-newton.json:/opt/keycloak/data/import/realm-newton.json:ro
+    ports:
+      - "127.0.0.1:58180:8080"
+    networks: [newton_net]
+    mem_limit: 900m
+
+  api:
+    build: ../services/api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://newton:${POSTGRES_PASSWORD:-newton-dev-secret}@postgres:5432/newton
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-newton}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-newton-dev-secret}
+      KEYCLOAK_ISSUER: http://keycloak:8080/realms/newton
+      KEYCLOAK_AUDIENCE: newton-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:58001:8000"
+    networks: [newton_net]
+    mem_limit: 256m
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:58080:80"
+    networks: [newton_net]
+    mem_limit: 64m
