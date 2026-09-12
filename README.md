@@ -5,6 +5,8 @@ Newton is an Agentic Learning Environment (ALE): a native desktop study companio
 Everything runs on infrastructure we own — no Firebase, no managed cloud services. Postgres, object storage, auth, search, and code execution are all self-hosted.
 
 See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the system design and [`ROADMAP.md`](./ROADMAP.md) for build status.
+For diagrams — system architecture and the database ERD, both cross-checked against the current code — see
+[`docs/architecture.md`](./docs/architecture.md) and [`docs/erd.md`](./docs/erd.md).
 
 ## Repo layout
 
