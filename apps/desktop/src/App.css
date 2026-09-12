@@ -942,6 +942,59 @@ button {
   font-size: 12px;
 }
 
+/* ---------- Math steps (progressive-reveal notepad) ---------- */
+
+.math-steps {
+  margin: 10px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.math-steps--error {
+  color: var(--color-danger);
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
+.math-steps__step {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border-2);
+}
+
+.math-steps__step:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.math-steps__step-number {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-faint);
+  margin-bottom: 4px;
+}
+
+.math-steps__reveal {
+  align-self: flex-start;
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.math-steps__reveal:hover {
+  background-color: var(--color-accent-hover);
+}
+
 /* ---------- Composer ---------- */
 
 .composer {

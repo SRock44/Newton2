@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { ComponentPropsWithoutRef, ReactElement, ReactNode } from "react";
 import { isValidElement } from "react";
+import MathSteps from "./MathSteps";
 import PlotlyFigure from "./PlotlyFigure";
 
 type PreProps = ComponentPropsWithoutRef<"pre"> & { node?: unknown };
@@ -30,7 +31,8 @@ function extractText(node: ReactNode): string {
 }
 
 /** Renders fenced code blocks with a language label and a copy-to-clipboard button —
- * except a "plotly-figure" block, which renders as an actual interactive chart. */
+ * except a "plotly-figure" block, which renders as an actual interactive chart, or a
+ * "math-steps" block, which renders as a progressive-reveal derivation. */
 function CodeBlock({ children, node: _node, ...rest }: PreProps) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
@@ -38,6 +40,9 @@ function CodeBlock({ children, node: _node, ...rest }: PreProps) {
 
   if (language === "plotly-figure") {
     return <PlotlyFigure json={extractText(children)} />;
+  }
+  if (language === "math-steps") {
+    return <MathSteps json={extractText(children)} />;
   }
 
   async function handleCopy() {
