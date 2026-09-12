@@ -1372,3 +1372,94 @@ button {
   color: var(--color-text-faint);
   margin-top: 5px;
 }
+
+/* ---------- Practice exams ---------- */
+
+.exam-list-title {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+}
+
+.exam-taking {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.exam-score-banner {
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.exam-question {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exam-question-text {
+  font-size: 12.5px;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.exam-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exam-choice {
+  text-align: left;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.exam-choice:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.exam-choice:disabled {
+  cursor: default;
+}
+
+.exam-choice--selected {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+}
+
+.exam-choice--correct {
+  border-color: var(--color-success);
+  background-color: rgba(47, 157, 99, 0.12);
+  color: var(--color-success);
+}
+
+.exam-choice--wrong {
+  border-color: var(--color-danger);
+  background-color: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+.exam-explanation {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  padding: 6px 10px;
+  background-color: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+}

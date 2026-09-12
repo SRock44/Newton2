@@ -2,7 +2,7 @@ import uuid
 from datetime import date as date_, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -213,3 +213,40 @@ class FlashcardReviewLog(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     rating: Mapped[int] = mapped_column(Integer)  # 1=Again, 2=Hard, 3=Good, 4=Easy (fsrs.Rating)
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class PracticeExam(Base):
+    """`difficulty` is picked per-generation by app/services/practice_exams.py from the
+    user's recent exam scores (higher average -> harder next time) -- this table doesn't
+    do that math itself, it just records what was chosen. `score`/`completed_at` are
+    both null until the exam is submitted; a generated-but-never-taken exam is a normal,
+    unremarkable state, not an error."""
+
+    __tablename__ = "practice_exams"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(500))
+    difficulty: Mapped[str] = mapped_column(String, default="medium")  # easy | medium | hard
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)  # fraction correct, 0.0-1.0
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PracticeExamQuestion(Base):
+    __tablename__ = "practice_exam_questions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    exam_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("practice_exams.id", ondelete="CASCADE"), index=True
+    )
+    question_index: Mapped[int] = mapped_column(Integer)
+    question: Mapped[str] = mapped_column(Text)
+    choices: Mapped[list] = mapped_column(JSONB)  # list[str], always 4 options
+    correct_index: Mapped[int] = mapped_column(Integer)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    student_answer_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_correct: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

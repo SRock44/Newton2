@@ -55,6 +55,32 @@ export interface GamificationStats {
   xp_to_next_level: number;
 }
 
+export interface PracticeExamQuestion {
+  id: string;
+  question_index: number;
+  question: string;
+  choices: string[];
+  // Only present once the exam is completed (see the backend's answer-leak guard).
+  correct_index?: number;
+  explanation?: string | null;
+  student_answer_index?: number | null;
+  is_correct?: boolean | null;
+}
+
+export interface PracticeExamSummary {
+  id: string;
+  document_id: string | null;
+  title: string;
+  difficulty: string;
+  score: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface PracticeExamDetail extends PracticeExamSummary {
+  questions: PracticeExamQuestion[];
+}
+
 export interface Flashcard {
   id: string;
   document_id: string | null;

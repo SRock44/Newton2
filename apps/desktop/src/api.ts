@@ -4,6 +4,8 @@ import type {
   ClassroomStatus,
   Flashcard,
   GamificationStats,
+  PracticeExamDetail,
+  PracticeExamSummary,
   StudyPlanItem,
   ToolInfo,
   UploadedDocument,
@@ -220,4 +222,52 @@ export async function getGamificationStats(token: string): Promise<GamificationS
   const res = await fetch(`${API_URL}/gamification/stats`, { headers: authHeaders(token) });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your progress."));
   return (await res.json()) as GamificationStats;
+}
+
+export async function generatePracticeExam(
+  token: string,
+  documentId: string,
+  numQuestions = 8,
+): Promise<PracticeExamDetail> {
+  const url = new URL(`${API_URL}/practice-exams/generate/${documentId}`);
+  url.searchParams.set("num_questions", String(numQuestions));
+  const res = await fetch(url, { method: "POST", headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't generate a practice exam for this document."));
+  return (await res.json()) as PracticeExamDetail;
+}
+
+export async function listPracticeExams(token: string): Promise<PracticeExamSummary[]> {
+  const res = await fetch(`${API_URL}/practice-exams`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your practice exams."));
+  return (await res.json()) as PracticeExamSummary[];
+}
+
+export async function getPracticeExam(token: string, examId: string): Promise<PracticeExamDetail> {
+  const res = await fetch(`${API_URL}/practice-exams/${examId}`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load this practice exam."));
+  return (await res.json()) as PracticeExamDetail;
+}
+
+/** `answers` maps question id -> chosen choice index. Any question left out is graded
+ * as incorrect (see the backend) — not excluded from scoring. */
+export async function submitPracticeExam(
+  token: string,
+  examId: string,
+  answers: Record<string, number>,
+): Promise<PracticeExamDetail> {
+  const res = await fetch(`${API_URL}/practice-exams/${examId}/submit`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ answers }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't submit this exam."));
+  return (await res.json()) as PracticeExamDetail;
+}
+
+export async function deletePracticeExam(token: string, examId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/practice-exams/${examId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this practice exam."));
 }

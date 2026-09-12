@@ -3,6 +3,7 @@ import {
   ApiError,
   deleteDocument,
   generateFlashcards,
+  generatePracticeExam,
   generateStudyPlan,
   listDocuments,
   uploadDocument,
@@ -29,6 +30,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
   const [uploading, setUploading] = useState(false);
   const [planStatusByDoc, setPlanStatusByDoc] = useState<Record<string, string>>({});
   const [cardStatusByDoc, setCardStatusByDoc] = useState<Record<string, string>>({});
+  const [examStatusByDoc, setExamStatusByDoc] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -110,6 +112,25 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
     }
   }
 
+  async function handleGenerateExam(doc: UploadedDocument) {
+    setExamStatusByDoc((prev) => ({ ...prev, [doc.id]: "Writing…" }));
+    try {
+      const exam = await generatePracticeExam(token, doc.id);
+      setExamStatusByDoc((prev) => ({
+        ...prev,
+        [doc.id]:
+          exam.questions.length > 0
+            ? `Added a ${exam.questions.length}-question exam — see Practice Exams`
+            : "Couldn't write questions from this document",
+      }));
+    } catch (err) {
+      setExamStatusByDoc((prev) => ({
+        ...prev,
+        [doc.id]: err instanceof ApiError ? err.message : "Couldn't generate a practice exam.",
+      }));
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
@@ -177,6 +198,14 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                     <button
                       type="button"
                       className="sidebar-signout"
+                      onClick={() => handleGenerateExam(doc)}
+                      disabled={examStatusByDoc[doc.id] === "Writing…"}
+                    >
+                      Practice exam
+                    </button>
+                    <button
+                      type="button"
+                      className="sidebar-signout"
                       onClick={() => handleDelete(doc.id)}
                       aria-label={`Delete ${doc.filename}`}
                     >
@@ -189,6 +218,9 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                 )}
                 {cardStatusByDoc[doc.id] && (
                   <div className="document-item-plan-status">{cardStatusByDoc[doc.id]}</div>
+                )}
+                {examStatusByDoc[doc.id] && (
+                  <div className="document-item-plan-status">{examStatusByDoc[doc.id]}</div>
                 )}
               </li>
             ))}

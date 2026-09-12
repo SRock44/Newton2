@@ -21,6 +21,7 @@ import Composer from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import FlashcardsPanel from "./components/FlashcardsPanel";
+import PracticeExamsPanel from "./components/PracticeExamsPanel";
 import CapabilitiesPanel from "./components/CapabilitiesPanel";
 import ContextMenu from "./components/ContextMenu";
 
@@ -49,6 +50,7 @@ function App() {
   const [showDocuments, setShowDocuments] = useState(false);
   const [showStudyPlan, setShowStudyPlan] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
+  const [showPracticeExams, setShowPracticeExams] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -316,12 +318,16 @@ function App() {
         onOpenDocuments={() => setShowDocuments(true)}
         onOpenStudyPlan={() => setShowStudyPlan(true)}
         onOpenFlashcards={() => setShowFlashcards(true)}
+        onOpenPracticeExams={() => setShowPracticeExams(true)}
         connectionStatus={wsStatus}
       />
 
       {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
       {showFlashcards && <FlashcardsPanel token={token} onClose={() => setShowFlashcards(false)} />}
+      {showPracticeExams && (
+        <PracticeExamsPanel token={token} onClose={() => setShowPracticeExams(false)} />
+      )}
 
       <main className="main-pane">
         <header className="main-header">
