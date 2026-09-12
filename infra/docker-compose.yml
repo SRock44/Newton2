@@ -13,6 +13,22 @@ volumes:
   newton_pgdata:
   newton_miniodata:
   newton_keycloakdata:
+  newton_embedcache:
+
+x-api-env: &api-env
+  DATABASE_URL: postgresql+asyncpg://newton:${POSTGRES_PASSWORD:-newton-dev-secret}@postgres:5432/newton
+  REDIS_URL: redis://redis:6379/0
+  ARQ_REDIS_URL: redis://redis:6379/1
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-newton}
+  MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-newton-dev-secret}
+  KEYCLOAK_ISSUER: http://keycloak:8080/realms/newton
+  KEYCLOAK_AUDIENCE: newton-api
+  EMBED_CACHE_DIR: /data/fastembed_cache
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct}
 
 services:
   postgres:
@@ -89,14 +105,9 @@ services:
   api:
     build: ../services/api
     restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql+asyncpg://newton:${POSTGRES_PASSWORD:-newton-dev-secret}@postgres:5432/newton
-      REDIS_URL: redis://redis:6379/0
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-newton}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-newton-dev-secret}
-      KEYCLOAK_ISSUER: http://keycloak:8080/realms/newton
-      KEYCLOAK_AUDIENCE: newton-api
+    environment: *api-env
+    volumes:
+      - newton_embedcache:/data/fastembed_cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,7 +116,22 @@ services:
     ports:
       - "127.0.0.1:58001:8000"
     networks: [newton_net]
-    mem_limit: 256m
+    mem_limit: 640m
+
+  worker:
+    build: ../services/api
+    restart: unless-stopped
+    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    environment: *api-env
+    volumes:
+      - newton_embedcache:/data/fastembed_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [newton_net]
+    mem_limit: 640m
 
   caddy:
     image: caddy:2-alpine

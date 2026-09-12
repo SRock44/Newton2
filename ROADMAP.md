@@ -11,16 +11,18 @@ Update this file as work lands — it's the source of truth for what's actually 
 - # Tauri + React + TS skeleton — builds and runs, hits the health endpoint over an SSH tunnel to the dev box
 
 ## Phase 1 — Core tutor loop + tool-use foundation
-- ! Provider adapter (Groq + OpenRouter + BYOK Anthropic)
-- ! Router + Tutor agent, WebSocket streaming chat, Postgres chat history
-- ! Document upload → MinIO + pgvector → RAG-aware chat
+- # Postgres schema + Alembic migrations (users, chat_sessions/messages, session_summaries, profile_facts, documents/document_chunks, pgvector + HNSW indexes)
+- # Provider adapter (Groq + OpenRouter + BYOK Anthropic) — code complete with a keyless EchoProvider fallback; pipeline verified end-to-end on Echo. Not yet exercised against a real Groq/OpenRouter/Anthropic key (none configured — see infra/README.md)
+- # Router + Tutor agent, WebSocket streaming chat, Postgres chat history — verified end-to-end (session create → WS stream → persisted messages → session end)
+- # Memory Tier 1: Redis working-memory bundle — verified (TTL-refreshed, reused across turns)
+- # Memory Tier 2: Memory Consolidator session-summary job (arq, Redis-queued) — verified (runs on session end, writes structured summary)
+- # Memory Tier 3: typed + deduplicated profile fact table with pgvector retrieval — verified both directions: write (dedup-by-construction upsert) and read (top-k similarity retrieval injected into the Tier 1 bundle before the Tutor answers)
+- ! Document upload → MinIO + pgvector → RAG-aware chat (schema exists; upload/chunk/embed pipeline not built)
 - ! Tool belt v1: Code Interpreter sandbox
 - ! Tool belt v1: SearXNG web search
 - ! Tool belt v1: Vision capture-to-solve (photo/screenshot)
 - ! Tool belt v1: calculator/unit converter
-- ! Memory Tier 1: Redis working-memory bundle
-- ! Memory Tier 2: Memory Consolidator session-summary job
-- ! Memory Tier 3: typed + deduplicated profile fact table with pgvector retrieval
+- ! Minimal chat UI in the desktop app (currently still the Phase 0 health-check screen)
 
 ## Phase 2 — Math notepad + visualization
 - ! Math Solver agent (SymPy + Code Interpreter verification)

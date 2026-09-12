@@ -32,18 +32,16 @@ async def _get_jwks() -> dict:
     return jwks
 
 
-async def require_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> dict:
-    if credentials is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
-
+async def decode_token(token: str) -> dict:
+    """Verify a raw bearer token against Keycloak's JWKS. Shared by the HTTP dependency
+    below and the WebSocket handler, which can't rely on FastAPI's HTTPBearer since
+    browsers don't let JS set the Authorization header on a WS handshake."""
     settings = get_settings()
     jwks = await _get_jwks()
 
     try:
-        claims = jwt.decode(
-            credentials.credentials,
+        return jwt.decode(
+            token,
             jwks,
             audience=settings.keycloak_audience,
             issuer=settings.keycloak_issuer,
@@ -51,4 +49,10 @@ async def require_user(
     except jwt.JWTError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Invalid token: {exc}") from exc
 
-    return claims
+
+async def require_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict:
+    if credentials is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
+    return await decode_token(credentials.credentials)

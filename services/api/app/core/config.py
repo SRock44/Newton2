@@ -28,6 +28,22 @@ class Settings(BaseSettings):
         "https://tauri.localhost",
     ]
 
+    # Provider adapter: our own cost-conscious defaults (Groq/OpenRouter), tried in this
+    # order. If neither key is set, agents fall back to the keyless EchoProvider so the
+    # rest of the pipeline still runs. A per-request BYOK Anthropic key always wins.
+    groq_api_key: str | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct"
+    anthropic_model: str = "claude-sonnet-4-5"
+
+    # Background jobs (memory consolidation, embeddings, etc.)
+    arq_redis_url: str = "redis://redis:6379/1"
+
+    # Self-hosted embedding model (fastembed/ONNX, CPU, no API key) used for both
+    # document RAG and profile-fact retrieval.
+    embed_cache_dir: str = "/data/fastembed_cache"
+
 
 @lru_cache
 def get_settings() -> Settings:
