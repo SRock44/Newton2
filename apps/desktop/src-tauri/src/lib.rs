@@ -123,6 +123,7 @@ async fn wait_for_oauth_callback(port: u16) -> Result<OAuthCallbackResult, Strin
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![greet, wait_for_oauth_callback])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

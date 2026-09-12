@@ -7,11 +7,14 @@ import {
   createSession,
   deleteSession,
   getMessages,
+  listFlashcards,
   listSessions,
+  listStudyPlan,
   openChatSocket,
 } from "./api";
 import { TokenManager, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
+import { notifyStudyReminders } from "./notifications";
 import type { ChatMessage, ChatSession, ConnectionStatus } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import LoginScreen from "./components/LoginScreen";
@@ -53,6 +56,7 @@ function App() {
   const [showPracticeExams, setShowPracticeExams] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const remindersCheckedRef = useRef(false);
 
   const rememberFirstMessage = useCallback((sessionId: string, content: string) => {
     setFirstMessageBySession((prev) => (prev[sessionId] ? prev : { ...prev, [sessionId]: content }));
@@ -78,6 +82,9 @@ function App() {
     setWsStatus("closed");
     setShowDocuments(false);
     setShowStudyPlan(false);
+    setShowFlashcards(false);
+    setShowPracticeExams(false);
+    remindersCheckedRef.current = false;
   }
 
   // Keeps the displayed/passed-down `token` fresh even when nothing is actively
@@ -89,6 +96,35 @@ function App() {
       tokenManager.getValidAccessToken().catch(() => handleSignOut());
     }, 60_000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  // Once per sign-in (not a repeating poll — that would just nag), nudge the user if
+  // they have flashcards due or study plan deadlines coming up soon. Only fires while
+  // the app is actually open; see notifications.ts.
+  useEffect(() => {
+    if (!token || remindersCheckedRef.current) return;
+    remindersCheckedRef.current = true;
+    const DUE_SOON_DAYS = 3;
+
+    (async () => {
+      try {
+        const accessToken = await tokenManager.getValidAccessToken();
+        const [dueFlashcards, studyPlan] = await Promise.all([
+          listFlashcards(accessToken, true),
+          listStudyPlan(accessToken),
+        ]);
+        const dueSoonCutoff = Date.now() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000;
+        const dueSoonItems = studyPlan.filter((item) => {
+          if (!item.due_date) return false;
+          const dueTime = new Date(item.due_date).getTime();
+          return !Number.isNaN(dueTime) && dueTime <= dueSoonCutoff;
+        });
+        await notifyStudyReminders(dueFlashcards.length, dueSoonItems.length);
+      } catch {
+        // A missed reminder shouldn't disrupt sign-in or show an error banner.
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 

@@ -37,6 +37,12 @@ vi.mock("./api", () => ({
   openChatSocket: vi.fn(() => makeFakeSocket()),
   listTools: vi.fn(async () => []),
   getGamificationStats: vi.fn(async () => ({ streak_days: 0, xp: 0, level: 1, xp_to_next_level: 100 })),
+  listFlashcards: vi.fn(async () => []),
+  listStudyPlan: vi.fn(async () => []),
+}));
+
+vi.mock("./notifications", () => ({
+  notifyStudyReminders: vi.fn(async () => undefined),
 }));
 
 vi.mock("./auth", async () => {
@@ -52,7 +58,8 @@ vi.mock("./auth", async () => {
   };
 });
 
-import { deleteSession, openChatSocket } from "./api";
+import { deleteSession, listFlashcards, listStudyPlan, openChatSocket } from "./api";
+import { notifyStudyReminders } from "./notifications";
 import { signInWithBrowser } from "./auth";
 
 async function signIn() {
@@ -71,6 +78,9 @@ describe("App", () => {
     vi.mocked(openChatSocket).mockClear();
     vi.mocked(signInWithBrowser).mockClear();
     vi.mocked(deleteSession).mockClear();
+    vi.mocked(listFlashcards).mockClear();
+    vi.mocked(listStudyPlan).mockClear();
+    vi.mocked(notifyStudyReminders).mockClear();
   });
 
   afterEach(() => {
@@ -192,5 +202,48 @@ describe("App", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("checks for due flashcards and upcoming deadlines once per sign-in and notifies about them", async () => {
+    vi.mocked(listFlashcards).mockResolvedValueOnce([
+      { id: "c1", document_id: null, front: "Q", back: "A", due: "2020-01-01T00:00:00Z", state: "review", last_review: null, created_at: "2020-01-01T00:00:00Z" },
+    ]);
+    vi.mocked(listStudyPlan).mockResolvedValueOnce([
+      {
+        id: "i1",
+        document_id: null,
+        title: "Problem set",
+        due_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // tomorrow
+        due_date_text: null,
+        notes: null,
+        source: "syllabus_upload",
+        created_at: "2020-01-01T00:00:00Z",
+      },
+      {
+        id: "i2",
+        document_id: null,
+        title: "Far-off final",
+        due_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), // 90 days out
+        due_date_text: null,
+        notes: null,
+        source: "syllabus_upload",
+        created_at: "2020-01-01T00:00:00Z",
+      },
+    ]);
+
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(vi.mocked(listFlashcards)).toHaveBeenCalledWith(expect.any(String), true));
+    // 1 due flashcard, 1 study plan item due within the next 3 days (the 90-day-out one excluded)
+    await waitFor(() => expect(vi.mocked(notifyStudyReminders)).toHaveBeenCalledWith(1, 1));
+  });
+
+  it("still reports zero counts when nothing is due — notifyStudyReminders itself no-ops on that", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(vi.mocked(listStudyPlan)).toHaveBeenCalled());
+    await waitFor(() => expect(vi.mocked(notifyStudyReminders)).toHaveBeenCalledWith(0, 0));
   });
 });
