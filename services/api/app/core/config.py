@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # Background jobs (memory consolidation, embeddings, etc.)
     arq_redis_url: str = "redis://redis:6379/1"
 
+    # Base URL of the sandbox-runner service (see services/sandbox-runner/) used by the
+    # code_interpreter tool to execute untrusted Python. That service is not deployed yet
+    # — see its README for the required internal-only-network compose shape — so this
+    # default only resolves once it's wired in.
+    sandbox_runner_url: str = "http://sandbox-runner:8000"
+
     # Self-hosted embedding model (fastembed/ONNX, CPU, no API key) used for both
     # document RAG and profile-fact retrieval.
     embed_cache_dir: str = "/data/fastembed_cache"
