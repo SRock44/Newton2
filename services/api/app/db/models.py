@@ -122,7 +122,7 @@ class StudyPlanItem(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     document_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("documents.id"), nullable=True, index=True
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String(500))
     due_date: Mapped[date_ | None] = mapped_column(Date, nullable=True)

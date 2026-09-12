@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
 
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = "newton"
-    minio_secret_key: str = "newton-dev-secret"
+    minio_secret_key: SecretStr = SecretStr("newton-dev-secret")
     minio_bucket: str = "newton"
     minio_secure: bool = False
 
@@ -36,10 +37,10 @@ class Settings(BaseSettings):
     # Provider adapter: our own cost-conscious defaults (Groq/OpenRouter), tried in this
     # order. If neither key is set, agents fall back to the keyless EchoProvider so the
     # rest of the pipeline still runs. A per-request BYOK Anthropic key always wins.
-    groq_api_key: str | None = None
+    groq_api_key: SecretStr | None = None
     groq_model: str = "llama-3.3-70b-versatile"
-    openrouter_api_key: str | None = None
-    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct"
+    openrouter_api_key: SecretStr | None = None
+    openrouter_model: str = "deepseek/deepseek-v4-flash-0731"
     anthropic_model: str = "claude-sonnet-4-5"
 
     # Background jobs (memory consolidation, embeddings, etc.)

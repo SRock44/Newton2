@@ -36,6 +36,29 @@ print(r.status_code, r.json())
 
 Tear down: `docker compose down` (add `-v` to also drop the named volumes).
 
+## Enabling a real model
+
+Every agent-driven code path — chat, memory consolidation, study-plan extraction — goes
+through the single provider adapter (`services/api/app/providers/registry.py`). Until a
+key is set, all of it runs on the keyless `EchoProvider`, which just echoes the input back
+(useful for testing the pipeline, useless for actual answers).
+
+Set in `.env`:
+```
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731   # this is the default already; override if you want a different model
+```
+then `docker compose up -d --build api worker` (the key applies to both — `worker` runs
+the same provider adapter for session-summary consolidation). No other config or code
+change is needed; every feature that calls an agent picks this up automatically.
+
+Current model choice: `deepseek/deepseek-v4-flash-0731` via OpenRouter — chosen for cost
+($0.03/$0.07 per million input/output tokens) and a 1M context window, used uniformly for
+every agent role rather than a tiered "cheap model here, expensive model there" split,
+since it's cheap enough that the tiering isn't worth the complexity right now. A user's own
+BYOK Anthropic key (if they supply one) still always takes precedence over this — see
+`registry.py`.
+
 ## Remote dev box
 
 Docker isn't available on the primary Windows dev machine, so this stack runs on a shared

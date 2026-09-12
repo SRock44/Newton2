@@ -147,6 +147,30 @@ async def test_generate_study_plan_creates_no_rows_for_an_unparseable_response(
     assert items == []
 
 
+async def test_deleting_a_document_does_not_destroy_its_study_plan_items(
+    throwaway_document, db_session
+):
+    """Regression test: study_plan_items.document_id used to be a plain FK with no
+    ON DELETE behavior, so deleting a document with real (non-empty) study plan items
+    pointing at it raised a ForeignKeyViolationError instead of the intended behavior —
+    the item is designed to survive its source document being deleted (document_id is
+    nullable precisely for this), not block the delete."""
+    user, document = throwaway_document
+    item = StudyPlanItem(user_id=user.id, document_id=document.id, title="Survives deletion")
+    db_session.add(item)
+    await db_session.commit()
+
+    await documents_service.delete_document(db_session, document)
+
+    # The ON DELETE SET NULL fired as a database-level FK action, not through an UPDATE
+    # this SQLAlchemy session issued itself -- with expire_on_commit=False (see
+    # app/db/base.py), the session has no way to know `item`'s document_id changed
+    # underneath it without an explicit refresh.
+    await db_session.refresh(item)
+    assert item.document_id is None
+    assert item.title == "Survives deletion"
+
+
 # ---------------------------------------------------------------------------
 # Router-level tests — real HTTP against the live server. Generation itself
 # necessarily goes through the real (keyless Echo) provider here, so these
@@ -167,6 +191,12 @@ async def uploaded_document(http_client, auth_headers, db_session):
 
     yield document_id
 
+    # study_plan_items.document_id is ON DELETE SET NULL (deliberately — see the FK
+    # regression test above), so deleting the document alone leaves any real items a
+    # test generated as orphaned rows rather than cleaning them up. With a real
+    # provider key configured, generation actually produces rows now (unlike the
+    # keyless EchoProvider), so this cleanup is no longer a no-op.
+    await db_session.execute(delete(StudyPlanItem).where(StudyPlanItem.document_id == document_id))
     document = await db_session.get(Document, document_id)
     if document is not None:
         await documents_service.delete_document(db_session, document)

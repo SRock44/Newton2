@@ -19,14 +19,18 @@ def get_provider(byok_anthropic_key: str | None = None) -> tuple[ChatProvider, s
 
     if settings.groq_api_key:
         return (
-            OpenAICompatibleProvider(base_url="https://api.groq.com/openai/v1", api_key=settings.groq_api_key),
+            OpenAICompatibleProvider(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=settings.groq_api_key.get_secret_value(),
+            ),
             settings.groq_model,
         )
 
     if settings.openrouter_api_key:
         return (
             OpenAICompatibleProvider(
-                base_url="https://openrouter.ai/api/v1", api_key=settings.openrouter_api_key
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.openrouter_api_key.get_secret_value(),
             ),
             settings.openrouter_model,
         )

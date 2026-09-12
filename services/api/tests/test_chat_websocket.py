@@ -33,8 +33,12 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
                 chunks.append(frame["content"])
 
         full_response = "".join(chunks)
-        assert full_response  # the echo provider always yields something
-        assert f"you said: {message}" in full_response
+        # Deliberately provider-agnostic: this environment may have a real model key
+        # configured (in which case the reply is genuine, not an echo), or may not (the
+        # keyless EchoProvider — see test_providers.py for assertions specific to that
+        # provider's own behavior, tested in isolation rather than through the live
+        # server). Either way, a real, non-empty reply must come back and persist.
+        assert full_response
 
         messages_resp = await http_client.get(
             f"/chat/sessions/{session_id}/messages", headers=auth_headers
