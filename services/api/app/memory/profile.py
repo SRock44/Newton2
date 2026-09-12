@@ -35,6 +35,18 @@ async def upsert_fact(
         await db.flush()
         return existing
 
+    if existing is not None:
+        # ux_profile_facts_current_key is a UNIQUE index on (user_id, subject_key)
+        # WHERE superseded_by IS NULL, checked immediately (Postgres doesn't defer
+        # partial-unique-index checks). Inserting the replacement row below while
+        # `existing` still has superseded_by IS NULL would momentarily leave two
+        # "current" rows for this (user, subject_key) and violate that index. Point
+        # the old row at itself first so it drops out of the partial index's
+        # WHERE clause before the new row is inserted; the self-reference is
+        # overwritten with the real successor below once it exists.
+        existing.superseded_by = existing.id
+        await db.flush()
+
     new_fact = ProfileFact(
         user_id=user_id,
         subject_key=subject_key,
