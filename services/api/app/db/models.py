@@ -140,4 +140,32 @@ class StudyPlanItem(Base):
     due_date_text: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String, default="syllabus_upload")
+    # The source system's own id for this item (e.g. a Classroom courseWork id) — lets a
+    # re-sync upsert in place instead of creating a duplicate row every time. Unused (and
+    # unenforced-unique, since it's meaningless) for syllabus_upload items.
+    external_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GoogleClassroomConnection(Base):
+    """One row per user who has opted into the Classroom data connector — a separate
+    OAuth grant from Keycloak-brokered Google *login*, even though both reuse the same
+    Google Cloud OAuth client (see google_classroom_client_id in core/config.py): login
+    only ever requests `openid email profile`; this requests Classroom-specific read
+    scopes and nothing else, and a user can sign in with Google without ever connecting
+    this. Tokens are encrypted at the application layer (app/core/crypto.py) before they
+    touch this table."""
+
+    __tablename__ = "google_classroom_connections"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    google_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    encrypted_access_token: Mapped[str] = mapped_column(Text)
+    encrypted_refresh_token: Mapped[str] = mapped_column(Text)
+    access_token_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    scopes: Mapped[str] = mapped_column(Text)
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

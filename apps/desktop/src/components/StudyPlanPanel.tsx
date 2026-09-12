@@ -1,11 +1,23 @@
-import { useEffect, useState } from "react";
-import { ApiError, deleteStudyPlanItem, listStudyPlan } from "../api";
-import type { StudyPlanItem } from "../types";
+import { useEffect, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  ApiError,
+  connectClassroom,
+  deleteStudyPlanItem,
+  disconnectClassroom,
+  getClassroomStatus,
+  listStudyPlan,
+  syncClassroom,
+} from "../api";
+import type { ClassroomStatus, StudyPlanItem } from "../types";
 
 interface StudyPlanPanelProps {
   token: string;
   onClose: () => void;
 }
+
+const CLASSROOM_POLL_INTERVAL_MS = 3000;
+const CLASSROOM_POLL_TIMEOUT_MS = 2 * 60 * 1000;
 
 function formatDueDate(item: StudyPlanItem): string {
   if (item.due_date) {
@@ -25,6 +37,11 @@ function StudyPlanPanel({ token, onClose }: StudyPlanPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [classroom, setClassroom] = useState<ClassroomStatus | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const pollRef = useRef<{ interval: number; timeout: number } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     listStudyPlan(token)
@@ -42,12 +59,102 @@ function StudyPlanPanel({ token, onClose }: StudyPlanPanelProps) {
     };
   }, [token]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getClassroomStatus(token)
+      .then((status) => {
+        if (!cancelled) setClassroom(status);
+      })
+      .catch(() => {
+        // Non-fatal — the panel still works for syllabus-based items either way.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current.interval);
+        window.clearTimeout(pollRef.current.timeout);
+      }
+    };
+  }, []);
+
   async function handleDelete(id: string) {
     try {
       await deleteStudyPlanItem(token, id);
       setItems((prev) => prev.filter((i) => i.id !== id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't remove this item.");
+    }
+  }
+
+  async function handleConnectClassroom() {
+    if (connecting) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const url = await connectClassroom(token);
+      await openUrl(url);
+
+      const interval = window.setInterval(async () => {
+        try {
+          const status = await getClassroomStatus(token);
+          if (status.connected) {
+            setClassroom(status);
+            stopPollingClassroom();
+            setConnecting(false);
+          }
+        } catch {
+          // keep polling — a single failed check shouldn't abort the wait
+        }
+      }, CLASSROOM_POLL_INTERVAL_MS);
+
+      const timeout = window.setTimeout(() => {
+        stopPollingClassroom();
+        setConnecting(false);
+      }, CLASSROOM_POLL_TIMEOUT_MS);
+
+      pollRef.current = { interval, timeout };
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't start connecting Google Classroom.");
+      setConnecting(false);
+    }
+  }
+
+  function stopPollingClassroom() {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current.interval);
+      window.clearTimeout(pollRef.current.timeout);
+      pollRef.current = null;
+    }
+  }
+
+  async function handleSyncClassroom() {
+    if (syncing) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      const synced = await syncClassroom(token);
+      setItems((prev) => {
+        const syncedIds = new Set(synced.map((i) => i.id));
+        return [...prev.filter((i) => !syncedIds.has(i.id)), ...synced];
+      });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't sync Google Classroom.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleDisconnectClassroom() {
+    try {
+      await disconnectClassroom(token);
+      setClassroom({ connected: false });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't disconnect Google Classroom.");
     }
   }
 
@@ -65,6 +172,29 @@ function StudyPlanPanel({ token, onClose }: StudyPlanPanelProps) {
           Extracted from your uploaded syllabi — open Documents and use "Study plan" on one to
           add more.
         </p>
+
+        <div className="classroom-connect">
+          {classroom?.connected ? (
+            <>
+              <div className="classroom-connect-status">
+                <span className="classroom-connect-dot" aria-hidden="true" />
+                Google Classroom connected{classroom.google_email ? ` (${classroom.google_email})` : ""}
+              </div>
+              <div className="classroom-connect-actions">
+                <button type="button" className="sidebar-nav-more--active" onClick={handleSyncClassroom} disabled={syncing}>
+                  {syncing ? "Syncing…" : "Sync now"}
+                </button>
+                <button type="button" className="sidebar-signout" onClick={handleDisconnectClassroom}>
+                  Disconnect
+                </button>
+              </div>
+            </>
+          ) : (
+            <button type="button" className="sidebar-nav-more--active" onClick={handleConnectClassroom} disabled={connecting}>
+              {connecting ? "Waiting for Google sign-in…" : "Connect Google Classroom"}
+            </button>
+          )}
+        </div>
 
         {error && <div className="chat-pane-banner chat-pane-banner--error">{error}</div>}
 

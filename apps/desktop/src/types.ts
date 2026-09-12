@@ -41,3 +41,9 @@ export interface StudyPlanItem {
   source: string;
   created_at: string;
 }
+
+export interface ClassroomStatus {
+  connected: boolean;
+  google_email?: string | null;
+  connected_at?: string | null;
+}

@@ -64,6 +64,24 @@ class Settings(BaseSettings):
     # document RAG and profile-fact retrieval.
     embed_cache_dir: str = "/data/fastembed_cache"
 
+    # Google Classroom data connector: deliberately a SEPARATE OAuth grant from the
+    # Keycloak-brokered Google *login* (see infra/keycloak/setup_google_idp.py) even
+    # though both reuse the same Google Cloud OAuth client -- login only ever requests
+    # `openid email profile`, kept minimal on purpose, while this requests Classroom-
+    # specific read scopes and is opt-in per user, independent of how they signed in.
+    google_classroom_client_id: str | None = None
+    google_classroom_client_secret: SecretStr | None = None
+    # This container's own address, reachable by the browser Google redirects back to
+    # after consent -- NOT a Keycloak URL. Must be registered as an Authorized redirect
+    # URI on the Google Cloud OAuth client (Console > Credentials), same client as the
+    # login IdP's, added as an *additional* redirect URI alongside Keycloak's.
+    google_classroom_redirect_uri: str = "http://127.0.0.1:58001/integrations/classroom/callback"
+
+    # Symmetric key (Fernet) this app uses to encrypt Classroom OAuth tokens before they
+    # touch Postgres — see app/core/crypto.py. Generate one with `python -c "from
+    # cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+    secret_encryption_key: SecretStr | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

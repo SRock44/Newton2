@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession, StudyPlanItem, ToolInfo, UploadedDocument } from "./types";
+import type { ChatMessage, ChatSession, ClassroomStatus, StudyPlanItem, ToolInfo, UploadedDocument } from "./types";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:58001";
 export const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL ?? "http://127.0.0.1:58180";
@@ -120,4 +120,38 @@ export async function deleteStudyPlanItem(token: string, itemId: string): Promis
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this item."));
+}
+
+export async function getClassroomStatus(token: string): Promise<ClassroomStatus> {
+  const res = await fetch(`${API_URL}/integrations/classroom/status`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't check Google Classroom's connection."));
+  return (await res.json()) as ClassroomStatus;
+}
+
+/** Returns the Google consent URL to open in the system browser — a separate,
+ * Classroom-scoped OAuth grant handled entirely by the backend, distinct from the
+ * Keycloak-brokered Google *login*. The backend's own /callback finishes the exchange;
+ * the desktop app just polls getClassroomStatus() afterward to notice it landed. */
+export async function connectClassroom(token: string): Promise<string> {
+  const res = await fetch(`${API_URL}/integrations/classroom/connect`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't start connecting Google Classroom."));
+  const data = await res.json();
+  return data.authorization_url as string;
+}
+
+export async function syncClassroom(token: string): Promise<StudyPlanItem[]> {
+  const res = await fetch(`${API_URL}/integrations/classroom/sync`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't sync Google Classroom."));
+  return (await res.json()) as StudyPlanItem[];
+}
+
+export async function disconnectClassroom(token: string): Promise<void> {
+  const res = await fetch(`${API_URL}/integrations/classroom`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't disconnect Google Classroom."));
 }

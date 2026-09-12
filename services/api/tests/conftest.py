@@ -62,13 +62,17 @@ async def _dispose_db_engine_after_test():
 
 @pytest_asyncio.fixture(autouse=True)
 async def _dispose_redis_client_after_test():
-    """Same cross-event-loop hazard as the DB engine above, for app.memory.working's
-    module-level Redis client singleton: close it and drop the cached reference after
-    each test so the next test (its own event loop) opens a fresh connection instead of
-    reusing one bound to a now-closed loop."""
+    """Same cross-event-loop hazard as the DB engine above, for the module-level Redis
+    client singletons in app.memory.working and app.services.google_classroom: close them
+    and drop the cached reference after each test so the next test (its own event loop)
+    opens a fresh connection instead of reusing one bound to a now-closed loop."""
     yield
     from app.memory import working as working_memory
+    from app.services import google_classroom
 
     if working_memory._redis is not None:
         await working_memory._redis.aclose()
         working_memory._redis = None
+    if google_classroom._redis is not None:
+        await google_classroom._redis.aclose()
+        google_classroom._redis = None
