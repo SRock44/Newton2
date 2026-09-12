@@ -41,7 +41,7 @@ Update this file as work lands — it's the source of truth for what's actually 
 - # Study Planner → calendarized plan in-app, syllabus-upload path — `POST /study-plan/generate/{document_id}` re-extracts a document's text, asks the provider to pull out gradable items as structured JSON (real dates kept as `due_date`, anything without an exact calendar date kept as honest `due_date_text` like "Week 5" rather than guessed), and persists them; `GET /study-plan` lists them, `DELETE /study-plan/{id}` removes one, all user-scoped, with a matching desktop UI. Verified against the real live model with an actual syllabus: all 4 assignments extracted with correct dates and grade weights, in ~7s. (Also caught and fixed a real bug this surfaced: the document→study-plan-item FK had no `ON DELETE` behavior, so deleting a document with real items pointing at it — impossible to happen under the keyless Echo fallback, which never produced real items — raised a FK violation instead of the intended "item survives its source document" behavior; now `ON DELETE SET NULL`, with a regression test.)
 
 ## Phase 4 — Depth, breadth, and native polish
-- ! Flashcard/Quiz agent with FSRS scheduling
+- # Flashcard/Quiz agent with FSRS scheduling — uses the real `fsrs` library (not hand-rolled scheduling math), generated from documents the same way as the Study Planner, a review panel (front → reveal → rate Again/Hard/Good/Easy) plus browse/delete. FlashcardReviewLog is the audit trail FSRS itself doesn't keep. Tested at every layer (pure parsing, Card↔row round-trip, real scheduling math, generation, router auth/ownership, frontend review/browse/delete/empty-state) and verified live: real model-generated cards from real notes, a real review call that visibly advanced the due date
 - ! Adaptive practice-exam generation
 - ! Writing/Essay agent (LanguageTool + citation formatter)
 - ! Composite "Study Session" multi-agent workflow
@@ -50,7 +50,7 @@ Update this file as work lands — it's the source of truth for what's actually 
 - ! Always-on-top companion Notepad window
 - ! Voice I/O (Whisper.cpp/Piper)
 - ! Native OS notifications
-- ! Gamification (streaks/XP)
+- # Gamification (streaks/XP) — fully derived from existing activity data (chat messages, flashcard reviews, study plan items/flashcards generated), not a separate mutable state to keep in sync; a streak stays alive through the current day until a full day passes with zero activity. Surfaced in the desktop app's right panel (streak, level, XP, progress bar). Verified live: a real chat message moved streak/XP, deleting that session correctly brought both back to zero
 
 ## Phase 5 — Scale path + stretch (deferred, documented not built)
 - ! Move from single OVH VPS to dedicated/multi-node
