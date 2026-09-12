@@ -18,3 +18,10 @@ export interface ChatSession {
 }
 
 export type ConnectionStatus = "connecting" | "open" | "closed";
+
+export interface UploadedDocument {
+  id: string;
+  filename: string;
+  mime_type: string | null;
+  created_at: string;
+}

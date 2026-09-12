@@ -10,6 +10,7 @@ interface SidebarProps {
   creatingChat: boolean;
   username: string;
   onSignOut: () => void;
+  onOpenDocuments: () => void;
 }
 
 function formatSessionDate(iso: string): string {
@@ -27,6 +28,7 @@ function Sidebar({
   creatingChat,
   username,
   onSignOut,
+  onOpenDocuments,
 }: SidebarProps) {
   return (
     <aside className="sidebar">
@@ -60,8 +62,11 @@ function Sidebar({
       </nav>
 
       <div className="sidebar-footer">
+        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenDocuments}>
+          📄 Documents
+        </button>
         <div className="sidebar-nav-more" aria-disabled="true" title="Coming soon">
-          Documents & flashcards — coming soon
+          Flashcards — coming soon
         </div>
         <div className="sidebar-user">
           <span className="sidebar-user-name">{username}</span>

@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession } from "./types";
+import type { ChatMessage, ChatSession, UploadedDocument } from "./types";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:58001";
 export const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL ?? "http://127.0.0.1:58180";
@@ -72,4 +72,40 @@ export async function endSession(token: string, sessionId: string): Promise<void
 /** Opens the streaming chat socket for a session. Caller owns the returned socket. */
 export function openChatSocket(token: string, sessionId: string): WebSocket {
   return new WebSocket(`${WS_URL}/chat/ws/${sessionId}?token=${encodeURIComponent(token)}`);
+}
+
+async function detailOrFallback(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (typeof body?.detail === "string") return body.detail;
+  } catch {
+    // not JSON, or no body — fall through to the generic message
+  }
+  return fallback;
+}
+
+export async function listDocuments(token: string): Promise<UploadedDocument[]> {
+  const res = await fetch(`${API_URL}/documents`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your documents."));
+  return (await res.json()) as UploadedDocument[];
+}
+
+export async function uploadDocument(token: string, file: File): Promise<UploadedDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_URL}/documents/upload`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: formData,
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, `Couldn't upload ${file.name}.`));
+  return (await res.json()) as UploadedDocument;
+}
+
+export async function deleteDocument(token: string, documentId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/documents/${documentId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete this document."));
 }

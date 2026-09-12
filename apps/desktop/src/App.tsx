@@ -15,6 +15,7 @@ import LoginScreen from "./components/LoginScreen";
 import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
+import DocumentsPanel from "./components/DocumentsPanel";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -37,6 +38,7 @@ function App() {
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>("closed");
+  const [showDocuments, setShowDocuments] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -60,6 +62,7 @@ function App() {
     setFirstMessageBySession({});
     setIsStreaming(false);
     setWsStatus("closed");
+    setShowDocuments(false);
   }
 
   // Load the user's sessions once signed in; start a first chat if they have none.
@@ -231,7 +234,10 @@ function App() {
         creatingChat={creatingChat}
         username={username || "student"}
         onSignOut={handleSignOut}
+        onOpenDocuments={() => setShowDocuments(true)}
       />
+
+      {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
 
       <main className="main-pane">
         <header className="main-header">
