@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import type { ChatMessage, ChatSession } from "./types";
@@ -33,6 +33,7 @@ vi.mock("./api", () => ({
   createSession: vi.fn(async () => "new-session-id"),
   getMessages: vi.fn(async (_token: string, sessionId: string) => messagesBySession[sessionId] ?? []),
   endSession: vi.fn(async () => ({})),
+  deleteSession: vi.fn(async () => undefined),
   openChatSocket: vi.fn(() => makeFakeSocket()),
   listTools: vi.fn(async () => []),
 }));
@@ -50,7 +51,7 @@ vi.mock("./auth", async () => {
   };
 });
 
-import { openChatSocket } from "./api";
+import { deleteSession, openChatSocket } from "./api";
 import { signInWithBrowser } from "./auth";
 
 async function signIn() {
@@ -68,6 +69,7 @@ describe("App", () => {
   beforeEach(() => {
     vi.mocked(openChatSocket).mockClear();
     vi.mocked(signInWithBrowser).mockClear();
+    vi.mocked(deleteSession).mockClear();
   });
 
   afterEach(() => {
@@ -146,5 +148,48 @@ describe("App", () => {
     });
     await waitFor(() => expect(screen.getByPlaceholderText(/ask newton/i)).not.toBeDisabled());
     expect(sendButton).not.toBeDisabled();
+  });
+
+  it("deletes a chat via the sidebar's hover delete button", async () => {
+    const user = await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    const deleteButtons = screen.getAllByLabelText("Delete chat");
+    expect(deleteButtons).toHaveLength(2);
+    await user.click(deleteButtons[1]!); // s2, "Physics review" — not the active session
+
+    await waitFor(() => expect(vi.mocked(deleteSession)).toHaveBeenCalledWith(expect.any(String), "s2"));
+    expect(screen.queryByText("Physics review")).not.toBeInTheDocument();
+    // deleting a non-active session must not disturb the currently active one
+    expect(await (await messageList()).findByText("Hello from s1")).toBeInTheDocument();
+  });
+
+  it("deletes a chat from the custom right-click context menu", async () => {
+    const user = await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    const sessionItem = screen.getByText("Physics review").closest('[data-context-menu="session"]');
+    expect(sessionItem).not.toBeNull();
+
+    fireEvent.contextMenu(sessionItem!);
+    const deleteItem = await screen.findByRole("menuitem", { name: "Delete chat" });
+    await user.click(deleteItem);
+
+    await waitFor(() => expect(vi.mocked(deleteSession)).toHaveBeenCalledWith(expect.any(String), "s2"));
+    expect(screen.queryByText("Physics review")).not.toBeInTheDocument();
+  });
+
+  // Directly verifies the user's complaint: the WebView's default context menu
+  // (Reload/Print/Inspect) must never appear anywhere in the app, even where there's no
+  // custom menu item to offer instead.
+  it("always suppresses the native context menu, even with nothing custom to show", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 4, clientY: 4 });
+    fireEvent(document.body, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });

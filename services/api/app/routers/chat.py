@@ -13,7 +13,7 @@ from app.db.models import ChatMessage, ChatSession
 from app.jobs.pool import get_arq_pool
 from app.memory import profile as profile_memory
 from app.memory import rag as rag_memory
-from app.memory.working import append_turn, set_profile_facts, set_retrieved_chunks
+from app.memory.working import append_turn, invalidate, set_profile_facts, set_retrieved_chunks
 from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -100,6 +100,24 @@ async def end_session(
     pool = await get_arq_pool()
     await pool.enqueue_job("consolidate_session", str(session_id))
     return {"status": "ended", "consolidation": "queued"}
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(
+    session_id: uuid.UUID,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    user = await get_or_create_user(db, claims)
+    session = await db.get(ChatSession, session_id)
+    if session is None or session.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+
+    # Messages/summary cascade at the DB level (migration 0004); any profile fact
+    # learned in this session survives, just loses its audit-trail pointer back to it.
+    await db.delete(session)
+    await db.commit()
+    await invalidate(str(session_id))
 
 
 @router.websocket("/ws/{session_id}")

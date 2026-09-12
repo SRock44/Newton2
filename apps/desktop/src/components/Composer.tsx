@@ -46,6 +46,7 @@ function Composer({ onSend, disabled, placeholder }: ComposerProps) {
           placeholder={disabled ? "Newton is responding…" : placeholder ?? "Ask Newton anything…"}
           disabled={disabled}
           rows={1}
+          data-context-menu="editable"
         />
         <button
           type="button"

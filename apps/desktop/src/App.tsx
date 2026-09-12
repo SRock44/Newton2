@@ -5,6 +5,7 @@ import "highlight.js/styles/github-dark.css";
 import {
   ApiError,
   createSession,
+  deleteSession,
   getMessages,
   listSessions,
   openChatSocket,
@@ -20,6 +21,7 @@ import Composer from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import CapabilitiesPanel from "./components/CapabilitiesPanel";
+import ContextMenu from "./components/ContextMenu";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -261,8 +263,35 @@ function App() {
     }
   }
 
+  async function handleDeleteSession(sessionId: string) {
+    try {
+      const accessToken = await tokenManager.getValidAccessToken();
+      await deleteSession(accessToken, sessionId);
+    } catch (err) {
+      setSessionsError(errorMessage(err, "Couldn't delete this chat."));
+      return;
+    }
+
+    const remaining = sessions.filter((s) => s.id !== sessionId);
+    setSessions(remaining);
+    setFirstMessageBySession((prev) => {
+      if (!(sessionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+    if (activeSessionId === sessionId) {
+      setActiveSessionId(remaining[0]?.id ?? null);
+    }
+  }
+
   if (!token) {
-    return <LoginScreen onSuccess={handleLoginSuccess} />;
+    return (
+      <>
+        <LoginScreen onSuccess={handleLoginSuccess} />
+        <ContextMenu onDeleteSession={handleDeleteSession} />
+      </>
+    );
   }
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
@@ -278,6 +307,7 @@ function App() {
         firstMessageBySession={firstMessageBySession}
         onSelectSession={setActiveSessionId}
         onNewChat={handleNewChat}
+        onDeleteSession={handleDeleteSession}
         creatingChat={creatingChat}
         username={username || "student"}
         onSignOut={handleSignOut}
@@ -315,6 +345,8 @@ function App() {
         sessionCount={sessions.length}
         messageCount={messages.length}
       />
+
+      <ContextMenu onDeleteSession={handleDeleteSession} />
     </div>
   );
 }

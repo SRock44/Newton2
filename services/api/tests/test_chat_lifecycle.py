@@ -1,7 +1,7 @@
 import uuid
 
 import pytest_asyncio
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.db.models import ChatMessage, ChatSession
 
@@ -41,4 +41,30 @@ async def test_create_list_and_end_session(http_client, auth_headers, created_se
 async def test_messages_endpoint_404_for_foreign_or_missing_session(http_client, auth_headers):
     bogus_id = uuid.uuid4()
     resp = await http_client.get(f"/chat/sessions/{bogus_id}/messages", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+async def test_delete_session_removes_it_and_its_messages(http_client, auth_headers, db_session):
+    create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = create_resp.json()["session_id"]
+
+    db_session.add(ChatMessage(session_id=uuid.UUID(session_id), role="user", content="hi"))
+    await db_session.commit()
+
+    delete_resp = await http_client.delete(f"/chat/sessions/{session_id}", headers=auth_headers)
+    assert delete_resp.status_code == 204
+
+    list_resp = await http_client.get("/chat/sessions", headers=auth_headers)
+    assert session_id not in [s["id"] for s in list_resp.json()]
+
+    assert await db_session.get(ChatSession, uuid.UUID(session_id)) is None
+    remaining_messages = (
+        await db_session.execute(select(ChatMessage).where(ChatMessage.session_id == uuid.UUID(session_id)))
+    ).scalars().all()
+    assert remaining_messages == []
+
+
+async def test_delete_session_404_for_foreign_or_missing_session(http_client, auth_headers):
+    bogus_id = uuid.uuid4()
+    resp = await http_client.delete(f"/chat/sessions/{bogus_id}", headers=auth_headers)
     assert resp.status_code == 404

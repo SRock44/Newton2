@@ -247,18 +247,10 @@ button {
 
 .session-item {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: stretch;
   width: 100%;
-  border: none;
   border-left: 2px solid transparent;
-  background: transparent;
-  text-align: left;
-  padding: 7px 8px;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  color: var(--color-text);
-  font-size: 12.5px;
 }
 
 .session-item:hover {
@@ -268,6 +260,24 @@ button {
 .session-item--active {
   background-color: var(--color-accent-tint);
   border-left-color: var(--color-accent);
+}
+
+.session-item-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 2px 7px 8px;
+  color: var(--color-text);
+  font-size: 12.5px;
+}
+
+.session-item--active .session-item-main {
   font-weight: 500;
 }
 
@@ -282,6 +292,32 @@ button {
   color: var(--color-text-faint);
   font-size: 11px;
   flex-shrink: 0;
+}
+
+.session-item-delete {
+  flex-shrink: 0;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 5px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s ease, background-color 0.1s ease, color 0.1s ease;
+}
+
+.session-item:hover .session-item-delete,
+.session-item-delete:focus-visible {
+  opacity: 1;
+}
+
+.session-item-delete:hover {
+  background-color: var(--color-danger-tint);
+  color: var(--color-danger);
 }
 
 .sidebar-footer {
@@ -1030,4 +1066,45 @@ button {
 .login-submit:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 160px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md), 0 1px 3px rgba(0, 0, 0, 0.08);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.context-menu-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: 12.5px;
+}
+
+.context-menu-item:hover:not(:disabled) {
+  background-color: var(--color-surface-2);
+}
+
+.context-menu-item:disabled {
+  color: var(--color-text-faint);
+  cursor: default;
+}
+
+.context-menu-item--danger:not(:disabled) {
+  color: var(--color-danger);
+}
+
+.context-menu-item--danger:hover:not(:disabled) {
+  background-color: var(--color-danger-tint);
 }

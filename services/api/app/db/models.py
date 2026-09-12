@@ -34,14 +34,20 @@ class ChatSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session")
+    # passive_deletes=True: trust the DB's ON DELETE CASCADE (migration 0004) instead of
+    # SQLAlchemy's default behavior of loading this collection on parent delete and trying
+    # to null out each child's session_id itself -- session_id is NOT NULL, so that default
+    # behavior would raise an IntegrityError deleting any session that has messages.
+    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", passive_deletes=True)
 
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_sessions.id"), index=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"), index=True
+    )
     role: Mapped[str] = mapped_column(String)  # user | assistant | system
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -55,7 +61,9 @@ class SessionSummary(Base):
     __tablename__ = "session_summaries"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_sessions.id"), unique=True, index=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"), unique=True, index=True
+    )
     topics: Mapped[list] = mapped_column(JSONB, default=list)
     problems_solved: Mapped[list] = mapped_column(JSONB, default=list)
     mistakes: Mapped[list] = mapped_column(JSONB, default=list)
@@ -80,7 +88,7 @@ class ProfileFact(Base):
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
     source_session_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("chat_sessions.id"), nullable=True
+        ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True
     )
     superseded_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("profile_facts.id"), nullable=True, index=True

@@ -42,6 +42,14 @@ export async function endSession(token: string, sessionId: string): Promise<void
   if (!res.ok) throw new ApiError("Couldn't end this session.");
 }
 
+export async function deleteSession(token: string, sessionId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/chat/sessions/${sessionId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete this chat."));
+}
+
 /** Opens the streaming chat socket for a session. Caller owns the returned socket. */
 export function openChatSocket(token: string, sessionId: string): WebSocket {
   return new WebSocket(`${WS_URL}/chat/ws/${sessionId}?token=${encodeURIComponent(token)}`);

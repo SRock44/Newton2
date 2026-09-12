@@ -8,6 +8,7 @@ interface SidebarProps {
   firstMessageBySession: Record<string, string>;
   onSelectSession: (id: string) => void;
   onNewChat: () => void;
+  onDeleteSession: (id: string) => void;
   creatingChat: boolean;
   username: string;
   onSignOut: () => void;
@@ -34,6 +35,7 @@ function Sidebar({
   firstMessageBySession,
   onSelectSession,
   onNewChat,
+  onDeleteSession,
   creatingChat,
   username,
   onSignOut,
@@ -82,19 +84,37 @@ function Sidebar({
           {sessions.map((session, i) => {
             const isActive = session.id === activeSessionId;
             return (
-              <button
-                type="button"
+              <div
                 key={session.id}
                 className={`session-item fade-up${isActive ? " session-item--active" : ""}`}
                 style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
-                onClick={() => onSelectSession(session.id)}
-                aria-current={isActive}
+                data-context-menu="session"
+                data-session-id={session.id}
               >
-                <span className="session-item-title">
-                  {sessionDisplayTitle(session, firstMessageBySession[session.id])}
-                </span>
-                <span className="session-item-date">{formatSessionDate(session.created_at)}</span>
-              </button>
+                <button
+                  type="button"
+                  className="session-item-main"
+                  onClick={() => onSelectSession(session.id)}
+                  aria-current={isActive}
+                >
+                  <span className="session-item-title">
+                    {sessionDisplayTitle(session, firstMessageBySession[session.id])}
+                  </span>
+                  <span className="session-item-date">{formatSessionDate(session.created_at)}</span>
+                </button>
+                <button
+                  type="button"
+                  className="session-item-delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteSession(session.id);
+                  }}
+                  aria-label="Delete chat"
+                  title="Delete chat"
+                >
+                  ×
+                </button>
+              </div>
             );
           })}
         </nav>

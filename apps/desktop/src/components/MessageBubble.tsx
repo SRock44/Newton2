@@ -23,7 +23,11 @@ function MessageBubble({ message }: MessageBubbleProps) {
         {roleLabel}
         {time ? ` · ${time}` : ""}
       </div>
-      <div className={`message-bubble${message.error ? " message-bubble--error" : ""}`}>
+      <div
+        className={`message-bubble${message.error ? " message-bubble--error" : ""}`}
+        data-context-menu="message"
+        data-message-content={message.content}
+      >
         <MessageContent content={message.content || " "} />
         {message.streaming && (
           <span className="streaming-dots" aria-label="Newton is responding">
