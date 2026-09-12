@@ -1,0 +1,33 @@
+# Newton's self-hosted SearXNG instance — internal only, never exposed to the host or
+# the public internet. Reached solely by the `api` service over the `newton2_net`
+# Docker network at http://searxng:8080 (see app/core/config.py's SEARXNG_URL setting).
+#
+# `use_default_settings: true` merges this file on top of SearXNG's full built-in
+# defaults (general/UI/every engine/etc.), so we only need to list what we're
+# overriding — see https://docs.searxng.org/admin/settings/settings.html
+use_default_settings: true
+
+general:
+  instance_name: "Newton internal search"
+  # This instance is never listed or advertised anywhere; it only ever serves the
+  # `api` container's tool calls.
+  enable_metrics: false
+
+search:
+  # SearXNG ships with only "html" enabled. The web_search tool talks to the JSON API,
+  # so it must be turned on here. Safe to do only because this instance is unreachable
+  # from outside the newton2_net Docker network.
+  formats:
+    - html
+    - json
+
+server:
+  # Internal-only instance behind no reverse proxy, so the request-rate limiter (meant
+  # to slow down public-instance abuse/scraping) would just get in the way of our own
+  # tool-calling traffic.
+  limiter: false
+  public_instance: false
+  # Dev-only key — this instance never leaves the private Docker network, but SearXNG
+  # requires a non-default secret_key to start. Rotate if this ever needs to be a real
+  # secret (e.g. before any wider exposure, which is not the plan).
+  secret_key: "232211e5e6b4cf0b86b2a58e1d78b7b0f2b122aec5baa6a3c7f04b39aca3cb12"

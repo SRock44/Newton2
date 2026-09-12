@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     keycloak_issuer: str = "http://keycloak:8080/realms/newton"
     keycloak_audience: str = "newton-api"
 
+    # Self-hosted SearXNG metasearch instance the web_search tool queries. Internal-only
+    # (never published to the host or the public internet) — reachable at this address
+    # only from other containers on the compose network. See infra/searxng/README.md.
+    searxng_url: str = "http://searxng:8080"
+
     # Origins the Tauri webview runs under: Vite dev server, and the custom-protocol
     # origins WebView2/WKWebView use for a packaged app in production.
     cors_allow_origins: list[str] = [
