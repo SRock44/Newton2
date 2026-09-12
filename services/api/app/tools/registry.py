@@ -3,7 +3,9 @@ import inspect
 from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
+from app.tools.citation import CitationFormatterTool
 from app.tools.code_interpreter import CodeInterpreterTool
+from app.tools.grammar_check import GrammarCheckTool
 from app.tools.study_session import StudySessionTool
 from app.tools.symbolic_math import SymbolicMathTool
 from app.tools.textbook_lookup import TextbookLookupTool
@@ -27,6 +29,8 @@ _TOOLS: dict[str, Tool] = {
         TextbookLookupTool(),
         VisionTool(),
         StudySessionTool(),
+        GrammarCheckTool(),
+        CitationFormatterTool(),
     ]
 }
 

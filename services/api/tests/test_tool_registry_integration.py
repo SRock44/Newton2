@@ -24,6 +24,8 @@ def test_all_expected_tools_are_registered():
         "textbook_lookup",
         "read_image",
         "start_study_session",
+        "grammar_check",
+        "format_citation",
     }
 
 

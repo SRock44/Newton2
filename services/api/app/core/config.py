@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # only from other containers on the compose network. See infra/searxng/README.md.
     searxng_url: str = "http://searxng:8080"
 
+    # Self-hosted LanguageTool grammar/style server the grammar_check tool queries.
+    # Same internal-only shape as SearXNG above.
+    languagetool_url: str = "http://languagetool:8010"
+
     # Origins the Tauri webview runs under: Vite dev server, and the custom-protocol
     # origins WebView2/WKWebView use for a packaged app in production.
     cors_allow_origins: list[str] = [
