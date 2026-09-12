@@ -18,7 +18,10 @@ MAX_TOOL_ROUNDS = 4
 
 
 async def run_tutor(
-    session_id: str, user_message: str, byok_anthropic_key: str | None = None
+    session_id: str,
+    user_message: str,
+    byok_anthropic_key: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[str]:
     bundle = await get_bundle(session_id)
 
@@ -55,7 +58,7 @@ async def run_tutor(
 
         turns.append(ChatTurn(role="assistant", content="", tool_calls=pending_calls))
         for call in pending_calls:
-            result = await run_tool(call.name, call.arguments, session_id=session_id)
+            result = await run_tool(call.name, call.arguments, session_id=session_id, user_id=user_id)
             turns.append(ChatTurn(role="tool", content=result, tool_call_id=call.id, name=call.name))
         # loop again: the model sees the tool results and either answers or calls again
 

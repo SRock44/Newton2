@@ -1,0 +1,108 @@
+import asyncio
+import uuid
+from typing import Any
+
+from sqlalchemy import select
+
+from app.db.base import SessionLocal
+from app.db.models import Document
+from app.services.flashcards import generate_flashcards
+from app.services.practice_exams import generate_practice_exam, get_exam_questions
+from app.services.study_planner import generate_study_plan
+from app.tools.base import Tool
+
+
+async def _resolve_document(db, user_id: uuid.UUID, filename_hint: str | None) -> Document | None:
+    stmt = select(Document).where(Document.user_id == user_id)
+    if filename_hint:
+        stmt = stmt.where(Document.filename.ilike(f"%{filename_hint}%"))
+    stmt = stmt.order_by(Document.created_at.desc()).limit(1)
+    return (await db.execute(stmt)).scalars().first()
+
+
+async def _generate_study_plan_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> int:
+    async with SessionLocal() as db:
+        document = await db.get(Document, document_id)
+        items = await generate_study_plan(db, user_id, document)
+        await db.commit()
+        return len(items)
+
+
+async def _generate_flashcards_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> int:
+    async with SessionLocal() as db:
+        document = await db.get(Document, document_id)
+        cards = await generate_flashcards(db, user_id, document)
+        await db.commit()
+        return len(cards)
+
+
+async def _generate_practice_exam_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> tuple[int, str]:
+    async with SessionLocal() as db:
+        document = await db.get(Document, document_id)
+        exam = await generate_practice_exam(db, user_id, document)
+        await db.commit()
+        # question count needs a fresh query -- `exam` doesn't eagerly load the relationship
+        questions = await get_exam_questions(db, exam.id)
+        return len(questions), exam.difficulty
+
+
+class StudySessionTool(Tool):
+    """Composes the three existing generation features (Study Planner, Flashcards,
+    Practice Exams) into one request instead of the student invoking each separately —
+    the actual "multi-agent workflow" this roadmap item asked for, built as a
+    composition of tools that already exist rather than a parallel second architecture.
+    The three generations run concurrently (each on its own DB session -- AsyncSession
+    isn't safe to share across concurrent coroutines), which is also genuinely faster
+    wall-clock than doing them one at a time, since each makes its own real call to the
+    provider."""
+
+    name = "start_study_session"
+    description = (
+        "Prepares a full study session from one of the student's uploaded documents in "
+        "one shot: extracts due assignments into the study plan, generates flashcards, "
+        "and builds a practice exam, all at once. Call this when the student asks to "
+        "prepare for an exam/quiz/test, or wants a comprehensive review of a document, "
+        "rather than doing each of those one at a time yourself."
+    )
+    parameters: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "document_filename": {
+                "type": "string",
+                "description": (
+                    "A filename or substring to match against the student's uploaded "
+                    "documents (e.g. 'biology' or 'syllabus.pdf'). Omit to use their "
+                    "most recently uploaded document."
+                ),
+            },
+        },
+    }
+
+    async def run(self, document_filename: str | None = None, user_id: str | None = None) -> str:
+        if not user_id:
+            return "Error: no signed-in user to build a study session for."
+        uid = uuid.UUID(user_id)
+
+        async with SessionLocal() as db:
+            document = await _resolve_document(db, uid, document_filename)
+            if document is None:
+                if document_filename:
+                    return f"Error: no uploaded document matching '{document_filename}' found."
+                return "Error: no uploaded documents to build a study session from yet."
+            document_id, filename = document.id, document.filename
+
+        try:
+            plan_count, card_count, (exam_question_count, exam_difficulty) = await asyncio.gather(
+                _generate_study_plan_isolated(uid, document_id),
+                _generate_flashcards_isolated(uid, document_id),
+                _generate_practice_exam_isolated(uid, document_id),
+            )
+        except Exception as exc:
+            return f"Error: study session generation failed partway through ({exc})."
+
+        return (
+            f"Study session ready from '{filename}': {plan_count} study plan item(s) added, "
+            f"{card_count} flashcard(s) generated, and a {exam_question_count}-question "
+            f"practice exam built at {exam_difficulty} difficulty. Check Study Plan, "
+            f"Flashcards, and Practice Exams to dig in."
+        )

@@ -4,6 +4,7 @@ from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
 from app.tools.code_interpreter import CodeInterpreterTool
+from app.tools.study_session import StudySessionTool
 from app.tools.symbolic_math import SymbolicMathTool
 from app.tools.textbook_lookup import TextbookLookupTool
 from app.tools.unit_converter import UnitConverterTool
@@ -25,26 +26,38 @@ _TOOLS: dict[str, Tool] = {
         WebSearchTool(),
         TextbookLookupTool(),
         VisionTool(),
+        StudySessionTool(),
     ]
 }
+
+# Caller-supplied context a tool's own `run` signature can opt into by declaring a
+# parameter of the same name -- never something the model controls via its own
+# arguments. Add a new context value here (and thread it through run_tutor) if a future
+# tool needs something else about the calling context.
+_CONTEXT_PARAMS = ("session_id", "user_id")
 
 
 def get_tool_specs() -> list[ToolSpec]:
     return [ToolSpec(name=t.name, description=t.description, parameters=t.parameters) for t in _TOOLS.values()]
 
 
-async def run_tool(name: str, arguments: dict, *, session_id: str | None = None) -> str:
-    """`session_id` is caller-supplied context (which chat session this call happened
-    in), never something the model controls — only passed through to a tool that
-    actually declares a `session_id` parameter (right now just VisionTool, to scope
-    which attached image it's allowed to read), so every other tool is unaffected."""
+async def run_tool(
+    name: str,
+    arguments: dict,
+    *,
+    session_id: str | None = None,
+    user_id: str | None = None,
+) -> str:
     tool = _TOOLS.get(name)
     if tool is None:
         return f"Error: unknown tool '{name}'"
     try:
         call_args = dict(arguments)
-        if "session_id" in inspect.signature(tool.run).parameters:
-            call_args["session_id"] = session_id
+        context = {"session_id": session_id, "user_id": user_id}
+        accepted = inspect.signature(tool.run).parameters
+        for param in _CONTEXT_PARAMS:
+            if param in accepted:
+                call_args[param] = context[param]
         return await tool.run(**call_args)
     except TypeError as exc:
         return f"Error: bad arguments for '{name}': {exc}"

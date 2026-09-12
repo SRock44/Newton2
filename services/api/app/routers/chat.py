@@ -192,7 +192,7 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                     continue
 
                 full_response = ""
-                async for chunk in run_tutor(str(session_id), user_message):
+                async for chunk in run_tutor(str(session_id), user_message, user_id=str(user.id)):
                     full_response += chunk
                     await websocket.send_json({"type": "chunk", "content": chunk})
 
