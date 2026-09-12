@@ -52,6 +52,15 @@ def _remove_object_sync(bucket: str, key: str) -> None:
     _get_minio_client().remove_object(bucket, key)
 
 
+def _get_object_sync(bucket: str, key: str) -> bytes:
+    response = _get_minio_client().get_object(bucket, key)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
+
+
 def _extract_pdf_text(raw: bytes) -> str:
     reader = PdfReader(io.BytesIO(raw))
     return "\n\n".join(page.extract_text() or "" for page in reader.pages)
@@ -110,6 +119,16 @@ async def upload_document(db: AsyncSession, user_id: uuid.UUID, file: UploadFile
     await store_document_chunks(db, document.id, text)
     await db.commit()
     return document
+
+
+async def get_document_text(document: Document) -> str:
+    """Re-fetches the raw file from MinIO and re-runs extraction, rather than storing
+    the full text separately from the (overlapping, chunked) RAG copy — documents here
+    are small enough that re-extracting on demand is cheap, and it avoids keeping two
+    representations of the same content in sync."""
+    settings = get_settings()
+    raw = await asyncio.to_thread(_get_object_sync, settings.minio_bucket, document.minio_key)
+    return await asyncio.to_thread(_extract_text, document.filename, document.mime_type, raw)
 
 
 async def delete_document(db: AsyncSession, document: Document) -> None:

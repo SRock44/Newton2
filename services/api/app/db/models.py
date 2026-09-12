@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date as date_, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -109,4 +109,27 @@ class DocumentChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer)
     content: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StudyPlanItem(Base):
+    """A single extracted assignment/deadline. `document_id` traces it back to the
+    syllabus it came from; `source` distinguishes syllabus-upload extraction from a
+    future Canvas-sourced item once that connector exists, so both can coexist here."""
+
+    __tablename__ = "study_plan_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(500))
+    due_date: Mapped[date_ | None] = mapped_column(Date, nullable=True)
+    # The model's original wording for *when* something is due (e.g. "Week 5"), kept
+    # even when due_date parses cleanly -- and the only record at all when it doesn't,
+    # rather than forcing a guessed date.
+    due_date_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String, default="syllabus_upload")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

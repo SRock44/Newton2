@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.routers import chat, documents, health, tools
+from app.routers import chat, documents, health, study_plan, tools
 
 app = FastAPI(title="Newton API")
 
@@ -18,3 +18,4 @@ app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(documents.router)
 app.include_router(tools.router)
+app.include_router(study_plan.router)
