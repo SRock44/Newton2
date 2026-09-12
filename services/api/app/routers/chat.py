@@ -29,6 +29,33 @@ async def create_session(
     return {"session_id": str(session.id)}
 
 
+@router.get("/sessions")
+async def list_sessions(
+    claims: dict = Depends(require_user), db: AsyncSession = Depends(get_db)
+) -> list[dict]:
+    user = await get_or_create_user(db, claims)
+    rows = (
+        (
+            await db.execute(
+                select(ChatSession)
+                .where(ChatSession.user_id == user.id)
+                .order_by(ChatSession.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "status": s.status,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in rows
+    ]
+
+
 @router.get("/sessions/{session_id}/messages")
 async def list_messages(
     session_id: uuid.UUID,
