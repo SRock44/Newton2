@@ -654,6 +654,16 @@ button {
   border-radius: var(--radius-md);
   background-color: var(--color-surface);
   overflow: hidden;
+  /* Chat bubbles are auto-width flex items that size to fit their content
+     (see .message-bubble). A bare width:100% child has no intrinsic size to
+     contribute to that fit-content calculation, so without a min-width the
+     bubble — and the chart inside it — collapses to a sliver. A percentage
+     min-width doesn't help here either (it resolves against this same
+     auto-sized ancestor chain, so it collapses to 0 too) — use a fixed
+     pixel floor instead. .message-bubble's max-width still caps the bubble
+     on narrow windows, so this can only make the chart wider, never force
+     the bubble to overflow its column. */
+  min-width: 420px;
 }
 
 .plotly-figure--error {
