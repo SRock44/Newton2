@@ -1,8 +1,12 @@
+import uuid
+
 import httpx
 import pytest_asyncio
+from sqlalchemy import delete
 
 from app.core.config import get_settings
 from app.db.base import SessionLocal, engine
+from app.db.models import ChatMessage, ChatSession
 
 API_BASE_URL = "http://localhost:8000"
 KEYCLOAK_USERNAME = "student1"
@@ -47,6 +51,19 @@ async def db_session():
         yield session
 
 
+@pytest_asyncio.fixture
+async def created_session_ids(db_session):
+    """Tracks session ids created during a test so we can wipe them (and any messages —
+    redundant with migration 0004's ON DELETE CASCADE, but harmless to also do here)
+    afterward and not leave junk in the shared dev database."""
+    ids: list[uuid.UUID] = []
+    yield ids
+    for session_id in ids:
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_id))
+    await db_session.commit()
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _dispose_db_engine_after_test():
     """pytest-asyncio gives each test function its own event loop, but app.db.base's
@@ -62,17 +79,11 @@ async def _dispose_db_engine_after_test():
 
 @pytest_asyncio.fixture(autouse=True)
 async def _dispose_redis_client_after_test():
-    """Same cross-event-loop hazard as the DB engine above, for the module-level Redis
-    client singletons in app.memory.working and app.services.google_classroom: close them
-    and drop the cached reference after each test so the next test (its own event loop)
-    opens a fresh connection instead of reusing one bound to a now-closed loop."""
+    """Same cross-event-loop hazard as the DB engine above, for the shared module-level
+    Redis client singleton (app.core.redis_client): close it and drop the cached
+    reference after each test so the next test (its own event loop) opens a fresh
+    connection instead of reusing one bound to a now-closed loop."""
     yield
-    from app.memory import working as working_memory
-    from app.services import google_classroom
+    from app.core.redis_client import reset_redis_client
 
-    if working_memory._redis is not None:
-        await working_memory._redis.aclose()
-        working_memory._redis = None
-    if google_classroom._redis is not None:
-        await google_classroom._redis.aclose()
-        google_classroom._redis = None
+    await reset_redis_client()

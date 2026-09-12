@@ -55,7 +55,7 @@ async def run_tutor(
 
         turns.append(ChatTurn(role="assistant", content="", tool_calls=pending_calls))
         for call in pending_calls:
-            result = await run_tool(call.name, call.arguments)
+            result = await run_tool(call.name, call.arguments, session_id=session_id)
             turns.append(ChatTurn(role="tool", content=result, tool_call_id=call.id, name=call.name))
         # loop again: the model sees the tool results and either answers or calls again
 

@@ -5,12 +5,12 @@ from datetime import date, datetime, timezone
 from urllib.parse import urlencode
 
 import httpx
-import redis.asyncio as redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.crypto import decrypt, encrypt
+from app.core.redis_client import get_redis
 from app.db.models import GoogleClassroomConnection, StudyPlanItem
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -38,15 +38,7 @@ class ClassroomNotConnected(Exception):
     pass
 
 
-_redis: redis.Redis | None = None
 STATE_TTL_SECONDS = 600
-
-
-def _get_redis() -> redis.Redis:
-    global _redis
-    if _redis is None:
-        _redis = redis.from_url(get_settings().redis_url, decode_responses=True)
-    return _redis
 
 
 def _state_key(state: str) -> str:
@@ -57,15 +49,15 @@ async def store_oauth_state(state: str, user_id: uuid.UUID) -> None:
     """The browser hop to Google and back means the callback below can't carry our own
     bearer token -- it correlates back to the user who started the flow via this
     short-lived, one-time-use mapping instead."""
-    await _get_redis().set(_state_key(state), str(user_id), ex=STATE_TTL_SECONDS)
+    await get_redis().set(_state_key(state), str(user_id), ex=STATE_TTL_SECONDS)
 
 
 async def pop_oauth_state(state: str) -> uuid.UUID | None:
     key = _state_key(state)
-    raw = await _get_redis().get(key)
+    raw = await get_redis().get(key)
     if raw is None:
         return None
-    await _get_redis().delete(key)
+    await get_redis().delete(key)
     return uuid.UUID(raw)
 
 

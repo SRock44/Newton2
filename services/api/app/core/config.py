@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr | None = None
     openrouter_model: str = "deepseek/deepseek-v4-flash-0731"
     anthropic_model: str = "claude-sonnet-4-5"
+    # The main text model above isn't multimodal -- the Vision tool (read_image) makes
+    # its own separate OpenRouter call against a model that actually accepts images.
+    # The "-latest" alias tracks whatever Gemini Flash OpenRouter currently serves,
+    # deliberately not a pinned version -- vision model slugs get deprecated/replaced
+    # on OpenRouter's end faster than this file gets updated (found the hard way: the
+    # previously pinned google/gemini-2.0-flash-001 had already been removed).
+    openrouter_vision_model: str = "~google/gemini-flash-latest"
 
     # Background jobs (memory consolidation, embeddings, etc.)
     arq_redis_url: str = "redis://redis:6379/1"

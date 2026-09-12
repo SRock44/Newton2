@@ -55,6 +55,21 @@ export function openChatSocket(token: string, sessionId: string): WebSocket {
   return new WebSocket(`${WS_URL}/chat/ws/${sessionId}?token=${encodeURIComponent(token)}`);
 }
 
+/** Uploads a photo/screenshot attached to this chat, scoped to the session — see the
+ * read_image tool. Returns an image_id to reference in the outgoing message text. */
+export async function uploadChatImage(token: string, sessionId: string, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_URL}/chat/sessions/${sessionId}/images`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: formData,
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't attach that image."));
+  const data = await res.json();
+  return data.image_id as string;
+}
+
 async function detailOrFallback(res: Response, fallback: string): Promise<string> {
   try {
     const body = await res.json();

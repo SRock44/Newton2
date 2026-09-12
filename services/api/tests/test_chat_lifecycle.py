@@ -1,21 +1,8 @@
 import uuid
 
-import pytest_asyncio
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from app.db.models import ChatMessage, ChatSession
-
-
-@pytest_asyncio.fixture
-async def created_session_ids(db_session):
-    """Tracks session ids created during a test so we can wipe them (and any
-    messages) afterward and not leave junk in the shared dev database."""
-    ids: list[uuid.UUID] = []
-    yield ids
-    for session_id in ids:
-        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
-        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_id))
-    await db_session.commit()
 
 
 async def test_create_list_and_end_session(http_client, auth_headers, created_session_ids):

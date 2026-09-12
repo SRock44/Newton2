@@ -334,7 +334,12 @@ function App() {
         ) : (
           <>
             <ChatPane messages={messages} loading={messagesLoading} loadError={messagesError} />
-            <Composer onSend={handleSend} disabled={isStreaming || !activeSessionId} />
+            <Composer
+              onSend={handleSend}
+              disabled={isStreaming || !activeSessionId}
+              token={token}
+              sessionId={activeSessionId}
+            />
           </>
         )}
       </main>

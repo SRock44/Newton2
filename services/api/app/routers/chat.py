@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from app.jobs.pool import get_arq_pool
 from app.memory import profile as profile_memory
 from app.memory import rag as rag_memory
 from app.memory.working import append_turn, invalidate, set_profile_facts, set_retrieved_chunks
+from app.services.images import upload_image
 from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -80,6 +81,26 @@ async def list_messages(
         .all()
     )
     return [{"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in rows]
+
+
+@router.post("/sessions/{session_id}/images")
+async def upload_session_image(
+    session_id: uuid.UUID,
+    file: UploadFile = File(...),
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Stores a photo/screenshot the student is about to ask about, scoped to this
+    session — see app/services/images.py and the read_image tool. The frontend includes
+    the returned id in the chat message text (e.g. "[Attached image: <id>]"); nothing
+    changes in the WebSocket protocol itself."""
+    user = await get_or_create_user(db, claims)
+    session = await db.get(ChatSession, session_id)
+    if session is None or session.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+
+    image_id = await upload_image(user.id, str(session_id), file)
+    return {"image_id": image_id}
 
 
 @router.post("/sessions/{session_id}/end")
