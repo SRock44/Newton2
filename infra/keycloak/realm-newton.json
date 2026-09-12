@@ -2,7 +2,12 @@
   "realm": "newton",
   "enabled": true,
   "sslRequired": "none",
-  "registrationAllowed": false,
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "verifyEmail": true,
+  "resetPasswordAllowed": true,
+  "passwordPolicy": "length(8)",
+  "bruteForceProtected": true,
   "accessTokenLifespan": 3600,
   "clients": [
     {

@@ -57,18 +57,21 @@ fn query_param(query: &str, key: &str) -> Option<String> {
     })
 }
 
-/// Waits (up to 5 minutes) for exactly one OAuth redirect on `http://127.0.0.1:{port}/...`,
+/// Waits (up to 15 minutes) for exactly one OAuth redirect on `http://127.0.0.1:{port}/...`,
 /// the way `gcloud auth login`/`gh auth login` do it for desktop apps -- the system
-/// browser handles the actual login UI (including "Sign in with Google"); this just
-/// catches the one redirect back afterward. No OS-level custom-URL-scheme registration
-/// needed, which is the part that's genuinely fiddly to get right in a Windows dev build.
+/// browser handles the actual login UI (including "Sign in with Google", or now
+/// registering a new email/password account, which can interrupt the flow with an
+/// email-verification step -- hence a longer allowance than a plain login normally
+/// needs, since a user has to go read an actual email in between). No OS-level custom-
+/// URL-scheme registration needed, which is the part that's genuinely fiddly to get
+/// right in a Windows dev build.
 #[tauri::command]
 async fn wait_for_oauth_callback(port: u16) -> Result<OAuthCallbackResult, String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<OAuthCallbackResult, String> {
         let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| e.to_string())?;
         listener.set_nonblocking(true).map_err(|e| e.to_string())?;
 
-        let deadline = Instant::now() + Duration::from_secs(300);
+        let deadline = Instant::now() + Duration::from_secs(900);
         let mut stream = loop {
             match listener.accept() {
                 Ok((stream, _addr)) => break stream,
