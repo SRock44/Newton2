@@ -36,6 +36,7 @@ vi.mock("./api", () => ({
   deleteSession: vi.fn(async () => undefined),
   openChatSocket: vi.fn(() => makeFakeSocket()),
   listTools: vi.fn(async () => []),
+  getGamificationStats: vi.fn(async () => ({ streak_days: 0, xp: 0, level: 1, xp_to_next_level: 100 })),
 }));
 
 vi.mock("./auth", async () => {

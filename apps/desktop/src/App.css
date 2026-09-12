@@ -1326,3 +1326,49 @@ button {
   border-color: var(--color-success);
   color: var(--color-accent-contrast);
 }
+
+/* ---------- Progress (gamification) ---------- */
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.progress-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.progress-stat-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.progress-stat-label {
+  font-size: 10.5px;
+  color: var(--color-text-faint);
+}
+
+.progress-bar-track {
+  height: 5px;
+  border-radius: 3px;
+  background-color: var(--color-surface-3);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--color-accent);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+.progress-bar-caption {
+  font-size: 10px;
+  color: var(--color-text-faint);
+  margin-top: 5px;
+}

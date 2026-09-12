@@ -25,7 +25,9 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
             await ws.send(message)
 
             while True:
-                raw = await asyncio.wait_for(ws.recv(), timeout=10)
+                # Generous on purpose (not just per-chunk gaps, also the model's real
+                # time-to-first-token, which can be genuinely slow rather than stuck).
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
                 frame = json.loads(raw)
                 if frame["type"] == "done":
                     break

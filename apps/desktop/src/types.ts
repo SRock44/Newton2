@@ -48,6 +48,13 @@ export interface ClassroomStatus {
   connected_at?: string | null;
 }
 
+export interface GamificationStats {
+  streak_days: number;
+  xp: number;
+  level: number;
+  xp_to_next_level: number;
+}
+
 export interface Flashcard {
   id: string;
   document_id: string | null;

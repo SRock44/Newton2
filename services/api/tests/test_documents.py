@@ -233,7 +233,9 @@ async def test_uploaded_document_content_is_retrieved_into_chat_bundle(
         async with websockets.connect(uri) as ws:
             await ws.send(f"What does {unique_marker} refer to?")
             while True:
-                raw = await asyncio.wait_for(ws.recv(), timeout=10)
+                # Generous on purpose (not just per-chunk gaps, also the model's real
+                # time-to-first-token, which can be genuinely slow rather than stuck).
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
                 frame = json.loads(raw)
                 if frame["type"] == "done":
                     break

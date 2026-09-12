@@ -40,7 +40,11 @@ async def auth_headers(keycloak_token: str) -> dict:
 
 @pytest_asyncio.fixture
 async def http_client():
-    async with httpx.AsyncClient(base_url=API_BASE_URL, timeout=10.0) as client:
+    # Generous on purpose: several endpoints this hits (study plan/flashcard generation,
+    # Vision) make a real call to a real LLM, and a tight budget flakes under genuinely
+    # real (if slightly slow, especially with several such calls competing for the same
+    # upstream API during a full suite run) response times rather than any actual bug.
+    async with httpx.AsyncClient(base_url=API_BASE_URL, timeout=45.0) as client:
         yield client
 
 

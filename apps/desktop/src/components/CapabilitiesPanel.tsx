@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { listTools } from "../api";
-import type { ConnectionStatus, ToolInfo } from "../types";
+import { getGamificationStats, listTools } from "../api";
+import type { ConnectionStatus, GamificationStats, ToolInfo } from "../types";
 
 interface CapabilitiesPanelProps {
   token: string;
@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
 function CapabilitiesPanel({ token, connectionStatus, sessionCount, messageCount }: CapabilitiesPanelProps) {
   const [tools, setTools] = useState<ToolInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<GamificationStats | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,6 +32,20 @@ function CapabilitiesPanel({ token, connectionStatus, sessionCount, messageCount
       })
       .catch(() => {
         if (!cancelled) setError("Couldn't load Newton's tools.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getGamificationStats(token)
+      .then((result) => {
+        if (!cancelled) setStats(result);
+      })
+      .catch(() => {
+        // Non-fatal — the rest of the panel still works without progress stats.
       });
     return () => {
       cancelled = true;
@@ -58,6 +73,31 @@ function CapabilitiesPanel({ token, connectionStatus, sessionCount, messageCount
           <span className="context-row-value">{messageCount} messages</span>
         </div>
       </div>
+
+      {stats && (
+        <div className="panel-section">
+          <div className="panel-section-title">Your progress</div>
+          <div className="progress-stats">
+            <div className="progress-stat">
+              <span className="progress-stat-value">
+                {stats.streak_days > 0 ? `🔥 ${stats.streak_days}` : "0"}
+              </span>
+              <span className="progress-stat-label">day streak</span>
+            </div>
+            <div className="progress-stat">
+              <span className="progress-stat-value">Lv {stats.level}</span>
+              <span className="progress-stat-label">{stats.xp} XP</span>
+            </div>
+          </div>
+          <div className="progress-bar-track">
+            <div
+              className="progress-bar-fill"
+              style={{ width: `${100 - (stats.xp_to_next_level / 100) * 100}%` }}
+            />
+          </div>
+          <div className="progress-bar-caption">{stats.xp_to_next_level} XP to level {stats.level + 1}</div>
+        </div>
+      )}
 
       <div className="panel-section">
         <div className="panel-section-title">What Newton can do</div>

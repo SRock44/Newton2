@@ -3,6 +3,7 @@ import type {
   ChatSession,
   ClassroomStatus,
   Flashcard,
+  GamificationStats,
   StudyPlanItem,
   ToolInfo,
   UploadedDocument,
@@ -213,4 +214,10 @@ export async function deleteFlashcard(token: string, cardId: string): Promise<vo
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this flashcard."));
+}
+
+export async function getGamificationStats(token: string): Promise<GamificationStats> {
+  const res = await fetch(`${API_URL}/gamification/stats`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your progress."));
+  return (await res.json()) as GamificationStats;
 }

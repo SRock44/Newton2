@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.routers import chat, classroom, documents, flashcards, health, study_plan, tools
+from app.routers import chat, classroom, documents, flashcards, gamification, health, study_plan, tools
 
 app = FastAPI(title="Newton API")
 
@@ -21,3 +21,4 @@ app.include_router(tools.router)
 app.include_router(study_plan.router)
 app.include_router(classroom.router)
 app.include_router(flashcards.router)
+app.include_router(gamification.router)
