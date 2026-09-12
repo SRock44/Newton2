@@ -49,7 +49,7 @@ Update this file as work lands — it's the source of truth for what's actually 
 - ! System tray quick actions
 - ! Always-on-top companion Notepad window
 - ! Voice I/O (Whisper.cpp/Piper)
-- ! Native OS notifications
+- ! Native OS notifications — `tauri-plugin-notification` wired up; once per sign-in (not a repeating poll), checks due flashcards + study plan items due within 3 days and sends one summary notification if there's anything to flag. Only fires while the app is open (no background service — that's system tray + autostart, separately). Built and tested at every layer reachable from here (Rust compiles, frontend typechecks/builds, notification-trigger logic and message wording fully unit/integration tested) — not marked done because the actual on-screen OS toast has never been visually confirmed, which needs a real running desktop session
 - # Gamification (streaks/XP) — fully derived from existing activity data (chat messages, flashcard reviews, study plan items/flashcards generated), not a separate mutable state to keep in sync; a streak stays alive through the current day until a full day passes with zero activity. Surfaced in the desktop app's right panel (streak, level, XP, progress bar). Verified live: a real chat message moved streak/XP, deleting that session correctly brought both back to zero
 
 ## Phase 5 — Scale path + stretch (deferred, documented not built)
