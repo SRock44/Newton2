@@ -35,3 +35,22 @@ print(r.status_code, r.json())
 ```
 
 Tear down: `docker compose down` (add `-v` to also drop the named volumes).
+
+## Remote dev box
+
+Docker isn't available on the primary Windows dev machine, so this stack runs on a shared
+Ubuntu box instead (`sr@192.168.1.101`, key `~/.ssh/id_claude`) that also hosts unrelated
+projects. To stay isolated from those:
+- Code lives under `~/dev/newton2` on that box (separate from everything else in `~`), synced
+  from this repo (e.g. `tar -czf - infra services/api | ssh sr@192.168.1.101 'tar -xzf - -C ~/dev/newton2'`).
+- Every port this stack publishes is `127.0.0.1`-only and picked to avoid every port already
+  bound on that box (5432, 6379, 80/443, 8000, 8080, 8096, 8920, 9000, 27015, 27020 were all
+  taken by other stacks — see `docker ps`/`ss -tlnp` before adding a new published port).
+- Real secrets for that box's `.env` are generated on the box itself and never committed.
+
+For local development against it (e.g. running the Tauri app on Windows), open an SSH local
+port-forward so `127.0.0.1:58001` etc. on the dev machine reach the same ports on the box:
+
+```
+ssh -N -L 58001:127.0.0.1:58001 -L 58080:127.0.0.1:58080 -L 58180:127.0.0.1:58180 -i ~/.ssh/id_claude sr@192.168.1.101
+```

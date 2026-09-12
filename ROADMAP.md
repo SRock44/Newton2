@@ -4,11 +4,11 @@ Status ledger. `#` = done and verified. `!` = not started / in progress.
 Update this file as work lands — it's the source of truth for what's actually built, not the plan doc that proposed it.
 
 ## Phase 0 — Foundations
-- ! Public `Newton2` GitHub repo, monorepo scaffold, ROADMAP.md, ARCHITECTURE.md
-- ! `infra/docker-compose.yml`: Postgres+pgvector, MinIO, Redis, Keycloak, Caddy — running on the dev box
-- ! FastAPI skeleton with `/health` endpoint
-- ! FastAPI health check behind Keycloak auth
-- ! Tauri + React + TS skeleton that hits the health endpoint
+- # Monorepo scaffold, ROADMAP.md, ARCHITECTURE.md (public GitHub repo pending)
+- # `infra/docker-compose.yml`: Postgres+pgvector, MinIO, Redis, Keycloak, Caddy — running isolated on the shared dev box (loopback-only ports, own network/project name, resource-limited)
+- # FastAPI skeleton with `/health` endpoint
+- # FastAPI health check behind Keycloak auth — verified end-to-end with a real token (`/health/secure` 200 with token, 401 without)
+- # Tauri + React + TS skeleton — builds and runs, hits the health endpoint over an SSH tunnel to the dev box
 
 ## Phase 1 — Core tutor loop + tool-use foundation
 - ! Provider adapter (Groq + OpenRouter + BYOK Anthropic)
