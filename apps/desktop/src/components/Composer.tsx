@@ -36,25 +36,28 @@ function Composer({ onSend, disabled, placeholder }: ComposerProps) {
 
   return (
     <div className="composer">
-      <textarea
-        ref={textareaRef}
-        className="composer-input"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={disabled ? "Newton is responding…" : placeholder ?? "Ask Newton anything… (Enter to send, Shift+Enter for a new line)"}
-        disabled={disabled}
-        rows={1}
-      />
-      <button
-        type="button"
-        className="composer-send"
-        onClick={handleSend}
-        disabled={disabled || !draft.trim()}
-        aria-label="Send message"
-      >
-        Send
-      </button>
+      <div className="composer-row">
+        <textarea
+          ref={textareaRef}
+          className="composer-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={disabled ? "Newton is responding…" : placeholder ?? "Ask Newton anything…"}
+          disabled={disabled}
+          rows={1}
+        />
+        <button
+          type="button"
+          className="composer-send"
+          onClick={handleSend}
+          disabled={disabled || !draft.trim()}
+          aria-label="Send message"
+        >
+          Send
+        </button>
+      </div>
+      <div className="composer-hint">Enter to send · Shift+Enter for a new line</div>
     </div>
   );
 }

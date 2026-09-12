@@ -34,6 +34,7 @@ vi.mock("./api", () => ({
   getMessages: vi.fn(async (_token: string, sessionId: string) => messagesBySession[sessionId] ?? []),
   endSession: vi.fn(async () => ({})),
   openChatSocket: vi.fn(() => makeFakeSocket()),
+  listTools: vi.fn(async () => []),
 }));
 
 import { openChatSocket } from "./api";

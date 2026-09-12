@@ -25,3 +25,8 @@ export interface UploadedDocument {
   mime_type: string | null;
   created_at: string;
 }
+
+export interface ToolInfo {
+  name: string;
+  description: string;
+}

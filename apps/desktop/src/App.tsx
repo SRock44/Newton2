@@ -16,6 +16,7 @@ import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
+import CapabilitiesPanel from "./components/CapabilitiesPanel";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -235,6 +236,7 @@ function App() {
         username={username || "student"}
         onSignOut={handleSignOut}
         onOpenDocuments={() => setShowDocuments(true)}
+        connectionStatus={wsStatus}
       />
 
       {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
@@ -242,7 +244,7 @@ function App() {
       <main className="main-pane">
         <header className="main-header">
           <h1 className="main-header-title">{headerTitle}</h1>
-          <span className={`connection-dot connection-dot--${wsStatus}`} title={`Connection: ${wsStatus}`} />
+          <span className={`live-dot live-dot--${wsStatus}`} title={`Connection: ${wsStatus}`} />
         </header>
 
         {sessionsError && <div className="chat-pane-banner chat-pane-banner--error">{sessionsError}</div>}
@@ -258,6 +260,13 @@ function App() {
           </>
         )}
       </main>
+
+      <CapabilitiesPanel
+        token={token}
+        connectionStatus={wsStatus}
+        sessionCount={sessions.length}
+        messageCount={messages.length}
+      />
     </div>
   );
 }

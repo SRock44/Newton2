@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession, UploadedDocument } from "./types";
+import type { ChatMessage, ChatSession, ToolInfo, UploadedDocument } from "./types";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:58001";
 export const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL ?? "http://127.0.0.1:58180";
@@ -108,4 +108,12 @@ export async function deleteDocument(token: string, documentId: string): Promise
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete this document."));
+}
+
+/** The live tool belt, straight from the backend registry — never hand-duplicated
+ * client-side, so this can't drift from what the Tutor can actually call. */
+export async function listTools(token: string): Promise<ToolInfo[]> {
+  const res = await fetch(`${API_URL}/tools`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load Newton's tools."));
+  return (await res.json()) as ToolInfo[];
 }
