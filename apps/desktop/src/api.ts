@@ -10,33 +10,6 @@ function authHeaders(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }
 
-/** Exchanges a username/password for an access token via Keycloak's direct grant flow. */
-export async function login(username: string, password: string): Promise<string> {
-  let res: Response;
-  try {
-    res = await fetch(`${KEYCLOAK_URL}/realms/newton/protocol/openid-connect/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "password",
-        client_id: "newton-api",
-        username,
-        password,
-      }),
-    });
-  } catch {
-    throw new ApiError("Can't reach the sign-in server. Check your connection and try again.");
-  }
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 400) {
-      throw new ApiError("Incorrect username or password.");
-    }
-    throw new ApiError(`Sign-in failed (${res.status}). Please try again.`);
-  }
-  const data = await res.json();
-  return data.access_token as string;
-}
-
 export async function createSession(token: string): Promise<string> {
   const res = await fetch(`${API_URL}/chat/sessions`, {
     method: "POST",

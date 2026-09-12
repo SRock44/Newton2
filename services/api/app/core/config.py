@@ -18,7 +18,15 @@ class Settings(BaseSettings):
     minio_bucket: str = "newton"
     minio_secure: bool = False
 
-    keycloak_issuer: str = "http://keycloak:8080/realms/newton"
+    # How this container reaches Keycloak over the Docker network (JWKS/discovery fetch,
+    # and pytest's own Direct Grant login) -- always reachable regardless of Keycloak's
+    # hostname config, unlike keycloak_issuer below.
+    keycloak_internal_url: str = "http://keycloak:8080/realms/newton"
+    # The `iss` claim to validate tokens against -- must match Keycloak's KC_HOSTNAME
+    # (infra/docker-compose.yml), i.e. the address a real browser reaches it at, since
+    # that's what Keycloak stamps into every token it issues. NOT the same as
+    # keycloak_internal_url above; keep both in sync with docker-compose.yml by hand.
+    keycloak_issuer: str = "http://127.0.0.1:58180/realms/newton"
     keycloak_audience: str = "newton-api"
 
     # Self-hosted SearXNG metasearch instance the web_search tool queries. Internal-only

@@ -16,11 +16,29 @@ docker compose up -d
 docker compose ps
 ```
 
-Keycloak auto-imports a `newton` realm with a public client `newton-api` and a dev user
-(`student1` / `newton-dev`) — dev-only credentials, not for production use.
+Keycloak stores its own realm/user state in a dedicated `keycloak` Postgres database (not
+the ephemeral in-memory DB `start-dev` defaults to) so accounts survive a container
+restart. **On a genuinely fresh environment** (a brand-new `keycloak` database with no
+realm in it yet — first-ever setup, or after deliberately dropping that database), bootstrap
+the realm once:
 
-To get a token and hit the authenticated health check (from inside the network, so the
-issuer matches what the API validates against):
+```bash
+docker compose exec postgres psql -U newton -d newton -c 'CREATE DATABASE keycloak OWNER newton;'  # first time only
+docker compose run --rm keycloak start-dev --import-realm
+docker compose up -d
+```
+
+This imports a `newton` realm with a public client `newton-api` and a dev user
+(`student1` / `newton-dev`) — dev-only credentials, not for production use. Do **not** add
+`--import-realm` to the standing `command:` in docker-compose.yml — Keycloak's file import
+always runs with an OVERWRITE_EXISTING strategy, so on every normal restart it would delete
+and recreate the whole realm from the static JSON file, wiping every real account (Google
+or email) that signed up since. `start-dev --import-realm` is a one-time bootstrap action,
+never the steady-state startup command.
+
+To get a token and hit the authenticated health check (from inside the network — reachable
+regardless of Keycloak's browser-facing hostname config, and the token's `iss` still matches
+what the API validates against, since KC_HOSTNAME is fixed):
 
 ```bash
 docker compose exec api python -c "

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
@@ -28,7 +28,7 @@ function makeFakeSocket() {
 
 vi.mock("./api", () => ({
   ApiError: class ApiError extends Error {},
-  login: vi.fn(async () => "fake-token"),
+  KEYCLOAK_URL: "http://127.0.0.1:58180",
   listSessions: vi.fn(async () => sessions),
   createSession: vi.fn(async () => "new-session-id"),
   getMessages: vi.fn(async (_token: string, sessionId: string) => messagesBySession[sessionId] ?? []),
@@ -37,13 +37,26 @@ vi.mock("./api", () => ({
   listTools: vi.fn(async () => []),
 }));
 
+vi.mock("./auth", async () => {
+  const actual = await vi.importActual<typeof import("./auth")>("./auth");
+  return {
+    ...actual,
+    signInWithBrowser: vi.fn(async () => ({
+      accessToken: "fake-access-token",
+      refreshToken: "fake-refresh-token",
+      // far enough out that the periodic refresh check never fires mid-test
+      expiresAt: Date.now() + 3600_000,
+    })),
+  };
+});
+
 import { openChatSocket } from "./api";
+import { signInWithBrowser } from "./auth";
 
 async function signIn() {
   const user = userEvent.setup();
   render(<App />);
-  await user.type(screen.getByLabelText(/password/i), "newton-dev");
-  await user.click(screen.getByRole("button", { name: /sign in/i }));
+  await user.click(await screen.findByRole("button", { name: /sign in/i }));
   return user;
 }
 
@@ -54,6 +67,43 @@ async function messageList() {
 describe("App", () => {
   beforeEach(() => {
     vi.mocked(openChatSocket).mockClear();
+    vi.mocked(signInWithBrowser).mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Regression test for "clicking between chats says invalid or expired token": the bug
+  // was that App.tsx closed over a token value that could be stale by the time a new
+  // socket was opened. This asserts the fix — a near-expiry token is refreshed *before*
+  // any socket connects, so switching (or even just opening the first) chat never hands
+  // the WebSocket a token past its buffer window.
+  it("refreshes a near-expiry token before opening a chat socket", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "refreshed-token",
+        refresh_token: "refreshed-refresh-token",
+        expires_in: 3600,
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    vi.mocked(signInWithBrowser).mockResolvedValueOnce({
+      accessToken: "stale-access-token",
+      refreshToken: "stale-refresh-token",
+      expiresAt: Date.now() + 5_000, // already inside the refresh buffer
+    });
+
+    await signIn();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(vi.mocked(openChatSocket)).toHaveBeenCalledWith("refreshed-token", expect.any(String)),
+    );
+    // The stale token must never reach a socket connection.
+    expect(vi.mocked(openChatSocket)).not.toHaveBeenCalledWith("stale-access-token", expect.any(String));
   });
 
   it("loads the active session's history and switches sessions from the sidebar", async () => {

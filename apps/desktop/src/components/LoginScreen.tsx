@@ -1,29 +1,27 @@
 import { useState } from "react";
-import type { FormEvent } from "react";
-import { ApiError, login } from "../api";
+import { ApiError } from "../api";
+import { signInWithBrowser } from "../auth";
+import type { TokenSet } from "../auth";
 
 interface LoginScreenProps {
-  onSuccess: (token: string, username: string) => void;
+  onSuccess: (tokens: TokenSet) => void;
 }
 
 function LoginScreen({ onSuccess }: LoginScreenProps) {
-  const [username, setUsername] = useState("student1");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (submitting) return;
+  async function handleSignIn() {
+    if (signingIn) return;
     setError(null);
-    setSubmitting(true);
+    setSigningIn(true);
     try {
-      const token = await login(username, password);
-      onSuccess(token, username);
+      const tokens = await signInWithBrowser();
+      onSuccess(tokens);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
-      setSubmitting(false);
+      setSigningIn(false);
     }
   }
 
@@ -38,43 +36,19 @@ function LoginScreen({ onSuccess }: LoginScreenProps) {
         </div>
         <p className="login-tagline">Your agentic learning environment.</p>
 
-        <form className="login-form" onSubmit={handleSubmit}>
-          <label className="field">
-            <span className="field-label">Username</span>
-            <input
-              className="field-input"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="student1"
-              autoComplete="username"
-              autoFocus
-              disabled={submitting}
-            />
-          </label>
+        <button type="button" className="login-submit" onClick={handleSignIn} disabled={signingIn}>
+          {signingIn ? "Opening browser…" : "Sign in"}
+        </button>
+        <p className="login-hint">
+          Opens your browser to sign in with Google, or with email and password —
+          whichever you've set up.
+        </p>
 
-          <label className="field">
-            <span className="field-label">Password</span>
-            <input
-              className="field-input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              disabled={submitting}
-            />
-          </label>
-
-          {error && (
-            <div className="login-error" role="alert">
-              {error}
-            </div>
-          )}
-
-          <button type="submit" className="login-submit" disabled={submitting || !username || !password}>
-            {submitting ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+        {error && (
+          <div className="login-error" role="alert">
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );

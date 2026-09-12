@@ -19,11 +19,14 @@ async def _get_jwks() -> dict:
     if _jwks_cache["keys"] is not None and now - _jwks_cache["fetched_at"] < _JWKS_TTL_SECONDS:
         return _jwks_cache["keys"]
 
+    # Deliberately not using the discovery document's self-reported `jwks_uri`: Keycloak
+    # stamps that URL with its own configured KC_HOSTNAME (the browser-facing address),
+    # which this container can't necessarily reach -- so hit the well-known certs path
+    # directly on the internal address instead.
     async with httpx.AsyncClient(timeout=5.0) as client:
-        discovery = await client.get(f"{settings.keycloak_issuer}/.well-known/openid-configuration")
-        discovery.raise_for_status()
-        jwks_uri = discovery.json()["jwks_uri"]
-        jwks_response = await client.get(jwks_uri)
+        jwks_response = await client.get(
+            f"{settings.keycloak_internal_url}/protocol/openid-connect/certs"
+        )
         jwks_response.raise_for_status()
         jwks = jwks_response.json()
 

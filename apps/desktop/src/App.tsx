@@ -9,6 +9,8 @@ import {
   listSessions,
   openChatSocket,
 } from "./api";
+import { TokenManager, decodeJwtPayload } from "./auth";
+import type { TokenSet } from "./auth";
 import type { ChatMessage, ChatSession, ConnectionStatus } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import LoginScreen from "./components/LoginScreen";
@@ -26,6 +28,7 @@ function errorMessage(err: unknown, fallback: string): string {
 function App() {
   const [token, setToken] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
+  const [tokenManager] = useState(() => new TokenManager(setToken));
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -49,15 +52,17 @@ function App() {
     setFirstMessageBySession((prev) => (prev[sessionId] ? prev : { ...prev, [sessionId]: content }));
   }, []);
 
-  function handleLoginSuccess(newToken: string, name: string) {
-    setToken(newToken);
+  function handleLoginSuccess(tokens: TokenSet) {
+    tokenManager.setTokens(tokens);
+    const claims = decodeJwtPayload(tokens.accessToken);
+    const name = (claims.preferred_username as string) || (claims.email as string) || (claims.name as string) || "";
     setUsername(name);
   }
 
   function handleSignOut() {
     wsRef.current?.close();
     wsRef.current = null;
-    setToken(null);
+    tokenManager.clear();
     setUsername("");
     setSessions([]);
     setActiveSessionId(null);
@@ -69,6 +74,18 @@ function App() {
     setShowStudyPlan(false);
   }
 
+  // Keeps the displayed/passed-down `token` fresh even when nothing is actively
+  // fetching — otherwise a session left idle for over an hour would only discover
+  // its token expired the next time some component happened to make a request.
+  useEffect(() => {
+    if (!token) return;
+    const interval = setInterval(() => {
+      tokenManager.getValidAccessToken().catch(() => handleSignOut());
+    }, 60_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   // Load the user's sessions once signed in; start a first chat if they have none.
   useEffect(() => {
     if (!token) return;
@@ -77,10 +94,11 @@ function App() {
     setSessionsError(null);
     (async () => {
       try {
-        let list = await listSessions(token);
+        const accessToken = await tokenManager.getValidAccessToken();
+        let list = await listSessions(accessToken);
         if (!cancelled && list.length === 0) {
-          const newId = await createSession(token);
-          list = await listSessions(token);
+          const newId = await createSession(accessToken);
+          list = await listSessions(accessToken);
           if (list.length === 0) {
             list = [{ id: newId, title: null, status: "active", created_at: new Date().toISOString() }];
           }
@@ -111,7 +129,8 @@ function App() {
     setIsStreaming(false);
     (async () => {
       try {
-        const history = await getMessages(token, activeSessionId);
+        const accessToken = await tokenManager.getValidAccessToken();
+        const history = await getMessages(accessToken, activeSessionId);
         if (cancelled) return;
         setMessages(history);
         const firstUser = history.find((m) => m.role === "user");
@@ -127,60 +146,83 @@ function App() {
     };
   }, [token, activeSessionId, rememberFirstMessage]);
 
-  // Keep exactly one live socket, following the active session.
+  // Keep exactly one live socket, following the active session. Deliberately does NOT
+  // depend on `token` — a WebSocket is only auth-checked once, at connect time, so an
+  // in-place token refresh must never force a reconnect. Instead, every time we're about
+  // to open a *new* socket (i.e. activeSessionId changed), we ask the TokenManager for a
+  // guaranteed-fresh token first. This is the direct fix for "clicking between chats says
+  // invalid or expired token": previously this effect closed over whatever `token` value
+  // was current when the effect last ran, which could be minutes stale by the time the
+  // user actually switched chats.
   useEffect(() => {
-    if (!token || !activeSessionId) return;
+    if (!tokenManager.hasSession() || !activeSessionId) return;
+    let cancelled = false;
+    let ws: WebSocket | null = null;
     setWsStatus("connecting");
-    const ws = openChatSocket(token, activeSessionId);
-    wsRef.current = ws;
 
-    ws.onopen = () => setWsStatus("open");
-    ws.onclose = () => setWsStatus("closed");
-    ws.onerror = () => setWsStatus("closed");
-    ws.onmessage = (event) => {
-      let payload: { type?: string; content?: string };
+    (async () => {
+      let accessToken: string;
       try {
-        payload = JSON.parse(event.data);
+        accessToken = await tokenManager.getValidAccessToken();
       } catch {
+        if (!cancelled) setWsStatus("closed");
         return;
       }
+      if (cancelled) return;
 
-      if (payload.type === "chunk") {
-        setIsStreaming(true);
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && last.streaming) {
-            const updated = { ...last, content: last.content + (payload.content ?? "") };
-            return [...prev.slice(0, -1), updated];
-          }
-          return [...prev, { role: "assistant", content: payload.content ?? "", streaming: true }];
-        });
-      } else if (payload.type === "done") {
-        setIsStreaming(false);
-        setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)));
-      } else if (payload.type === "error") {
-        setIsStreaming(false);
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && last.streaming) {
+      ws = openChatSocket(accessToken, activeSessionId);
+      wsRef.current = ws;
+
+      ws.onopen = () => setWsStatus("open");
+      ws.onclose = () => setWsStatus("closed");
+      ws.onerror = () => setWsStatus("closed");
+      ws.onmessage = (event) => {
+        let payload: { type?: string; content?: string };
+        try {
+          payload = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (payload.type === "chunk") {
+          setIsStreaming(true);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant" && last.streaming) {
+              const updated = { ...last, content: last.content + (payload.content ?? "") };
+              return [...prev.slice(0, -1), updated];
+            }
+            return [...prev, { role: "assistant", content: payload.content ?? "", streaming: true }];
+          });
+        } else if (payload.type === "done") {
+          setIsStreaming(false);
+          setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)));
+        } else if (payload.type === "error") {
+          setIsStreaming(false);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "assistant" && last.streaming) {
+              return [
+                ...prev.slice(0, -1),
+                { ...last, streaming: false, error: true, content: payload.content ?? "Something went wrong." },
+              ];
+            }
             return [
-              ...prev.slice(0, -1),
-              { ...last, streaming: false, error: true, content: payload.content ?? "Something went wrong." },
+              ...prev,
+              { role: "assistant", content: payload.content ?? "Something went wrong.", error: true },
             ];
-          }
-          return [
-            ...prev,
-            { role: "assistant", content: payload.content ?? "Something went wrong.", error: true },
-          ];
-        });
-      }
-    };
+          });
+        }
+      };
+    })();
 
     return () => {
-      ws.close();
+      cancelled = true;
+      ws?.close();
       if (wsRef.current === ws) wsRef.current = null;
     };
-  }, [token, activeSessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   function handleSend(text: string) {
     const socket = wsRef.current;
@@ -199,10 +241,11 @@ function App() {
   }
 
   async function handleNewChat() {
-    if (!token || creatingChat) return;
+    if (!tokenManager.hasSession() || creatingChat) return;
     setCreatingChat(true);
     try {
-      const id = await createSession(token);
+      const accessToken = await tokenManager.getValidAccessToken();
+      const id = await createSession(accessToken);
       const newSession: ChatSession = {
         id,
         title: null,

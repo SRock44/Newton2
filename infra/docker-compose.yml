@@ -27,7 +27,13 @@ x-api-env: &api-env
   MINIO_ENDPOINT: minio:9000
   MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-newton}
   MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-newton-dev-secret}
-  KEYCLOAK_ISSUER: http://keycloak:8080/realms/newton
+  # Two different addresses on purpose: KEYCLOAK_INTERNAL_URL is how the `api` container
+  # itself talks to Keycloak over the Docker network (JWKS fetch, and how pytest's Direct
+  # Grant login reaches it) -- always reachable regardless of hostname config. KEYCLOAK_ISSUER
+  # is the token `iss` string to validate against, which is now KC_HOSTNAME above (the
+  # browser-facing address), not the internal one -- these must be kept in sync manually.
+  KEYCLOAK_INTERNAL_URL: http://keycloak:8080/realms/newton
+  KEYCLOAK_ISSUER: http://127.0.0.1:58180/realms/newton
   KEYCLOAK_AUDIENCE: newton-api
   EMBED_CACHE_DIR: /data/fastembed_cache
   GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -47,6 +53,7 @@ services:
       POSTGRES_DB: newton
     volumes:
       - newton_pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:55432:5432"
     networks: [newton_net]
@@ -93,11 +100,49 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     restart: unless-stopped
-    command: start-dev --import-realm
+    # NOT --import-realm here: Keycloak's file-based realm import always runs with an
+    # OVERWRITE_EXISTING strategy, so leaving --import-realm in the standing startup
+    # command would DELETE AND RECREATE the entire "newton" realm from realm-newton.json
+    # on every single container restart -- wiping every real account that ever signed up
+    # (Google or email), not just resetting student1. Realm bootstrap is a ONE-TIME step:
+    # on a genuinely fresh environment (empty `keycloak` Postgres database), run
+    #   docker compose run --rm keycloak start-dev --import-realm
+    # once, then start the stack normally from then on with this standing command. The
+    # current live environment already has the realm imported; do not add --import-realm
+    # back here.
+    command: start-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-newton-dev-secret}
-      KC_HOSTNAME: http://keycloak:8080
+      # `start-dev` defaults to an in-memory H2 database regardless of the data volume
+      # below -- every container restart silently started from a totally empty DB, so
+      # --import-realm re-created every user (student1, and any real signed-up/Google
+      # account) with a brand-new random Keycloak user ID each time, orphaning all of
+      # that user's chat history/memories (keyed by that ID) under the old row. Pointing
+      # Keycloak at the already-provisioned `postgres` service makes its own realm/user
+      # state a real, durable row set -- exactly the "own the data, no ephemeral state"
+      # standard the rest of this stack already follows.
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: newton
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-newton-dev-secret}
+      # This must be the address a BROWSER can actually reach, not Keycloak's own docker
+      # hostname: Keycloak stamps this value into every link it generates itself -- the
+      # hosted login page's form action, the "Sign in with Google" redirect, the `iss`
+      # claim on every token. The old value ("http://keycloak:8080") is only resolvable
+      # inside the Docker network, so once a real browser got redirected to Keycloak's
+      # hosted UI (as the new Authorization Code + PKCE login flow does, unlike the old
+      # direct password-grant call), every link on that page pointed nowhere the browser
+      # could follow -- breaking both Google sign-in and plain username/password. Kept
+      # STRICT (not relaxed to dynamic per-request hostnames, which would mean trusting
+      # whatever Host header a request arrives with -- a real header-injection surface):
+      # this is a value correction, matching the SSH-tunnel dev workflow documented in
+      # infra/README.md, not a loosened check. services/api's KEYCLOAK_ISSUER below must
+      # stay in sync with this exact value.
+      KC_HOSTNAME: http://127.0.0.1:58180
       KC_HOSTNAME_STRICT: "true"
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"

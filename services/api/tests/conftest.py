@@ -17,7 +17,7 @@ async def keycloak_token() -> str:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
-            f"{settings.keycloak_issuer}/protocol/openid-connect/token",
+            f"{settings.keycloak_internal_url}/protocol/openid-connect/token",
             data={
                 "grant_type": "password",
                 "client_id": KEYCLOAK_CLIENT_ID,
