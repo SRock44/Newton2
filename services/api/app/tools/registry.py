@@ -3,6 +3,7 @@ from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
 from app.tools.code_interpreter import CodeInterpreterTool
 from app.tools.symbolic_math import SymbolicMathTool
+from app.tools.textbook_lookup import TextbookLookupTool
 from app.tools.unit_converter import UnitConverterTool
 from app.tools.visualizer import VisualizerTool
 from app.tools.web_search import WebSearchTool
@@ -19,6 +20,7 @@ _TOOLS: dict[str, Tool] = {
         VisualizerTool(),
         CodeInterpreterTool(),
         WebSearchTool(),
+        TextbookLookupTool(),
     ]
 }
 

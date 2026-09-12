@@ -32,11 +32,10 @@ Update this file as work lands — it's the source of truth for what's actually 
 - # Visualization panel in app — `plot_function` tool output (a fenced ` ```plotly-figure ` block) renders as an actual interactive chart (plotly.js-basic-dist-min, lazy-loaded so most sessions never download it) instead of raw JSON; theme-aware (light/dark)
 
 ## Phase 3 — Integrations
-- ! Keycloak-mediated OAuth2 for Canvas
-- ! Keycloak-mediated OAuth2 for Google Classroom
-- ! Canvas connector (courses, assignments, syllabus)
-- ! Google Classroom connector (coursework, due dates)
-- ! Study Planner agent → calendarized plan in-app
+- ! Canvas OAuth2 + connector (courses, assignments, syllabus) — blocked on the user obtaining a Canvas Developer Key, which needs admin rights on a real Canvas instance (or self-hosting Canvas LMS); architecture decision made to handle this as an app-managed OAuth connection, not brokered through Keycloak, since Canvas's OAuth2 doesn't fit Keycloak's OIDC-oriented identity brokering cleanly
+- ! Google Classroom OAuth2 + connector (coursework, due dates) — same app-managed-OAuth approach; blocked only on the user registering a Google Cloud OAuth client (needs just a personal Google account, no institutional access — much lower barrier than Canvas)
+- # Tool belt: textbook lookup — Open Library (free, keyless, legal metadata API; never fetches full copyrighted text) by ISBN or title/author, with `no_textbook=true` as a first-class path for courses that genuinely have none. Verified against both mocked responses and one real live Open Library call
+- ! Study Planner agent → calendarized plan in-app (syllabus-upload path, not Canvas-dependent — reuses the existing document upload/RAG pipeline)
 
 ## Phase 4 — Depth, breadth, and native polish
 - ! Flashcard/Quiz agent with FSRS scheduling

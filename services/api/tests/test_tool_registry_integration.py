@@ -21,6 +21,7 @@ def test_all_expected_tools_are_registered():
         "plot_function",
         "code_interpreter",
         "web_search",
+        "textbook_lookup",
     }
 
 
