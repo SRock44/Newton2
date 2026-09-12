@@ -16,6 +16,7 @@ import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
+import StudyPlanPanel from "./components/StudyPlanPanel";
 import CapabilitiesPanel from "./components/CapabilitiesPanel";
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -40,6 +41,7 @@ function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>("closed");
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showStudyPlan, setShowStudyPlan] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -64,6 +66,7 @@ function App() {
     setIsStreaming(false);
     setWsStatus("closed");
     setShowDocuments(false);
+    setShowStudyPlan(false);
   }
 
   // Load the user's sessions once signed in; start a first chat if they have none.
@@ -236,10 +239,12 @@ function App() {
         username={username || "student"}
         onSignOut={handleSignOut}
         onOpenDocuments={() => setShowDocuments(true)}
+        onOpenStudyPlan={() => setShowStudyPlan(true)}
         connectionStatus={wsStatus}
       />
 
       {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
+      {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
 
       <main className="main-pane">
         <header className="main-header">

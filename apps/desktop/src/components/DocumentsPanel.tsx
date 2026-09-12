@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, deleteDocument, listDocuments, uploadDocument } from "../api";
+import { ApiError, deleteDocument, generateStudyPlan, listDocuments, uploadDocument } from "../api";
 import type { UploadedDocument } from "../types";
 
 interface DocumentsPanelProps {
@@ -20,6 +20,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [planStatusByDoc, setPlanStatusByDoc] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -60,6 +61,25 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
       setDocuments((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't delete this document.");
+    }
+  }
+
+  async function handleGeneratePlan(doc: UploadedDocument) {
+    setPlanStatusByDoc((prev) => ({ ...prev, [doc.id]: "Reading…" }));
+    try {
+      const items = await generateStudyPlan(token, doc.id);
+      setPlanStatusByDoc((prev) => ({
+        ...prev,
+        [doc.id]:
+          items.length > 0
+            ? `Added ${items.length} item${items.length === 1 ? "" : "s"} — see Study Plan`
+            : "No gradable items found in this document",
+      }));
+    } catch (err) {
+      setPlanStatusByDoc((prev) => ({
+        ...prev,
+        [doc.id]: err instanceof ApiError ? err.message : "Couldn't generate a study plan.",
+      }));
     }
   }
 
@@ -104,19 +124,34 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
         ) : (
           <ul className="document-list">
             {documents.map((doc) => (
-              <li key={doc.id} className="document-item">
-                <div>
-                  <div className="document-item-name">{doc.filename}</div>
-                  <div className="document-item-date">{formatDate(doc.created_at)}</div>
+              <li key={doc.id} className="document-item document-item--stacked">
+                <div className="document-item-row">
+                  <div>
+                    <div className="document-item-name">{doc.filename}</div>
+                    <div className="document-item-date">{formatDate(doc.created_at)}</div>
+                  </div>
+                  <div className="document-item-actions">
+                    <button
+                      type="button"
+                      className="sidebar-signout"
+                      onClick={() => handleGeneratePlan(doc)}
+                      disabled={planStatusByDoc[doc.id] === "Reading…"}
+                    >
+                      Study plan
+                    </button>
+                    <button
+                      type="button"
+                      className="sidebar-signout"
+                      onClick={() => handleDelete(doc.id)}
+                      aria-label={`Delete ${doc.filename}`}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="sidebar-signout"
-                  onClick={() => handleDelete(doc.id)}
-                  aria-label={`Delete ${doc.filename}`}
-                >
-                  Delete
-                </button>
+                {planStatusByDoc[doc.id] && (
+                  <div className="document-item-plan-status">{planStatusByDoc[doc.id]}</div>
+                )}
               </li>
             ))}
           </ul>

@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession, ToolInfo, UploadedDocument } from "./types";
+import type { ChatMessage, ChatSession, StudyPlanItem, ToolInfo, UploadedDocument } from "./types";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:58001";
 export const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL ?? "http://127.0.0.1:58180";
@@ -116,4 +116,27 @@ export async function listTools(token: string): Promise<ToolInfo[]> {
   const res = await fetch(`${API_URL}/tools`, { headers: authHeaders(token) });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load Newton's tools."));
   return (await res.json()) as ToolInfo[];
+}
+
+export async function generateStudyPlan(token: string, documentId: string): Promise<StudyPlanItem[]> {
+  const res = await fetch(`${API_URL}/study-plan/generate/${documentId}`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't generate a study plan for this document."));
+  return (await res.json()) as StudyPlanItem[];
+}
+
+export async function listStudyPlan(token: string): Promise<StudyPlanItem[]> {
+  const res = await fetch(`${API_URL}/study-plan`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your study plan."));
+  return (await res.json()) as StudyPlanItem[];
+}
+
+export async function deleteStudyPlanItem(token: string, itemId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/study-plan/${itemId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this item."));
 }

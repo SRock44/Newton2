@@ -11,18 +11,21 @@ vi.mock("../../api", async () => {
     listDocuments: vi.fn(),
     uploadDocument: vi.fn(),
     deleteDocument: vi.fn(),
+    generateStudyPlan: vi.fn(),
   };
 });
 
 const listDocuments = api.listDocuments as ReturnType<typeof vi.fn>;
 const uploadDocument = api.uploadDocument as ReturnType<typeof vi.fn>;
 const deleteDocument = api.deleteDocument as ReturnType<typeof vi.fn>;
+const generateStudyPlan = api.generateStudyPlan as ReturnType<typeof vi.fn>;
 
 describe("DocumentsPanel", () => {
   beforeEach(() => {
     listDocuments.mockReset();
     uploadDocument.mockReset();
     deleteDocument.mockReset();
+    generateStudyPlan.mockReset();
   });
 
   it("loads and displays existing documents", async () => {
@@ -99,5 +102,34 @@ describe("DocumentsPanel", () => {
 
     await user.click(container.querySelector(".modal-overlay") as HTMLElement);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("generates a study plan and shows how many items were added", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([
+      { id: "1", filename: "syllabus.pdf", mime_type: "application/pdf", created_at: "2026-01-01T00:00:00Z" },
+    ]);
+    generateStudyPlan.mockResolvedValue([{ id: "a" }, { id: "b" }]);
+    render(<DocumentsPanel token="tok" onClose={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(screen.getByRole("button", { name: /study plan/i }));
+
+    expect(generateStudyPlan).toHaveBeenCalledWith("tok", "1");
+    expect(await screen.findByText(/added 2 items/i)).toBeInTheDocument();
+  });
+
+  it("shows a clear message when no items were found", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([
+      { id: "1", filename: "syllabus.pdf", mime_type: "application/pdf", created_at: "2026-01-01T00:00:00Z" },
+    ]);
+    generateStudyPlan.mockResolvedValue([]);
+    render(<DocumentsPanel token="tok" onClose={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(screen.getByRole("button", { name: /study plan/i }));
+
+    expect(await screen.findByText(/no gradable items found/i)).toBeInTheDocument();
   });
 });

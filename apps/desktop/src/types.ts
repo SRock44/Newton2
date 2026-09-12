@@ -30,3 +30,14 @@ export interface ToolInfo {
   name: string;
   description: string;
 }
+
+export interface StudyPlanItem {
+  id: string;
+  document_id: string | null;
+  title: string;
+  due_date: string | null;
+  due_date_text: string | null;
+  notes: string | null;
+  source: string;
+  created_at: string;
+}
