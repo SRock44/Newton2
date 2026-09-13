@@ -60,3 +60,40 @@ async def test_upload_image_404_for_foreign_or_missing_session(http_client, auth
 
 async def test_get_image_for_session_returns_none_for_unknown_id():
     assert await get_image_for_session(str(uuid.uuid4()), str(uuid.uuid4())) is None
+
+
+async def test_get_session_image_route_serves_back_the_real_bytes(
+    http_client, auth_headers, created_session_ids
+):
+    """Covers the GET route the desktop app actually fetches from to render a real
+    thumbnail instead of the bare "[Attached image: <id>]" text — not just the
+    service-layer function underneath it."""
+    session_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = session_resp.json()["session_id"]
+    created_session_ids.append(uuid.UUID(session_id))
+
+    upload_resp = await http_client.post(
+        f"/chat/sessions/{session_id}/images",
+        headers=auth_headers,
+        files={"file": ("problem.png", _TINY_PNG, "image/png")},
+    )
+    image_id = upload_resp.json()["image_id"]
+
+    get_resp = await http_client.get(f"/chat/sessions/{session_id}/images/{image_id}", headers=auth_headers)
+    assert get_resp.status_code == 200
+    assert get_resp.content == _TINY_PNG
+    assert get_resp.headers["content-type"] == "image/png"
+
+
+async def test_get_session_image_route_404s_for_unknown_image(http_client, auth_headers, created_session_ids):
+    session_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = session_resp.json()["session_id"]
+    created_session_ids.append(uuid.UUID(session_id))
+
+    resp = await http_client.get(f"/chat/sessions/{session_id}/images/{uuid.uuid4()}", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+async def test_get_session_image_route_404s_for_a_foreign_session(http_client, auth_headers):
+    resp = await http_client.get(f"/chat/sessions/{uuid.uuid4()}/images/{uuid.uuid4()}", headers=auth_headers)
+    assert resp.status_code == 404

@@ -231,7 +231,7 @@ async def test_uploaded_document_content_is_retrieved_into_chat_bundle(
     uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
     try:
         async with websockets.connect(uri) as ws:
-            await ws.send(f"What does {unique_marker} refer to?")
+            await ws.send(json.dumps({"type": "user_message", "content": f"What does {unique_marker} refer to?"}))
             while True:
                 # Generous on purpose (not just per-chunk gaps, also the model's real
                 # time-to-first-token, which can be genuinely slow rather than stuck).

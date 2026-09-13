@@ -7,6 +7,7 @@ let the Tutor's loop use them for real."""
 import uuid
 
 from app.agents import tutor
+from app.agents.tutor import TextChunk
 from app.providers.base import ToolCall
 from app.tools.registry import get_tool_specs, run_tool
 from tests.fakes import ScriptedToolCallingProvider
@@ -54,8 +55,8 @@ async def test_tutor_loop_can_actually_call_code_interpreter_end_to_end(monkeypa
     )
     monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
 
-    chunks = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "sum 0 to 99 with code")]
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "sum 0 to 99 with code")]
 
-    assert "".join(chunks) == "The sum is 4950."
+    assert "".join(e.text for e in events if isinstance(e, TextChunk)) == "The sum is 4950."
     tool_result_turns = [m for m in fake.calls_seen[1]["messages"] if m.role == "tool"]
     assert "4950" in tool_result_turns[0].content

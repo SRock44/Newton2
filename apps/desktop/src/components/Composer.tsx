@@ -4,7 +4,11 @@ import { ApiError, uploadChatImage } from "../api";
 
 interface ComposerProps {
   onSend: (text: string) => void;
+  onStop?: () => void;
   disabled: boolean;
+  /** True specifically while a reply is being generated — distinct from `disabled`,
+   * which is also true with no active session. Only this shows the Stop button. */
+  streaming?: boolean;
   placeholder?: string;
   token: string;
   sessionId: string | null;
@@ -12,7 +16,7 @@ interface ComposerProps {
 
 const MAX_TEXTAREA_HEIGHT = 220;
 
-function Composer({ onSend, disabled, placeholder, token, sessionId }: ComposerProps) {
+function Composer({ onSend, onStop, disabled, streaming, placeholder, token, sessionId }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [attachedImage, setAttachedImage] = useState<{ id: string; name: string } | null>(null);
   const [attaching, setAttaching] = useState(false);
@@ -114,15 +118,28 @@ function Composer({ onSend, disabled, placeholder, token, sessionId }: ComposerP
           rows={1}
           data-context-menu="editable"
         />
-        <button
-          type="button"
-          className="btn-primary composer-send"
-          onClick={handleSend}
-          disabled={disabled || (!draft.trim() && !attachedImage)}
-          aria-label="Send message"
-        >
-          Send
-        </button>
+        {streaming ? (
+          <button
+            type="button"
+            className="btn-primary composer-stop"
+            onClick={onStop}
+            aria-label="Stop generating"
+            title="Stop Newton's reply"
+          >
+            <span className="composer-stop-icon" aria-hidden="true" />
+            Stop
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn-primary composer-send"
+            onClick={handleSend}
+            disabled={disabled || (!draft.trim() && !attachedImage)}
+            aria-label="Send message"
+          >
+            Send
+          </button>
+        )}
       </div>
       <div className="composer-hint">Enter to send · Shift+Enter for a new line</div>
     </div>

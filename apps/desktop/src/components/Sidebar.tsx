@@ -72,7 +72,8 @@ function Sidebar({
 
       <div className="sidebar-clock">
         <div className="sidebar-clock-time">
-          {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}
+          {/* No `hour12` override: follows the user's own locale/OS preference. */}
+          {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
         </div>
         <div className="sidebar-clock-date">
           {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}

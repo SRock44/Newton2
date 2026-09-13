@@ -1,9 +1,52 @@
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from typing import Literal
 
 from app.memory.working import get_bundle
 from app.providers.base import ChatTurn, TextDelta, ToolCallRequest
 from app.providers.registry import get_provider
 from app.tools.registry import get_tool_specs, run_tool
+
+
+@dataclass
+class TextChunk:
+    """A piece of the model's own text answer, streamed as it arrives."""
+
+    text: str
+
+
+@dataclass
+class ToolActivity:
+    """The Tutor started or finished executing a tool call — surfaced to the UI so
+    "Newton is doing something" is visible, not silent."""
+
+    tool: str
+    label: str
+    phase: Literal["started", "finished"]
+
+
+TutorEvent = TextChunk | ToolActivity
+
+# Short, student-facing descriptions of what each tool is doing — keyed by each tool's
+# real registry `.name` (see app/tools/registry.py's _TOOLS). Deliberately not technical
+# ("Doing the math", not "invoking calculator") since this renders directly in the UI.
+_TOOL_LABELS: dict[str, str] = {
+    "calculator": "Doing the math",
+    "unit_converter": "Converting units",
+    "symbolic_math": "Solving with symbolic math",
+    "plot_function": "Building a visualization",
+    "code_interpreter": "Running code",
+    "web_search": "Searching the web",
+    "textbook_lookup": "Looking up textbook material",
+    "read_image": "Reading the image",
+    "start_study_session": "Preparing your study session",
+    "grammar_check": "Checking grammar",
+    "format_citation": "Formatting the citation",
+}
+
+
+def _label_for(tool_name: str) -> str:
+    return _TOOL_LABELS.get(tool_name, f"Using {tool_name}")
 
 SYSTEM_PROMPT = (
     "You are Newton, an academic tutor. Be clear, encouraging, and concise. "
@@ -30,7 +73,7 @@ async def run_tutor(
     user_message: str,
     byok_anthropic_key: str | None = None,
     user_id: str | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[TutorEvent]:
     bundle = await get_bundle(session_id)
 
     turns = [ChatTurn(role="system", content=SYSTEM_PROMPT)]
@@ -56,7 +99,7 @@ async def run_tutor(
         pending_calls = None
         async for event in provider.stream_chat(turns, model, tools=tools):
             if isinstance(event, TextDelta):
-                yield event.text
+                yield TextChunk(event.text)
             elif isinstance(event, ToolCallRequest):
                 pending_calls = event.calls
                 break
@@ -66,8 +109,13 @@ async def run_tutor(
 
         turns.append(ChatTurn(role="assistant", content="", tool_calls=pending_calls))
         for call in pending_calls:
+            label = _label_for(call.name)
+            yield ToolActivity(tool=call.name, label=label, phase="started")
             result = await run_tool(call.name, call.arguments, session_id=session_id, user_id=user_id)
+            yield ToolActivity(tool=call.name, label=label, phase="finished")
             turns.append(ChatTurn(role="tool", content=result, tool_call_id=call.id, name=call.name))
         # loop again: the model sees the tool results and either answers or calls again
 
-    yield "\n\n_(Newton hit the tool-use round limit without a final answer — try rephrasing.)_"
+    yield TextChunk(
+        "\n\n_(Newton hit the tool-use round limit without a final answer — try rephrasing.)_"
+    )

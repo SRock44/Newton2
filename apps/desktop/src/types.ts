@@ -1,5 +1,11 @@
 export type Role = "user" | "assistant" | string;
 
+export interface ToolActivityEntry {
+  tool: string;
+  label: string;
+  done: boolean;
+}
+
 export interface ChatMessage {
   role: Role;
   content: string;
@@ -8,6 +14,11 @@ export interface ChatMessage {
   streaming?: boolean;
   /** Client-side only: true if this message represents a stream error. */
   error?: boolean;
+  /** Client-side only: tool calls Newton made while producing this reply, in order,
+   * each starting `done: false` and flipping to `true` once its result comes back. */
+  activity?: ToolActivityEntry[];
+  /** Client-side only: true if the user hit Stop before this reply finished. */
+  stoppedByUser?: boolean;
 }
 
 export interface ChatSession {

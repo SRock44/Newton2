@@ -1209,6 +1209,124 @@ textarea:focus-visible,
   }
 }
 
+/* ---------- Tool activity (visible sign Newton is actually doing something —
+   searching, computing, generating — not just typing text) ---------- */
+
+.tool-activity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.tool-activity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-2) 3px 3px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-accent-tint, var(--color-surface-2));
+  border: 1px solid var(--color-border-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-serif);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.tool-activity-chip--done {
+  opacity: 0.7;
+}
+
+.tool-activity-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid var(--color-accent);
+  border-top-color: transparent;
+  animation: tool-activity-spin 0.7s linear infinite;
+}
+
+.tool-activity-chip--done .tool-activity-icon {
+  animation: none;
+  border: none;
+  background-color: var(--color-success, var(--color-accent));
+  position: relative;
+}
+
+.tool-activity-chip--done .tool-activity-icon::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  width: 4px;
+  height: 7px;
+  border-right: 2px solid var(--color-accent-contrast, #fff);
+  border-bottom: 2px solid var(--color-accent-contrast, #fff);
+  transform: rotate(45deg);
+}
+
+@keyframes tool-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.attached-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.attached-image-thumb {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-2);
+  box-shadow: var(--shadow-sm);
+  object-fit: cover;
+}
+
+.attached-image-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-2);
+  border: 1px dashed var(--color-border-2);
+  color: var(--color-text-faint);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+
+.message-stopped-note {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  color: var(--color-text-faint);
+}
+
+.composer-stop {
+  flex-shrink: 0;
+  background-color: var(--color-danger);
+}
+
+.composer-stop:hover {
+  background-color: var(--color-danger);
+  filter: brightness(1.1);
+}
+
+.composer-stop-icon {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background-color: currentColor;
+}
+
 /* ---------- Code blocks ---------- */
 
 .code-block {

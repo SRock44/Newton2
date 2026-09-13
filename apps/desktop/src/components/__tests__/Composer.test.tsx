@@ -104,4 +104,34 @@ describe("Composer", () => {
     render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId={null} />);
     expect(screen.getByRole("button", { name: /attach an image/i })).toBeDisabled();
   });
+
+  it("shows an enabled Stop button instead of Send while streaming, and calls onStop", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    render(
+      <Composer
+        onSend={onSend}
+        onStop={onStop}
+        disabled={true}
+        streaming={true}
+        token="test-token"
+        sessionId="test-session"
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /send message/i })).not.toBeInTheDocument();
+    const stopButton = screen.getByRole("button", { name: /stop/i });
+    expect(stopButton).not.toBeDisabled();
+
+    await user.click(stopButton);
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("shows Send (disabled, per the disabled prop) when disabled but not streaming", () => {
+    render(<Composer onSend={vi.fn()} disabled={true} streaming={false} token="test-token" sessionId={null} />);
+    expect(screen.queryByRole("button", { name: /stop/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+  });
 });

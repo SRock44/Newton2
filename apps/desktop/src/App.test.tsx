@@ -165,14 +165,68 @@ describe("App", () => {
     act(() => {
       socket.onmessage?.({ data: JSON.stringify({ type: "chunk", content: "Echoing" }) });
     });
-    await waitFor(() => expect(sendButton).toBeDisabled());
+    // While streaming, Send is replaced by an enabled Stop button (not just a disabled
+    // Send) so the user can actually interrupt generation.
+    await waitFor(() => expect(screen.queryByRole("button", { name: /send message/i })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /stop/i })).not.toBeDisabled();
+    expect(textarea).toBeDisabled();
     expect(screen.getByPlaceholderText(/responding/i)).toBeInTheDocument();
 
     act(() => {
       socket.onmessage?.({ data: JSON.stringify({ type: "done" }) });
     });
     await waitFor(() => expect(screen.getByPlaceholderText(/ask newton/i)).not.toBeDisabled());
-    expect(sendButton).not.toBeDisabled();
+    expect(screen.queryByRole("button", { name: /stop/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send/i })).not.toBeDisabled();
+  });
+
+  it("sends a stop frame when Stop is clicked mid-stream, and shows tool activity as it arrives", async () => {
+    const user = await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+    const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
+      onmessage: ((event: { data: string }) => void) | null;
+      send: (data: string) => void;
+    };
+
+    const textarea = screen.getByPlaceholderText(/ask newton/i);
+    await user.type(textarea, "Search the web for today's date");
+    await user.keyboard("{Enter}");
+
+    expect(socket.send).toHaveBeenLastCalledWith(
+      JSON.stringify({ type: "user_message", content: "Search the web for today's date" }),
+    );
+
+    act(() => {
+      socket.onmessage?.({
+        data: JSON.stringify({ type: "tool_start", tool: "web_search", label: "Searching the web" }),
+      });
+    });
+    expect(await screen.findByText("Searching the web")).toBeInTheDocument();
+
+    act(() => {
+      socket.onmessage?.({
+        data: JSON.stringify({ type: "tool_end", tool: "web_search", label: "Searching the web" }),
+      });
+    });
+    // still shown, now in its resolved state
+    expect(screen.getByText("Searching the web")).toBeInTheDocument();
+
+    const stopButton = await screen.findByRole("button", { name: /stop/i });
+    await user.click(stopButton);
+    expect(socket.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "stop" }));
+
+    act(() => {
+      socket.onmessage?.({ data: JSON.stringify({ type: "stopped" }) });
+    });
+    // Streaming is over: the textarea is usable again and Stop is gone, replaced by
+    // Send (still disabled only because the draft is empty after sending, not because
+    // of streaming state).
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^stop/i })).not.toBeInTheDocument());
+    expect(textarea).not.toBeDisabled();
+    await user.type(textarea, "one more thing");
+    expect(screen.getByRole("button", { name: /send/i })).not.toBeDisabled();
   });
 
   it("deletes a chat via the sidebar's hover delete button", async () => {

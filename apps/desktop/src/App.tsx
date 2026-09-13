@@ -310,7 +310,7 @@ function App() {
       ws.onclose = () => setWsStatus("closed");
       ws.onerror = () => setWsStatus("closed");
       ws.onmessage = (event) => {
-        let payload: { type?: string; content?: string };
+        let payload: { type?: string; content?: string; tool?: string; label?: string };
         try {
           payload = JSON.parse(event.data);
         } catch {
@@ -327,9 +327,45 @@ function App() {
             }
             return [...prev, { role: "assistant", content: payload.content ?? "", streaming: true }];
           });
-        } else if (payload.type === "done") {
+        } else if (payload.type === "tool_start" || payload.type === "tool_end") {
+          setIsStreaming(true);
+          const tool = payload.tool ?? "";
+          const label = payload.label ?? tool;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (!last || last.role !== "assistant" || !last.streaming) {
+              // A tool call can be the very first event of a reply (before any text) —
+              // start the streaming assistant message here if it doesn't exist yet.
+              if (payload.type === "tool_start") {
+                return [
+                  ...prev,
+                  { role: "assistant", content: "", streaming: true, activity: [{ tool, label, done: false }] },
+                ];
+              }
+              return prev;
+            }
+            const activity = last.activity ?? [];
+            if (payload.type === "tool_start") {
+              return [...prev.slice(0, -1), { ...last, activity: [...activity, { tool, label, done: false }] }];
+            }
+            // tool_end: mark the most recent not-yet-done entry for this tool as done.
+            let markedIndex = -1;
+            for (let i = activity.length - 1; i >= 0; i -= 1) {
+              if (activity[i]!.tool === tool && !activity[i]!.done) {
+                markedIndex = i;
+                break;
+              }
+            }
+            if (markedIndex === -1) return prev;
+            const nextActivity = activity.map((entry, i) => (i === markedIndex ? { ...entry, done: true } : entry));
+            return [...prev.slice(0, -1), { ...last, activity: nextActivity }];
+          });
+        } else if (payload.type === "done" || payload.type === "stopped") {
           setIsStreaming(false);
-          setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)));
+          const stoppedByUser = payload.type === "stopped";
+          setMessages((prev) =>
+            prev.map((m) => (m.streaming ? { ...m, streaming: false, stoppedByUser } : m)),
+          );
         } else if (payload.type === "error") {
           setIsStreaming(false);
           setMessages((prev) => {
@@ -369,8 +405,15 @@ function App() {
     }
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     rememberFirstMessage(activeSessionId, text);
-    socket.send(text);
+    socket.send(JSON.stringify({ type: "user_message", content: text }));
     setIsStreaming(true);
+  }
+
+  function handleStop() {
+    const socket = wsRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "stop" }));
+    }
   }
 
   async function handleNewChat() {
@@ -466,10 +509,18 @@ function App() {
             </div>
           ) : (
             <>
-              <ChatPane messages={messages} loading={messagesLoading} loadError={messagesError} />
+              <ChatPane
+                messages={messages}
+                loading={messagesLoading}
+                loadError={messagesError}
+                token={token}
+                sessionId={activeSessionId}
+              />
               <Composer
                 onSend={handleSend}
+                onStop={handleStop}
                 disabled={isStreaming || !activeSessionId}
+                streaming={isStreaming}
                 token={token}
                 sessionId={activeSessionId}
               />
