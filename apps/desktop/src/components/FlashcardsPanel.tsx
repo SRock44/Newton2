@@ -3,7 +3,13 @@ import { ApiError, deleteFlashcard, listFlashcards, reviewFlashcard } from "../a
 import type { Flashcard } from "../types";
 
 interface FlashcardsPanelProps {
-  token: string;
+  /** Resolves to an access token guaranteed not to be expired (see App.tsx's
+   * `tokenManager.getValidAccessToken()`), not a plain cached string — this panel opens
+   * after a chat-driven generation that can take a while, and always fetching a
+   * verified-fresh token here (the same rule the chat WebSocket already follows before
+   * connecting) closes the exact "token quietly expired while a background refresh
+   * hadn't caught up yet" race that once caused chats to fail with a stale token too. */
+  getAccessToken: () => Promise<string>;
   onClose: () => void;
 }
 
@@ -23,55 +29,72 @@ function formatDate(iso: string): string {
  * first, rate after seeing the back), or browse/delete everything regardless of due
  * date. Generation happens from the Documents panel, not here — this is purely
  * study + management. */
-function FlashcardsPanel({ token, onClose }: FlashcardsPanelProps) {
+function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
   const [mode, setMode] = useState<"review" | "browse">("review");
 
   const [queue, setQueue] = useState<Flashcard[]>([]);
   const [queueLoading, setQueueLoading] = useState(true);
+  // Distinct from `error` (which drives the banner): gates the reassuring "all caught
+  // up" copy specifically, so a failed fetch never gets misread as "you genuinely have
+  // no due cards" -- those are very different things to tell a student.
+  const [queueFailed, setQueueFailed] = useState(false);
   const [showingBack, setShowingBack] = useState(false);
   const [rating, setRating] = useState(false);
 
   const [allCards, setAllCards] = useState<Flashcard[]>([]);
   const [allLoading, setAllLoading] = useState(true);
+  const [allFailed, setAllFailed] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setQueueLoading(true);
-    listFlashcards(token, true)
-      .then((cards) => {
-        if (!cancelled) setQueue(cards);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Couldn't load due flashcards.");
-      })
-      .finally(() => {
+    setQueueFailed(false);
+    (async () => {
+      try {
+        const accessToken = await getAccessToken();
+        const cards = await listFlashcards(accessToken, true);
+        if (cancelled) return;
+        setQueue(cards);
+      } catch (err) {
+        if (cancelled) return;
+        setQueueFailed(true);
+        setError(err instanceof ApiError ? err.message : "Couldn't load due flashcards.");
+      } finally {
         if (!cancelled) setQueueLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (mode !== "browse") return;
     let cancelled = false;
     setAllLoading(true);
-    listFlashcards(token, false)
-      .then((cards) => {
-        if (!cancelled) setAllCards(cards);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Couldn't load your flashcards.");
-      })
-      .finally(() => {
+    setAllFailed(false);
+    (async () => {
+      try {
+        const accessToken = await getAccessToken();
+        const cards = await listFlashcards(accessToken, false);
+        if (cancelled) return;
+        setAllCards(cards);
+      } catch (err) {
+        if (cancelled) return;
+        setAllFailed(true);
+        setError(err instanceof ApiError ? err.message : "Couldn't load your flashcards.");
+      } finally {
         if (!cancelled) setAllLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [token, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const current = queue[0] ?? null;
 
@@ -80,7 +103,8 @@ function FlashcardsPanel({ token, onClose }: FlashcardsPanelProps) {
     setRating(true);
     setError(null);
     try {
-      await reviewFlashcard(token, current.id, value);
+      const accessToken = await getAccessToken();
+      await reviewFlashcard(accessToken, current.id, value);
       setQueue((prev) => prev.slice(1));
       setShowingBack(false);
     } catch (err) {
@@ -92,7 +116,8 @@ function FlashcardsPanel({ token, onClose }: FlashcardsPanelProps) {
 
   async function handleDeleteFromBrowse(id: string) {
     try {
-      await deleteFlashcard(token, id);
+      const accessToken = await getAccessToken();
+      await deleteFlashcard(accessToken, id);
       setAllCards((prev) => prev.filter((c) => c.id !== id));
       setQueue((prev) => prev.filter((c) => c.id !== id));
     } catch (err) {
@@ -132,9 +157,12 @@ function FlashcardsPanel({ token, onClose }: FlashcardsPanelProps) {
         {mode === "review" ? (
           queueLoading ? (
             <p className="empty-state-text">Loading…</p>
+          ) : queueFailed ? (
+            <p className="empty-state-text">Couldn't check for due flashcards — try reopening this panel.</p>
           ) : !current ? (
             <p className="empty-state-text">
-              All caught up — nothing due right now. Generate more from a document in Documents.
+              All caught up — nothing due right now. Generate more from a document in Documents, or ask
+              Newton in chat.
             </p>
           ) : (
             <div className="flashcard-review">
@@ -163,9 +191,11 @@ function FlashcardsPanel({ token, onClose }: FlashcardsPanelProps) {
           )
         ) : allLoading ? (
           <p className="empty-state-text">Loading…</p>
+        ) : allFailed ? (
+          <p className="empty-state-text">Couldn't load your flashcards — try reopening this panel.</p>
         ) : allCards.length === 0 ? (
           <p className="empty-state-text">
-            No flashcards yet — generate some from a document in Documents.
+            No flashcards yet — generate some from a document in Documents, or ask Newton in chat.
           </p>
         ) : (
           <ul className="item-list">

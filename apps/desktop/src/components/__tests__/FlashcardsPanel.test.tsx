@@ -53,16 +53,27 @@ vi.mock("../../api", async () => {
 
 import { deleteFlashcard, listFlashcards, reviewFlashcard } from "../../api";
 
+// A stand-in for App.tsx's `() => tokenManager.getValidAccessToken()` — always resolves
+// to "test-token" but, crucially, IS an async fetch of the token rather than a plain
+// cached string, exactly like the real prop.
+const getAccessToken = async () => "test-token";
+
 describe("FlashcardsPanel", () => {
   beforeEach(() => {
-    vi.mocked(listFlashcards).mockClear();
+    // Restore the default implementation every test, not just clear call history — a
+    // couple of tests below override it (mockImplementation/mockRejectedValueOnce) to
+    // exercise empty/error states, and that override must never leak into a later test.
+    vi.mocked(listFlashcards).mockReset();
+    vi.mocked(listFlashcards).mockImplementation(async (_token: string, dueOnly?: boolean) =>
+      dueOnly ? dueCards : allCards,
+    );
     vi.mocked(reviewFlashcard).mockClear();
     vi.mocked(deleteFlashcard).mockClear();
   });
 
   it("shows the front of the first due card, then the back on click, then rating buttons", async () => {
     const user = userEvent.setup();
-    render(<FlashcardsPanel token="test-token" onClose={vi.fn()} />);
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
 
     expect(await screen.findByText("What is FSRS?")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^good$/i })).not.toBeInTheDocument();
@@ -78,7 +89,7 @@ describe("FlashcardsPanel", () => {
 
   it("rating a card submits the review and advances to the next one", async () => {
     const user = userEvent.setup();
-    render(<FlashcardsPanel token="test-token" onClose={vi.fn()} />);
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
 
     await screen.findByText("What is FSRS?");
     await user.click(screen.getByText("What is FSRS?"));
@@ -90,7 +101,7 @@ describe("FlashcardsPanel", () => {
 
   it("shows an all-caught-up message once the due queue is empty", async () => {
     const user = userEvent.setup();
-    render(<FlashcardsPanel token="test-token" onClose={vi.fn()} />);
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
 
     await screen.findByText("What is FSRS?");
     await user.click(screen.getByText("What is FSRS?"));
@@ -105,7 +116,7 @@ describe("FlashcardsPanel", () => {
 
   it("the All cards tab lists every card regardless of due date, and delete removes it", async () => {
     const user = userEvent.setup();
-    render(<FlashcardsPanel token="test-token" onClose={vi.fn()} />);
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
     await screen.findByText("What is FSRS?");
 
     await user.click(screen.getByRole("button", { name: /all cards/i }));
@@ -121,8 +132,49 @@ describe("FlashcardsPanel", () => {
 
   it("shows an empty state when there are no due cards", async () => {
     vi.mocked(listFlashcards).mockImplementation(async () => []);
-    render(<FlashcardsPanel token="test-token" onClose={vi.fn()} />);
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
 
     expect(await screen.findByText(/all caught up/i)).toBeInTheDocument();
+  });
+
+  // Regression test for the reported "generate flashcards via chat, then open
+  // Flashcards, it says there are none" bug: this panel must always fetch with a
+  // freshly-verified token (App.tsx's tokenManager.getValidAccessToken(), which
+  // transparently refreshes first if the cached token has gone stale) rather than a
+  // plain string that could have quietly expired while this panel was closed — the
+  // exact class of race the WS chat connection was already fixed to avoid. Simulates a
+  // token that was stale at the moment the panel opened but comes back fresh once
+  // resolved, and asserts the real, current cards still load correctly.
+  it("fetches with a freshly-resolved token even if that resolution involves a refresh", async () => {
+    let resolveToken: (token: string) => void;
+    const staleThenFreshToken = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveToken = resolve;
+        }),
+    );
+
+    render(<FlashcardsPanel getAccessToken={staleThenFreshToken} onClose={vi.fn()} />);
+
+    // Nothing has resolved yet — the panel must wait for the real token, not race ahead
+    // with something stale or cached.
+    expect(vi.mocked(listFlashcards)).not.toHaveBeenCalled();
+
+    resolveToken!("freshly-refreshed-token");
+
+    expect(await screen.findByText("What is FSRS?")).toBeInTheDocument();
+    expect(vi.mocked(listFlashcards)).toHaveBeenCalledWith("freshly-refreshed-token", true);
+  });
+
+  // A failed fetch (expired token, dropped connection, whatever) must never be
+  // rendered as "you have zero flashcards" — those mean very different things to a
+  // student, and conflating them is exactly what made the original bug look like
+  // missing data instead of a loading failure.
+  it("distinguishes a failed fetch from a genuinely empty due queue", async () => {
+    vi.mocked(listFlashcards).mockRejectedValueOnce(new Error("network blip"));
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+    expect(await screen.findByText(/couldn't check for due flashcards/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
   });
 });

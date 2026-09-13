@@ -6,6 +6,15 @@ export interface ToolActivityEntry {
   done: boolean;
 }
 
+/** A deterministic "Open Flashcards"-style call to action the backend attaches right
+ * after a generation tool finishes (see services/api/app/routers/chat.py's
+ * _TOOL_TO_SUGGESTED_ACTION) -- keyed off which tool actually ran, never the model's
+ * own reply text, so it's always correct even if the model forgets to mention it. */
+export interface SuggestedAction {
+  panel: string;
+  label: string;
+}
+
 export interface ChatMessage {
   role: Role;
   content: string;
@@ -17,6 +26,10 @@ export interface ChatMessage {
   /** Client-side only: tool calls Newton made while producing this reply, in order,
    * each starting `done: false` and flipping to `true` once its result comes back. */
   activity?: ToolActivityEntry[];
+  /** Client-side only: one or more "Open Flashcards"-style buttons to offer on this
+   * reply -- a message could plausibly earn more than one (e.g. the model calling two
+   * generation tools in one turn), so this is always an array, never clobbered. */
+  suggestedActions?: SuggestedAction[];
   /** Client-side only: true if the user hit Stop before this reply finished. */
   stoppedByUser?: boolean;
   /** Only ever set on assistant messages — null for user messages, and for replies

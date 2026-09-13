@@ -6,6 +6,7 @@ interface MessageBubbleProps {
   message: ChatMessage;
   token: string;
   sessionId: string | null;
+  onOpenSuggestedPanel: (panel: string) => void;
 }
 
 // The composer/snip-modal tag an uploaded image onto the outgoing message as
@@ -41,7 +42,7 @@ function formatTime(iso?: string): string | null {
 // the way a printed dialogue or annotated notebook page marks who's speaking) and a
 // full-measure body. Role is read from the gutter label and a hairline rule, never
 // from left/right alignment — see App.css's ".transcript-entry" rules for the rest.
-function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
+function MessageBubble({ message, token, sessionId, onOpenSuggestedPanel }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const roleLabel = isUser ? "You" : message.role === "assistant" ? "Newton" : message.role;
   const time = formatTime(message.created_at);
@@ -57,7 +58,9 @@ function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
         {time && <span className="transcript-time">{time}</span>}
       </div>
       <div
-        className={`transcript-body${message.error ? " transcript-body--error" : ""}`}
+        className={`transcript-body${message.error ? " transcript-body--error" : ""}${
+          message.streaming ? " transcript-body--streaming" : ""
+        }`}
         data-context-menu="message"
         data-message-content={message.content}
       >
@@ -67,6 +70,10 @@ function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
               <span
                 key={`${entry.tool}-${i}`}
                 className={`tool-activity-chip${entry.done ? " tool-activity-chip--done" : ""}`}
+                // A light stagger on entry so several tool calls in one reply read as a
+                // sequence rather than all popping in at once — same idea as the
+                // Sidebar's own session-list fade-up stagger.
+                style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}
               >
                 <span className="tool-activity-icon" aria-hidden="true" />
                 {entry.label}
@@ -82,6 +89,23 @@ function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
           </div>
         )}
         <MessageContent content={displayContent || " "} persistKey={persistKey} />
+        {message.suggestedActions && message.suggestedActions.length > 0 && (
+          <div className="suggested-actions">
+            {message.suggestedActions.map((action, i) => (
+              <button
+                key={`${action.panel}-${i}`}
+                type="button"
+                className="suggested-action-btn"
+                onClick={() => onOpenSuggestedPanel(action.panel)}
+              >
+                {action.label}
+                <span className="suggested-action-arrow" aria-hidden="true">
+                  →
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         {message.stoppedByUser && <div className="message-stopped-note">Stopped</div>}
         {message.streaming && (
           <span className="streaming-dots" aria-label="Newton is responding">

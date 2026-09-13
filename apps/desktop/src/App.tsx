@@ -360,6 +360,7 @@ function App() {
           content?: string;
           tool?: string;
           label?: string;
+          panel?: string;
           prompt_tokens?: number | null;
           completion_tokens?: number | null;
         };
@@ -411,6 +412,21 @@ function App() {
             if (markedIndex === -1) return prev;
             const nextActivity = activity.map((entry, i) => (i === markedIndex ? { ...entry, done: true } : entry));
             return [...prev.slice(0, -1), { ...last, activity: nextActivity }];
+          });
+        } else if (payload.type === "suggested_action") {
+          // Always follows the tool_end for the generation tool that produced it (see
+          // the backend's _TOOL_TO_SUGGESTED_ACTION), so the reply it belongs to is
+          // still the in-progress streaming message — append rather than clobber, since
+          // one reply can plausibly earn more than one (e.g. two generation tools
+          // called in the same turn).
+          const panel = payload.panel ?? "";
+          const label = payload.label ?? "";
+          if (!panel || !label) return;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (!last || last.role !== "assistant" || !last.streaming) return prev;
+            const suggestedActions = [...(last.suggestedActions ?? []), { panel, label }];
+            return [...prev.slice(0, -1), { ...last, suggestedActions }];
           });
         } else if (payload.type === "done" || payload.type === "stopped") {
           setIsStreaming(false);
@@ -497,6 +513,15 @@ function App() {
     } finally {
       setCreatingChat(false);
     }
+  }
+
+  // Backs every "Open Flashcards"-style suggested-action button on a message (see
+  // MessageBubble) -- reuses the exact same show-state setters the Sidebar's own nav
+  // buttons call, so there's exactly one place that knows how to open each panel.
+  function handleOpenSuggestedPanel(panel: string) {
+    if (panel === "flashcards") setShowFlashcards(true);
+    else if (panel === "practice_exams") setShowPracticeExams(true);
+    else if (panel === "study_plan") setShowStudyPlan(true);
   }
 
   async function handleDeleteSession(sessionId: string) {
@@ -594,6 +619,7 @@ function App() {
                 loadError={messagesError}
                 token={token}
                 sessionId={activeSessionId}
+                onOpenSuggestedPanel={handleOpenSuggestedPanel}
               />
               <Composer
                 onSend={handleSend}
@@ -620,7 +646,12 @@ function App() {
 
       {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
-      {showFlashcards && <FlashcardsPanel token={token} onClose={() => setShowFlashcards(false)} />}
+      {showFlashcards && (
+        <FlashcardsPanel
+          getAccessToken={() => tokenManager.getValidAccessToken()}
+          onClose={() => setShowFlashcards(false)}
+        />
+      )}
       {showPracticeExams && (
         <PracticeExamsPanel token={token} onClose={() => setShowPracticeExams(false)} />
       )}

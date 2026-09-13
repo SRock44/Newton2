@@ -9,9 +9,10 @@ interface ChatPaneProps {
   loadError: string | null;
   token: string;
   sessionId: string | null;
+  onOpenSuggestedPanel: (panel: string) => void;
 }
 
-function ChatPane({ messages, loading, loadError, token, sessionId }: ChatPaneProps) {
+function ChatPane({ messages, loading, loadError, token, sessionId, onOpenSuggestedPanel }: ChatPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,7 +46,13 @@ function ChatPane({ messages, loading, loadError, token, sessionId }: ChatPanePr
 
       <div className="message-list" data-testid="message-list">
         {messages.map((message, index) => (
-          <MessageBubble key={index} message={message} token={token} sessionId={sessionId} />
+          <MessageBubble
+            key={index}
+            message={message}
+            token={token}
+            sessionId={sessionId}
+            onOpenSuggestedPanel={onOpenSuggestedPanel}
+          />
         ))}
       </div>
     </div>
