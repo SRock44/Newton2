@@ -11,12 +11,14 @@ import {
   listSessions,
   listStudyPlan,
   openChatSocket,
+  uploadChatImage,
 } from "./api";
 import { TokenManager, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import type { ChatMessage, ChatSession, ConnectionStatus } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
+import { latestMathStepsJson } from "./lib/notepadContent";
 import LoginScreen from "./components/LoginScreen";
 import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
@@ -27,6 +29,7 @@ import FlashcardsPanel from "./components/FlashcardsPanel";
 import PracticeExamsPanel from "./components/PracticeExamsPanel";
 import CapabilitiesPanel from "./components/CapabilitiesPanel";
 import ContextMenu from "./components/ContextMenu";
+import ScreenSnipModal from "./components/ScreenSnipModal";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -54,8 +57,11 @@ function App() {
   const [showStudyPlan, setShowStudyPlan] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [showPracticeExams, setShowPracticeExams] = useState(false);
+  const [snipDataUrl, setSnipDataUrl] = useState<string | null>(null);
+  const [snipError, setSnipError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const lastSyncedNotepadJson = useRef<string | null>(null);
   const remindersCheckedRef = useRef(false);
 
   const rememberFirstMessage = useCallback((sessionId: string, content: string) => {
@@ -84,7 +90,26 @@ function App() {
     setShowStudyPlan(false);
     setShowFlashcards(false);
     setShowPracticeExams(false);
+    setSnipDataUrl(null);
+    setSnipError(null);
     remindersCheckedRef.current = false;
+  }
+
+  // The crop modal hands back a File the same way Composer's own file-attach input does
+  // — reuse that exact upload-then-tag-in-message path rather than inventing a second one.
+  async function handleSnipCapture(file: File) {
+    if (!activeSessionId) {
+      setSnipDataUrl(null);
+      setSnipError("Open a chat before sending a snip.");
+      return;
+    }
+    try {
+      const imageId = await uploadChatImage(token as string, activeSessionId, file);
+      setSnipDataUrl(null);
+      handleSend(`[Attached image: ${imageId}]`);
+    } catch (err) {
+      setSnipError(errorMessage(err, "Couldn't send that snip."));
+    }
   }
 
   // System tray "Review flashcards" quick action: the Rust side shows/focuses the
@@ -109,6 +134,48 @@ function App() {
       unlisten?.();
     };
   }, []);
+
+  // "Newton Snip" (global hotkey or tray "Take a Newton Snip"): Rust captures the screen
+  // and emits it here as a data URL for the crop modal — see src-tauri/src/lib.rs's
+  // `capture_and_emit_snip`. Same dynamic-import/defensive-catch pattern as the tray
+  // listener above, for the same reason (no real Tauri IPC bridge under jsdom).
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<{ dataUrl: string }>("newton-snip-captured", (event) => {
+          setSnipError(null);
+          setSnipDataUrl(event.payload.dataUrl);
+        }),
+      )
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // No Tauri context — nothing to listen to.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // Keeps the always-on-top Notepad window (if open) mirroring whatever step-by-step
+  // derivation most recently appeared in this chat — see NotepadWindow.tsx, which listens
+  // for this same event. Only re-emits when the content actually changes, not on every
+  // render/message-list update.
+  useEffect(() => {
+    const json = latestMathStepsJson(messages);
+    if (json === lastSyncedNotepadJson.current) return;
+    lastSyncedNotepadJson.current = json;
+    import("@tauri-apps/api/event")
+      .then(({ emit }) => emit("notepad-sync", { json }))
+      .catch(() => {
+        // No Tauri context — nothing listening on the other end.
+      });
+  }, [messages]);
 
   // Keeps the displayed/passed-down `token` fresh even when nothing is actively
   // fetching — otherwise a session left idle for over an hour would only discover
@@ -421,6 +488,22 @@ function App() {
       />
 
       <ContextMenu onDeleteSession={handleDeleteSession} />
+
+      {snipDataUrl && (
+        <ScreenSnipModal
+          dataUrl={snipDataUrl}
+          onCancel={() => setSnipDataUrl(null)}
+          onCapture={handleSnipCapture}
+        />
+      )}
+      {snipError && (
+        <div className="chat-pane-banner chat-pane-banner--error snip-error-toast">
+          {snipError}
+          <button type="button" onClick={() => setSnipError(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

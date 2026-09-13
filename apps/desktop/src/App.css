@@ -1516,3 +1516,141 @@ button {
   background-color: var(--color-surface-2);
   border-radius: var(--radius-sm);
 }
+
+/* Newton Snip (global hotkey / tray screen-capture) */
+
+.screen-snip {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 18px 22px;
+  width: min(860px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.screen-snip__header h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.screen-snip__header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.screen-snip__stage {
+  position: relative;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-2);
+  cursor: crosshair;
+  user-select: none;
+  max-height: 60vh;
+}
+
+.screen-snip__image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.screen-snip__selection {
+  position: absolute;
+  border: 2px solid var(--color-accent);
+  background-color: var(--color-accent-tint);
+  pointer-events: none;
+}
+
+.screen-snip__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.screen-snip__cancel {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.screen-snip__send {
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 7px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.screen-snip__send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.snip-error-toast {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+.snip-error-toast button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Always-on-top companion Notepad window */
+
+.notepad-window {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg);
+}
+
+.notepad-window__header {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.notepad-window__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.notepad-window__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
