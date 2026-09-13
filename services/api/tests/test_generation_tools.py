@@ -117,6 +117,47 @@ async def test_generate_flashcards_works_for_a_free_plan_user(free_user_with_doc
     assert "flashcard" in result.lower()
 
 
+async def test_generate_flashcards_targets_the_free_tier_count_by_default(
+    free_user_with_document, monkeypatch
+):
+    """Regression test: generation used to have no target count at all ("produce as
+    many as the material supports"), which in practice often meant just one or two
+    cards -- now free users get a real target of 5, Pro users 15 (see
+    billing_service.generation_target_count)."""
+    user, _document = free_user_with_document
+    fake = _flashcards_script()
+    monkeypatch.setattr(flashcards_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+    monkeypatch.setattr(flashcards_service, "get_document_text", _fake_get_document_text)
+
+    await FlashcardGenerationTool().run(user_id=str(user.id))
+
+    prompt = fake.calls_seen[0]["messages"][0].content
+    assert "around 5 good cards" in prompt
+
+
+async def test_generate_flashcards_targets_the_pro_tier_count(db_session, monkeypatch):
+    user = User(keycloak_sub=f"test-gen-flashcards-pro-{uuid.uuid4()}", plan="pro")
+    db_session.add(user)
+    await db_session.flush()  # populates user.id before the Document below references it
+    document = Document(user_id=user.id, filename="notes.txt", mime_type="text/plain", minio_key="unused")
+    db_session.add(document)
+    await db_session.commit()
+    try:
+        fake = _flashcards_script()
+        monkeypatch.setattr(flashcards_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+        monkeypatch.setattr(flashcards_service, "get_document_text", _fake_get_document_text)
+
+        await FlashcardGenerationTool().run(user_id=str(user.id))
+
+        prompt = fake.calls_seen[0]["messages"][0].content
+        assert "around 15 good cards" in prompt
+    finally:
+        await db_session.execute(delete(Flashcard).where(Flashcard.user_id == user.id))
+        await db_session.execute(delete(Document).where(Document.id == document.id))
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.commit()
+
+
 async def test_generate_flashcards_clear_error_with_no_matching_document(free_user_with_document):
     user, _document = free_user_with_document
     result = await FlashcardGenerationTool().run(document_filename="does-not-exist", user_id=str(user.id))
@@ -150,6 +191,48 @@ async def test_generate_practice_exam_creates_a_real_persisted_exam(
         await db_session.execute(select(PracticeExam).where(PracticeExam.document_id == document.id))
     ).scalars().all()
     assert len(exams) == 1
+
+
+async def test_generate_practice_exam_targets_the_free_tier_count_by_default(
+    free_user_with_document, monkeypatch
+):
+    user, _document = free_user_with_document
+    fake = _exam_script()
+    monkeypatch.setattr(practice_exams_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+    monkeypatch.setattr(practice_exams_service, "get_document_text", _fake_get_document_text)
+
+    await PracticeExamGenerationTool().run(user_id=str(user.id))
+
+    prompt = fake.calls_seen[0]["messages"][0].content
+    assert "exactly 5 questions" in prompt
+
+
+async def test_generate_practice_exam_targets_the_pro_tier_count(db_session, monkeypatch):
+    user = User(keycloak_sub=f"test-gen-exam-pro-{uuid.uuid4()}", plan="pro")
+    db_session.add(user)
+    await db_session.flush()  # populates user.id before the Document below references it
+    document = Document(user_id=user.id, filename="notes.txt", mime_type="text/plain", minio_key="unused")
+    db_session.add(document)
+    await db_session.commit()
+    try:
+        fake = _exam_script()
+        monkeypatch.setattr(practice_exams_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+        monkeypatch.setattr(practice_exams_service, "get_document_text", _fake_get_document_text)
+
+        await PracticeExamGenerationTool().run(user_id=str(user.id))
+
+        prompt = fake.calls_seen[0]["messages"][0].content
+        assert "exactly 15 questions" in prompt
+    finally:
+        await db_session.execute(
+            delete(PracticeExamQuestion).where(
+                PracticeExamQuestion.exam_id.in_(select(PracticeExam.id).where(PracticeExam.user_id == user.id))
+            )
+        )
+        await db_session.execute(delete(PracticeExam).where(PracticeExam.user_id == user.id))
+        await db_session.execute(delete(Document).where(Document.id == document.id))
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.commit()
 
 
 async def test_generate_practice_exam_clear_error_with_no_documents_at_all(db_session):

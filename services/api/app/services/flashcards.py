@@ -22,9 +22,12 @@ Reply with ONLY a JSON object, no prose, in this exact shape:
   ]
 }}
 Focus on genuinely testable facts, definitions, and concepts a student should actively \
-recall -- not vague or overly broad prompts, and not restating whole paragraphs. Produce \
-as many good cards as the material actually supports (typically 5-20). If there's nothing \
-flashcard-worthy, return {{"cards": []}}.
+recall -- not vague or overly broad prompts, and not restating whole paragraphs. Aim for \
+around {target_count} good cards -- that's the target, not a hard requirement: produce \
+fewer if the material genuinely doesn't support that many distinct testable facts (never \
+pad with vague or repetitive cards just to hit the number), and more only if the material \
+clearly supports meaningfully more. If there's nothing flashcard-worthy, return \
+{{"cards": []}}.
 
 Material:
 {text}
@@ -87,15 +90,19 @@ async def generate_flashcards(
     user_id: uuid.UUID,
     document: Document,
     byok_anthropic_key: str | None = None,
+    target_count: int = 5,
 ) -> list[Flashcard]:
     """Reads a document, asks the provider to extract flashcard-worthy Q&A pairs, and
     persists them as new Flashcard rows (caller commits) -- each starts at FSRS's own
     default "never reviewed" state (Card() with no stability/difficulty yet), due
-    immediately, exactly like a fresh card in any spaced-repetition app."""
+    immediately, exactly like a fresh card in any spaced-repetition app. `target_count`
+    is plan-scaled by the caller (see app/services/billing.py's generation_target_count)
+    -- defaults to the free tier's target so any caller that forgets to pass it explicitly
+    fails toward the smaller number, not an unbounded one."""
     text = await get_document_text(document)
 
     provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
-    prompt = FLASHCARD_PROMPT.format(text=text[:MAX_MATERIAL_CHARS])
+    prompt = FLASHCARD_PROMPT.format(text=text[:MAX_MATERIAL_CHARS], target_count=target_count)
 
     raw = ""
     async for event in provider.stream_chat([ChatTurn(role="user", content=prompt)], model):

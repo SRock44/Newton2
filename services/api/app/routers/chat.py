@@ -25,6 +25,20 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # ToolActivity.phase -> outgoing WS frame "type"
 _PHASE_TO_FRAME_TYPE = {"started": "tool_start", "finished": "tool_end"}
 
+# When one of these tools finishes, also emit a "suggested_action" frame pointing at
+# where the result actually landed -- deterministic (keyed off the real tool that ran,
+# not the model's own prose), so the desktop app can offer a real "Open Flashcards"-
+# style button on the reply instead of the student having to notice the panel exists
+# and click it themselves. Deliberately doesn't cover start_study_session (the Pro
+# composite): it produces three different artifacts in three different panels at once,
+# so no single "open X" button fits, and its own reply text already summarizes all three.
+_TOOL_TO_SUGGESTED_ACTION = {
+    "generate_flashcards": {"panel": "flashcards", "label": "Open Flashcards"},
+    "generate_practice_exam": {"panel": "practice_exams", "label": "Open Practice Exams"},
+    "generate_study_plan": {"panel": "study_plan", "label": "Open Study Plan"},
+    "sync_google_classroom": {"panel": "study_plan", "label": "Open Study Plan"},
+}
+
 
 @router.post("/sessions")
 async def create_session(
@@ -273,6 +287,10 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                                     "label": event.label,
                                 }
                             )
+                            if event.phase == "finished":
+                                action = _TOOL_TO_SUGGESTED_ACTION.get(event.tool)
+                                if action is not None:
+                                    await websocket.send_json({"type": "suggested_action", **action})
                         elif isinstance(event, UsageInfo):
                             usage = event
 

@@ -6,7 +6,7 @@ import pytest
 import websockets
 from sqlalchemy import delete
 
-from app.db.models import ChatMessage, ChatSession
+from app.db.models import ChatMessage, ChatSession, Document, DocumentChunk, Flashcard
 
 WS_BASE_URL = "ws://localhost:8000"
 
@@ -203,4 +203,56 @@ async def test_websocket_stop_mid_generation_truncates_and_persists_partial(
         session_uuid = uuid.UUID(session_id)
         await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
         await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.commit()
+
+
+async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishes(
+    http_client, auth_headers, keycloak_token, db_session
+):
+    """The desktop app renders a real, clickable "Open Flashcards"-style button from
+    this frame -- deterministic (keyed off which tool actually ran), not dependent on
+    the model reliably mentioning it in its own reply text."""
+    upload_resp = await http_client.post(
+        "/documents/upload",
+        headers=auth_headers,
+        files={"file": ("ws-suggested-action.txt", b"Photosynthesis converts light into chemical energy.", "text/plain")},
+    )
+    assert upload_resp.status_code == 200, upload_resp.text
+    document_id = uuid.UUID(upload_resp.json()["id"])
+
+    session_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = session_resp.json()["session_id"]
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "user_message",
+                        "content": "Please make me flashcards from ws-suggested-action.txt.",
+                    }
+                )
+            )
+            saw_tool_end = False
+            saw_action: dict | None = None
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=45)
+                frame = json.loads(raw)
+                if frame["type"] == "tool_end" and frame.get("tool") == "generate_flashcards":
+                    saw_tool_end = True
+                if frame["type"] == "suggested_action":
+                    saw_action = frame
+                if frame["type"] == "done":
+                    break
+
+        assert saw_tool_end, "expected generate_flashcards to actually be called"
+        assert saw_action == {"type": "suggested_action", "panel": "flashcards", "label": "Open Flashcards"}
+    finally:
+        session_uuid = uuid.UUID(session_id)
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.execute(delete(Flashcard).where(Flashcard.document_id == document_id))
+        await db_session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
+        await db_session.execute(delete(Document).where(Document.id == document_id))
         await db_session.commit()

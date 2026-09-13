@@ -154,6 +154,25 @@ def resolve_pro_model(user: User) -> str:
     return DEFAULT_PRO_MODEL
 
 
+# How many flashcards/practice-exam questions/study-plan items a single generation call
+# should aim for. A plan-scaled target, not a hard requirement -- the generation prompts
+# still say "produce fewer if the material doesn't support this many" so a one-paragraph
+# document doesn't get padded with low-quality filler cards just to hit the number.
+FREE_GENERATION_TARGET = 5
+PRO_GENERATION_TARGET = 15
+
+
+def generation_target_count(user: User | None) -> int:
+    """The target item count for a generation tool/endpoint call, based on the calling
+    user's plan -- reused by flashcards/practice_exams/study_planner so free vs. Pro
+    stays consistent across all three instead of each guessing its own number. `None`
+    (no signed-in user, shouldn't normally happen but keep it safe) gets the free tier's
+    target rather than erroring."""
+    if user is not None and is_pro(user):
+        return PRO_GENERATION_TARGET
+    return FREE_GENERATION_TARGET
+
+
 async def record_frontier_usage(
     user_id: uuid.UUID, model_id: str, prompt_tokens: int, completion_tokens: int
 ) -> int:

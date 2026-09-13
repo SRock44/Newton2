@@ -28,7 +28,12 @@ async def _generate_study_plan_isolated(user_id: uuid.UUID, document_id: uuid.UU
 async def _generate_flashcards_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> int:
     async with SessionLocal() as db:
         document = await db.get(Document, document_id)
-        cards = await generate_flashcards(db, user_id, document)
+        # This whole tool is Pro-gated before any generation runs (see run() below), so
+        # every caller reaching here is Pro -- no need to re-fetch the user just to look
+        # up a plan that's already known.
+        cards = await generate_flashcards(
+            db, user_id, document, target_count=billing_service.PRO_GENERATION_TARGET
+        )
         await db.commit()
         return len(cards)
 
@@ -36,7 +41,9 @@ async def _generate_flashcards_isolated(user_id: uuid.UUID, document_id: uuid.UU
 async def _generate_practice_exam_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> tuple[int, str]:
     async with SessionLocal() as db:
         document = await db.get(Document, document_id)
-        exam = await generate_practice_exam(db, user_id, document)
+        exam = await generate_practice_exam(
+            db, user_id, document, num_questions=billing_service.PRO_GENERATION_TARGET
+        )
         await db.commit()
         # question count needs a fresh query -- `exam` doesn't eagerly load the relationship
         questions = await get_exam_questions(db, exam.id)

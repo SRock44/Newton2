@@ -2,6 +2,8 @@ import uuid
 from typing import Any
 
 from app.db.base import SessionLocal
+from app.db.models import User
+from app.services import billing as billing_service
 from app.services.flashcards import generate_flashcards
 from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
@@ -49,9 +51,11 @@ class FlashcardGenerationTool(Tool):
                     return f"Error: no uploaded document matching '{document_filename}' found."
                 return "Error: no uploaded documents to generate flashcards from yet."
             filename = document.filename
+            user = await db.get(User, uid)
+            target_count = billing_service.generation_target_count(user)
 
             try:
-                cards = await generate_flashcards(db, uid, document)
+                cards = await generate_flashcards(db, uid, document, target_count=target_count)
                 await db.commit()
             except Exception as exc:
                 return f"Error: flashcard generation failed ({exc})."

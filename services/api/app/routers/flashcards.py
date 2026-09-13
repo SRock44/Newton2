@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import require_user
 from app.db.base import get_db
 from app.db.models import Document, Flashcard
+from app.services import billing as billing_service
 from app.services.flashcards import generate_flashcards, get_due_flashcards, review_flashcard
 from app.services.users import get_or_create_user
 
@@ -38,7 +39,8 @@ async def generate(
     if document is None or document.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
 
-    cards = await generate_flashcards(db, user.id, document)
+    target_count = billing_service.generation_target_count(user)
+    cards = await generate_flashcards(db, user.id, document, target_count=target_count)
     await db.commit()
     return [_serialize(c) for c in cards]
 

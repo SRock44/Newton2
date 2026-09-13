@@ -8,12 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import require_user
 from app.db.base import get_db
 from app.db.models import Document, PracticeExam, PracticeExamQuestion
-from app.services.practice_exams import (
-    DEFAULT_NUM_QUESTIONS,
-    generate_practice_exam,
-    get_exam_questions,
-    submit_exam,
-)
+from app.services import billing as billing_service
+from app.services.practice_exams import generate_practice_exam, get_exam_questions, submit_exam
 from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/practice-exams", tags=["practice-exams"])
@@ -54,7 +50,10 @@ def _serialize_exam(exam: PracticeExam, questions: list[PracticeExamQuestion]) -
 @router.post("/generate/{document_id}")
 async def generate(
     document_id: uuid.UUID,
-    num_questions: int = Query(DEFAULT_NUM_QUESTIONS, ge=1, le=25),
+    # No fixed default: an explicit request always wins, but when the caller doesn't
+    # specify one, it should scale with plan (see billing_service.generation_target_count)
+    # rather than the same fixed count for everyone -- computed below, once `user` is known.
+    num_questions: int | None = Query(None, ge=1, le=25),
     claims: dict = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -63,7 +62,8 @@ async def generate(
     if document is None or document.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
 
-    exam = await generate_practice_exam(db, user.id, document, num_questions=num_questions)
+    target_questions = num_questions if num_questions is not None else billing_service.generation_target_count(user)
+    exam = await generate_practice_exam(db, user.id, document, num_questions=target_questions)
     await db.commit()
     questions = await get_exam_questions(db, exam.id)
     return _serialize_exam(exam, questions)

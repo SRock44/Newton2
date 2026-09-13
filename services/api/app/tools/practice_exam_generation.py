@@ -2,6 +2,8 @@ import uuid
 from typing import Any
 
 from app.db.base import SessionLocal
+from app.db.models import User
+from app.services import billing as billing_service
 from app.services.practice_exams import generate_practice_exam, get_exam_questions
 from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
@@ -47,9 +49,11 @@ class PracticeExamGenerationTool(Tool):
                     return f"Error: no uploaded document matching '{document_filename}' found."
                 return "Error: no uploaded documents to generate a practice exam from yet."
             filename = document.filename
+            user = await db.get(User, uid)
+            target_count = billing_service.generation_target_count(user)
 
             try:
-                exam = await generate_practice_exam(db, uid, document)
+                exam = await generate_practice_exam(db, uid, document, num_questions=target_count)
                 await db.commit()
                 questions = await get_exam_questions(db, exam.id)
             except Exception as exc:
