@@ -102,13 +102,14 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [snipDataUrl, setSnipDataUrl] = useState<string | null>(null);
   const [snipError, setSnipError] = useState<string | null>(null);
-  // Set by handleChatAboutDocument right after it creates and activates a new session
-  // (session creation, then the WebSocket connecting to it, are both async) — the
-  // effect below actually sends the message once that exact session's socket reports
-  // "open", so the opener text can never land in a stale/wrong chat.
-  const [pendingDocumentMessage, setPendingDocumentMessage] = useState<{ sessionId: string; text: string } | null>(
-    null,
-  );
+  // Set by handleChatAboutDocument right after it creates and activates a new session —
+  // consumed by Composer as soon as it renders for that exact session, pre-attaching
+  // the document exactly the way manually picking it from the "+" menu's "Attach an
+  // existing document" flow would. Deliberately does NOT send anything on the
+  // student's behalf; they still type and send their own opening message.
+  const [pendingComposerDocument, setPendingComposerDocument] = useState<
+    { sessionId: string; id: string; name: string } | null
+  >(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastSyncedNotepadJson = useRef<string | null>(null);
@@ -162,7 +163,7 @@ function App() {
     setShowHelp(false);
     setSnipDataUrl(null);
     setSnipError(null);
-    setPendingDocumentMessage(null);
+    setPendingComposerDocument(null);
     remindersCheckedRef.current = false;
   }
 
@@ -532,18 +533,6 @@ function App() {
     }
   }
 
-  // Fires the queued "chat about this document" opener the moment its own session's
-  // socket reports open — guards on both the session id and wsStatus so a fast click
-  // to a *different* chat in the meantime can't misfire the message there instead.
-  useEffect(() => {
-    if (!pendingDocumentMessage) return;
-    if (activeSessionId !== pendingDocumentMessage.sessionId) return;
-    if (wsStatus !== "open") return;
-    handleSend(pendingDocumentMessage.text);
-    setPendingDocumentMessage(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingDocumentMessage, activeSessionId, wsStatus]);
-
   // Shared by handleNewChat and handleChatAboutDocument — the only place that knows
   // how to create a session and make it the active one. Returns the new session id,
   // or null if creation failed (already surfaced via sessionsError).
@@ -583,20 +572,16 @@ function App() {
     setMainView("chat");
   }
 
-  // "Chat about this document" (DocumentsPanel): start a fresh chat, then once that
-  // exact session's socket is actually open (see the pendingDocumentMessage effect
-  // below), send an opening message naming the document so Newton's per-turn RAG
-  // retrieval has an obvious document to reach for first. Embeds the same
-  // "[Attached document: <id>|<filename>]" marker a composer attachment would (see
-  // MessageBubble's AttachedDocumentChip) so the opener renders as a real attachment
-  // chip, not just a backtick-quoted filename.
+  // "Chat about this document" (DocumentsPanel): start a fresh chat, then hand the
+  // document to the Composer as a pending attachment the moment it renders for that
+  // exact session — the *same* end state as manually clicking "+" -> "Attach an
+  // existing document" and picking it there. Deliberately does not send anything on
+  // the student's behalf: they still write and send their own opening message, with
+  // the document already attached and ready.
   async function handleChatAboutDocument(doc: UploadedDocument) {
     const id = await createNewSession();
     if (!id) return;
-    setPendingDocumentMessage({
-      sessionId: id,
-      text: `Let's talk about \`${doc.filename}\`.\n\n[Attached document: ${doc.id}|${doc.filename}]`,
-    });
+    setPendingComposerDocument({ sessionId: id, id: doc.id, name: doc.filename });
   }
 
   // Sidebar's "Documents" nav button: toggle between the chat view and the Documents
@@ -744,6 +729,10 @@ function App() {
                     streaming={isStreaming}
                     token={token}
                     sessionId={activeSessionId}
+                    pendingAttachment={
+                      pendingComposerDocument?.sessionId === activeSessionId ? pendingComposerDocument : null
+                    }
+                    onPendingAttachmentConsumed={() => setPendingComposerDocument(null)}
                   />
                 </>
               )}

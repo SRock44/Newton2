@@ -13,6 +13,15 @@ interface ComposerProps {
   placeholder?: string;
   token: string;
   sessionId: string | null;
+  /** A document to pre-attach the moment this exact session is active — set by
+   * App.tsx's "Chat about this document" flow (DocumentsPanel), already scoped to the
+   * right session before it ever reaches here. Applied via the *same* setAttachedDocument
+   * path a manual "+" -> "Attach an existing document" pick would use, so the two
+   * interactions end in an identical state — nothing is sent on the student's behalf. */
+  pendingAttachment?: { id: string; name: string } | null;
+  /** Called once the pending attachment above has actually been applied, so the parent
+   * can clear it and never re-apply it (e.g. if the student then removes the chip). */
+  onPendingAttachmentConsumed?: () => void;
 }
 
 const MAX_TEXTAREA_HEIGHT = 220;
@@ -22,7 +31,17 @@ function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 }
 
-function Composer({ onSend, onStop, disabled, streaming, placeholder, token, sessionId }: ComposerProps) {
+function Composer({
+  onSend,
+  onStop,
+  disabled,
+  streaming,
+  placeholder,
+  token,
+  sessionId,
+  pendingAttachment,
+  onPendingAttachmentConsumed,
+}: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [attachedImage, setAttachedImage] = useState<{ id: string; name: string } | null>(null);
   const [attachedDocument, setAttachedDocument] = useState<{ id: string; name: string } | null>(null);
@@ -59,6 +78,17 @@ function Composer({ onSend, onStop, disabled, streaming, placeholder, token, ses
     setMenuOpen(false);
     setPickerOpen(false);
   }, [sessionId]);
+
+  // "Chat about this document" (App.tsx) hands off a document to pre-attach here the
+  // same way manually picking it from the "+" menu would — runs after the reset above
+  // for the same session-switch, so it lands as the final state rather than being
+  // immediately cleared by it.
+  useEffect(() => {
+    if (!pendingAttachment) return;
+    setAttachedDocument({ id: pendingAttachment.id, name: pendingAttachment.name });
+    onPendingAttachmentConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAttachment]);
 
   // Close either popover on an outside click or Escape — same idea as ContextMenu.tsx's
   // dismiss handling, just scoped to this one anchored wrapper instead of the whole
