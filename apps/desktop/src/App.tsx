@@ -20,6 +20,7 @@ import type { ChatMessage, ChatSession, ConnectionStatus } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { latestMathStepsJson } from "./lib/notepadContent";
 import LoginScreen from "./components/LoginScreen";
+import TitleBar from "./components/TitleBar";
 import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
@@ -417,10 +418,11 @@ function App() {
 
   if (!token) {
     return (
-      <>
+      <div className="app-root">
+        <TitleBar title="Newton" />
         <LoginScreen onSuccess={handleLoginSuccess} />
         <ContextMenu onDeleteSession={handleDeleteSession} />
-      </>
+      </div>
     );
   }
 
@@ -430,23 +432,58 @@ function App() {
     : "Newton";
 
   return (
-    <div className="app-shell">
-      <Sidebar
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        firstMessageBySession={firstMessageBySession}
-        onSelectSession={setActiveSessionId}
-        onNewChat={handleNewChat}
-        onDeleteSession={handleDeleteSession}
-        creatingChat={creatingChat}
-        username={username || "student"}
-        onSignOut={handleSignOut}
-        onOpenDocuments={() => setShowDocuments(true)}
-        onOpenStudyPlan={() => setShowStudyPlan(true)}
-        onOpenFlashcards={() => setShowFlashcards(true)}
-        onOpenPracticeExams={() => setShowPracticeExams(true)}
-        connectionStatus={wsStatus}
-      />
+    <div className="app-root">
+      <TitleBar title={headerTitle} />
+      <div className="app-shell">
+        <Sidebar
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          firstMessageBySession={firstMessageBySession}
+          onSelectSession={setActiveSessionId}
+          onNewChat={handleNewChat}
+          onDeleteSession={handleDeleteSession}
+          creatingChat={creatingChat}
+          username={username || "student"}
+          onSignOut={handleSignOut}
+          onOpenDocuments={() => setShowDocuments(true)}
+          onOpenStudyPlan={() => setShowStudyPlan(true)}
+          onOpenFlashcards={() => setShowFlashcards(true)}
+          onOpenPracticeExams={() => setShowPracticeExams(true)}
+          connectionStatus={wsStatus}
+        />
+
+        <main className="main-pane">
+          <header className="main-header">
+            <h1 className="main-header-title">{headerTitle}</h1>
+            <span className={`live-dot live-dot--${wsStatus}`} title={`Connection: ${wsStatus}`} />
+          </header>
+
+          {sessionsError && <div className="banner banner--error chat-pane-banner">{sessionsError}</div>}
+
+          {sessionsLoading && sessions.length === 0 ? (
+            <div className="chat-empty-state">
+              <p>Loading your chats…</p>
+            </div>
+          ) : (
+            <>
+              <ChatPane messages={messages} loading={messagesLoading} loadError={messagesError} />
+              <Composer
+                onSend={handleSend}
+                disabled={isStreaming || !activeSessionId}
+                token={token}
+                sessionId={activeSessionId}
+              />
+            </>
+          )}
+        </main>
+
+        <CapabilitiesPanel
+          token={token}
+          connectionStatus={wsStatus}
+          sessionCount={sessions.length}
+          messageCount={messages.length}
+        />
+      </div>
 
       {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
@@ -454,38 +491,6 @@ function App() {
       {showPracticeExams && (
         <PracticeExamsPanel token={token} onClose={() => setShowPracticeExams(false)} />
       )}
-
-      <main className="main-pane">
-        <header className="main-header">
-          <h1 className="main-header-title">{headerTitle}</h1>
-          <span className={`live-dot live-dot--${wsStatus}`} title={`Connection: ${wsStatus}`} />
-        </header>
-
-        {sessionsError && <div className="banner banner--error chat-pane-banner">{sessionsError}</div>}
-
-        {sessionsLoading && sessions.length === 0 ? (
-          <div className="chat-empty-state">
-            <p>Loading your chats…</p>
-          </div>
-        ) : (
-          <>
-            <ChatPane messages={messages} loading={messagesLoading} loadError={messagesError} />
-            <Composer
-              onSend={handleSend}
-              disabled={isStreaming || !activeSessionId}
-              token={token}
-              sessionId={activeSessionId}
-            />
-          </>
-        )}
-      </main>
-
-      <CapabilitiesPanel
-        token={token}
-        connectionStatus={wsStatus}
-        sessionCount={sessions.length}
-        messageCount={messages.length}
-      />
 
       <ContextMenu onDeleteSession={handleDeleteSession} />
 

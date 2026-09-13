@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ApiError } from "../api";
 import { signInWithBrowser } from "../auth";
 import type { TokenSet } from "../auth";
+import NewtonMark from "./NewtonMark";
 
 interface LoginScreenProps {
   onSuccess: (tokens: TokenSet) => void;
@@ -29,12 +30,12 @@ function LoginScreen({ onSuccess }: LoginScreenProps) {
     <div className="login-screen">
       <div className="login-card">
         <div className="login-brand">
-          <span className="login-brand-mark" aria-hidden="true">
-            N
+          <span className="login-brand-mark">
+            <NewtonMark size={22} />
           </span>
           <span className="login-brand-name">Newton</span>
         </div>
-        <p className="login-tagline">Your agentic learning environment.</p>
+        <p className="login-tagline font-voice">Your agentic learning environment.</p>
 
         <button type="button" className="btn-primary login-submit" onClick={handleSignIn} disabled={signingIn}>
           {signingIn ? "Opening browser…" : "Sign in"}

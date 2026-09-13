@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import MathSteps from "./components/MathSteps";
+import TitleBar from "./components/TitleBar";
 
 interface NotepadSyncPayload {
   json: string | null;
@@ -36,17 +37,19 @@ function NotepadWindow() {
   }, []);
 
   return (
-    <div className="notepad-window">
-      <header className="notepad-window__header">Newton Notepad</header>
-      {json ? (
-        <div className="notepad-window__body">
-          <MathSteps json={json} />
-        </div>
-      ) : (
-        <div className="notepad-window__empty">
-          Waiting for a step-by-step derivation to show up in your chat…
-        </div>
-      )}
+    <div className="app-root">
+      <TitleBar title="Newton Notepad" variant="notepad" />
+      <div className="notepad-window">
+        {json ? (
+          <div className="notepad-window__body">
+            <MathSteps json={json} />
+          </div>
+        ) : (
+          <div className="notepad-window__empty">
+            Waiting for a step-by-step derivation to show up in your chat…
+          </div>
+        )}
+      </div>
     </div>
   );
 }

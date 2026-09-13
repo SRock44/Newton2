@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { ChatMessage } from "../types";
 import MessageBubble from "./MessageBubble";
+import NewtonMark from "./NewtonMark";
 
 interface ChatPaneProps {
   messages: ChatMessage[];
@@ -29,11 +30,14 @@ function ChatPane({ messages, loading, loadError }: ChatPaneProps) {
 
       {!loading && messages.length === 0 && !loadError && (
         <div className="chat-empty-state">
-          <div className="chat-empty-state-mark" aria-hidden="true">
-            N
+          <div className="chat-empty-state-mark">
+            <NewtonMark size={26} />
           </div>
           <h2>Ask Newton anything</h2>
-          <p>Start the conversation below — questions, explanations, problem sets, whatever you're studying.</p>
+          <p className="font-voice">
+            Start the conversation below — questions, explanations, problem sets, whatever you're
+            studying.
+          </p>
         </div>
       )}
 

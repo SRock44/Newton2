@@ -179,6 +179,7 @@ fn show_notepad_window(app: &tauri::AppHandle) {
         .inner_size(420.0, 580.0)
         .min_inner_size(320.0, 360.0)
         .always_on_top(true)
+        .decorations(false)
         .build();
 }
 

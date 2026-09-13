@@ -1,16 +1,21 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import "@fontsource/inter/300.css";
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/500.css";
-import "@fontsource/inter/600.css";
-import "@fontsource/inter/700.css";
-// A reading serif, used sparingly for headings/titles only (see App.css's --font-serif) —
-// pairs with Inter body text to give the app an "educational/editorial" feel rather than
-// a generic all-sans SaaS look, without sacrificing body-text legibility during long
+// Public Sans carries every bit of body/UI text — chat, buttons, inputs, sidebar, labels.
+// It's a distinct, highly legible grotesque (not Inter) that still feels calm over long
 // study sessions.
-import "@fontsource/source-serif-4/600.css";
-import "@fontsource/source-serif-4/700.css";
+import "@fontsource/public-sans/400.css";
+import "@fontsource/public-sans/500.css";
+import "@fontsource/public-sans/600.css";
+import "@fontsource/public-sans/700.css";
+// Fraunces is the editorial display face: the wordmark, every panel/section heading,
+// dialog titles, and the empty-state "voice" copy. It's a variable font (weight + the
+// "soft" and optical-size axes), so one import covers every heading weight/style this
+// app uses instead of picking static cuts — see --font-serif/--font-serif-soft in App.css
+// for how those axes get dialed in per use. This — not a token recolor — is the actual
+// typographic identity change: Public Sans/Fraunces read nothing like the previous
+// Inter/Source Serif 4 pairing in a side-by-side screenshot.
+import "@fontsource-variable/fraunces/full.css";
+import "@fontsource-variable/fraunces/full-italic.css";
 import "./App.css";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";

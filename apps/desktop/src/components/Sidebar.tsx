@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ChatSession, ConnectionStatus } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
+import NewtonMark from "./NewtonMark";
 
 interface SidebarProps {
   sessions: ChatSession[];
@@ -58,8 +59,8 @@ function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-brand">
-          <span className="sidebar-brand-mark" aria-hidden="true">
-            N
+          <span className="sidebar-brand-mark">
+            <NewtonMark size={15} />
           </span>
           <span className="sidebar-brand-name">Newton</span>
         </div>

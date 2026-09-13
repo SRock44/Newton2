@@ -1,42 +1,45 @@
 :root {
   /* ---------------------------------------------------------------------
    * Design tokens
-   * A calm, academic blue anchors the palette instead of a generic-SaaS
-   * violet/indigo — it reads as focused and trustworthy without being cold.
-   * Semantic state colors (success/warning/danger/info) are each paired with
-   * a translucent "tint" for banners/badges so every panel represents the
-   * same state the same way instead of inventing one-off colors.
+   * A warm, ink-and-paper palette anchors the neutrals instead of the
+   * generic "near-black + gray" AI-chat look — parchment/ivory surfaces in
+   * light mode, a genuinely warm charcoal (not cold gray) in dark mode — with
+   * a deep cobalt-ink blue accent (by request: not the terracotta this pass
+   * started with). Semantic state colors are each paired with a translucent
+   * "tint" for banners/badges so every panel represents the same state the
+   * same way.
    * ------------------------------------------------------------------- */
 
-  /* Neutrals */
-  --color-bg: #f7f7f8;
-  --color-surface: #ffffff;
-  --color-surface-2: #f1f1f3;
-  --color-surface-3: #e7e7ea;
-  --color-sidebar: #ffffff;
-  --color-border: #e3e3e8;
-  --color-border-2: #ececee;
-  --color-text: #17181c;
-  --color-text-muted: #656670;
-  --color-text-faint: #9a9ba5;
+  /* Neutrals — warm parchment/ivory, not neutral gray */
+  --color-bg: #f5efe3;
+  --color-surface: #fffcf6;
+  --color-surface-2: #ede2ca;
+  --color-surface-3: #e1d3b3;
+  --color-sidebar: #eee3cd;
+  --color-border: #ddcca5;
+  --color-border-2: #e6d9b9;
+  --color-text: #241f16;
+  --color-text-muted: #6d6250;
+  --color-text-faint: #a2947a;
 
-  /* Brand accent — a calm academic blue */
-  --color-accent: #3a5fc4;
-  --color-accent-hover: #2e4da3;
-  --color-accent-active: #253f87;
-  --color-accent-contrast: #ffffff;
-  --color-accent-tint: rgba(58, 95, 196, 0.1);
-  --color-accent-tint-strong: rgba(58, 95, 196, 0.2);
+  /* Brand accent — a deep cobalt-ink blue, the app's real identity */
+  --color-accent: #2f4d8c;
+  --color-accent-hover: #263e70;
+  --color-accent-active: #1e325a;
+  --color-accent-contrast: #fdf9f0;
+  --color-accent-tint: rgba(47, 77, 140, 0.12);
+  --color-accent-tint-strong: rgba(47, 77, 140, 0.22);
 
-  /* Semantic states, each with a matching tint for banners/badges/backgrounds */
-  --color-success: #1e7a51;
-  --color-success-tint: rgba(30, 122, 81, 0.12);
-  --color-warning: #9a5d12;
-  --color-warning-tint: rgba(154, 93, 18, 0.14);
-  --color-danger: #bd3b3b;
-  --color-danger-tint: rgba(189, 59, 59, 0.1);
-  --color-info: #1f7599;
-  --color-info-tint: rgba(31, 117, 153, 0.1);
+  /* Semantic states sit deliberately cool (vs. the warm accent) so they never
+     get mistaken for it, each with a matching tint for banners/badges. */
+  --color-success: #3d7d49;
+  --color-success-tint: rgba(61, 125, 73, 0.13);
+  --color-warning: #9c7d1f;
+  --color-warning-tint: rgba(156, 125, 31, 0.15);
+  --color-danger: #b23b3b;
+  --color-danger-tint: rgba(178, 59, 59, 0.11);
+  --color-info: #2c6c85;
+  --color-info-tint: rgba(44, 108, 133, 0.12);
 
   /* Spacing scale */
   --space-1: 4px;
@@ -54,18 +57,22 @@
   --radius-full: 999px;
 
   /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(20, 20, 30, 0.06);
-  --shadow-md: 0 12px 32px rgba(20, 20, 30, 0.12);
-  --shadow-lg: 0 20px 48px rgba(20, 20, 30, 0.18);
+  --shadow-sm: 0 1px 2px rgba(36, 26, 12, 0.08);
+  --shadow-md: 0 12px 32px rgba(36, 26, 12, 0.14);
+  --shadow-lg: 0 20px 48px rgba(36, 26, 12, 0.22);
 
   /* Keyboard-focus ring, used everywhere via the global :focus-visible rule below */
   --focus-ring: 0 0 0 3px var(--color-accent-tint-strong);
 
-  /* Typography: Inter carries the UI and body text; Source Serif 4 is used
-     sparingly for headings/titles only, for an editorial/textbook feel that
-     still reads clean rather than "generic AI chatbot SaaS." */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Avenir, Helvetica, Arial, sans-serif;
-  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  /* Typography: Public Sans carries every bit of UI/body text (chat, inputs,
+     buttons, labels) — legible and distinct from the generic Inter default.
+     Fraunces (a variable font, so weight/optical-size/softness all come from
+     one family) is the editorial display face for the wordmark, every
+     panel/section heading, and dialog titles — real character, not a
+     one-corner accent. --font-serif-voice dials Fraunces italic + a softer,
+     smaller optical size for empty-state/assistant "voice" copy. */
+  --font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Avenir, Helvetica, Arial, sans-serif;
+  --font-serif: "Fraunces Variable", Georgia, "Times New Roman", serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
   --font-size-2xs: 10.5px;
@@ -105,32 +112,38 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --color-bg: #0e0e0f;
-    --color-surface: #161617;
-    --color-surface-2: #1c1c1e;
-    --color-surface-3: #242426;
-    --color-sidebar: #161617;
-    --color-border: #27272a;
-    --color-border-2: #1f1f21;
-    --color-text: #e6e6e8;
-    --color-text-muted: #9c9ca4;
-    --color-text-faint: #66666e;
+    /* A warm charcoal — brown-black, not the cold near-black of the previous
+       pass — so dark mode still reads as the same "ink and paper" product
+       rather than a generic dark-mode chat app. The sidebar/right-panel sit a
+       shade *darker* than the main content pane (a bookshelf behind an open
+       page), the opposite relationship of light mode's cream-on-parchment —
+       either way the flanking panels are never the same tone as the content. */
+    --color-bg: #1c1712;
+    --color-surface: #251f18;
+    --color-surface-2: #2d251c;
+    --color-surface-3: #392f23;
+    --color-sidebar: #150f0b;
+    --color-border: #3c3021;
+    --color-border-2: #2e2519;
+    --color-text: #f1e7d6;
+    --color-text-muted: #b3a488;
+    --color-text-faint: #7c6f59;
 
-    --color-accent: #7397e8;
-    --color-accent-hover: #8aa8ee;
-    --color-accent-active: #5c85e0;
-    --color-accent-contrast: #0e1220;
-    --color-accent-tint: rgba(115, 151, 232, 0.16);
-    --color-accent-tint-strong: rgba(115, 151, 232, 0.28);
+    --color-accent: #7c9de8;
+    --color-accent-hover: #93b1ec;
+    --color-accent-active: #648ae0;
+    --color-accent-contrast: #10182a;
+    --color-accent-tint: rgba(124, 157, 232, 0.18);
+    --color-accent-tint-strong: rgba(124, 157, 232, 0.3);
 
-    --color-success: #4caf7d;
-    --color-success-tint: rgba(76, 175, 125, 0.16);
-    --color-warning: #c98a3a;
-    --color-warning-tint: rgba(201, 138, 58, 0.16);
-    --color-danger: #d97070;
-    --color-danger-tint: rgba(217, 112, 112, 0.16);
-    --color-info: #52a9cc;
-    --color-info-tint: rgba(82, 169, 204, 0.16);
+    --color-success: #74bf80;
+    --color-success-tint: rgba(116, 191, 128, 0.16);
+    --color-warning: #d3b354;
+    --color-warning-tint: rgba(211, 179, 84, 0.16);
+    --color-danger: #e28080;
+    --color-danger-tint: rgba(226, 128, 128, 0.16);
+    --color-info: #64b3d1;
+    --color-info-tint: rgba(100, 179, 209, 0.16);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -156,6 +169,24 @@ body {
 button {
   font-family: inherit;
   cursor: pointer;
+}
+
+/* Fraunces display treatment — the wordmark, panel/section headings, and
+   dialog titles all use this, not just an isolated <h1>. The variable font's
+   optical-size and "soft" axes are dialed up for a warm, confident display
+   cut distinct from body text at any weight. */
+.font-display {
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 32, "SOFT" 18;
+  letter-spacing: -0.01em;
+}
+
+/* A softer, italic Fraunces cut for the app's "voice" moments — empty
+   states, taglines — editorial rather than clinical. */
+.font-voice {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-variation-settings: "opsz" 14, "SOFT" 55;
 }
 
 /* Visible keyboard-focus ring everywhere, without adding one per component.
@@ -391,11 +422,102 @@ textarea:focus-visible,
   color: var(--color-text-faint);
 }
 
+/* ---------- Custom title bar ----------
+ * Replaces native OS chrome entirely (see src-tauri/tauri.conf.json's
+ * `decorations: false` and `show_notepad_window`'s `.decorations(false)`).
+ * `.app-root`/`.notepad-window` stack it above the rest of the window in a
+ * column flex layout, so it's always present — including on the login
+ * screen, which used to fill the whole viewport on its own. */
+
+.app-root {
+  height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.titlebar {
+  flex-shrink: 0;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--color-sidebar);
+  border-bottom: 1px solid var(--color-border);
+  user-select: none;
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 var(--space-3);
+  height: 100%;
+  min-width: 0;
+  color: var(--color-text-muted);
+}
+
+.titlebar-mark {
+  display: flex;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.titlebar-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  flex-shrink: 0;
+  /* Deliberately never carries data-tauri-drag-region (nor do the buttons
+     inside it) — only .titlebar-brand's background is draggable, so these
+     stay independently clickable. */
+}
+
+.titlebar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.titlebar-btn:hover {
+  background-color: var(--color-surface-3);
+  color: var(--color-text);
+}
+
+.titlebar-btn:active {
+  background-color: var(--color-border);
+}
+
+.titlebar-btn--close:hover {
+  background-color: #c9432f;
+  color: #fff8ef;
+}
+
+.titlebar-btn--close:active {
+  background-color: #a8371f;
+}
+
 /* ---------- App shell ---------- */
 
 .app-shell {
   display: flex;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   overflow: hidden;
 }
@@ -428,24 +550,22 @@ textarea:focus-visible,
 }
 
 .sidebar-brand-mark {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   background-color: var(--color-accent);
   color: var(--color-accent-contrast);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-serif);
-  font-size: 11px;
-  font-weight: var(--font-weight-bold);
 }
 
 .sidebar-brand-name {
   font-family: var(--font-serif);
+  font-variation-settings: "opsz" 24, "SOFT" 15;
   font-weight: var(--font-weight-semibold);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   letter-spacing: -0.01em;
 }
 
@@ -775,7 +895,8 @@ textarea:focus-visible,
 .modal-header h2 {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: var(--font-size-lg);
+  font-variation-settings: "opsz" 28, "SOFT" 15;
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
 }
@@ -860,8 +981,11 @@ textarea:focus-visible,
 }
 
 .main-header-title {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 20, "SOFT" 12;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.005em;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -894,24 +1018,23 @@ textarea:focus-visible,
 }
 
 .chat-empty-state-mark {
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-md);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
   background-color: var(--color-accent);
   color: var(--color-accent-contrast);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-serif);
-  font-weight: var(--font-weight-bold);
-  font-size: 1.2rem;
   margin-bottom: var(--space-2);
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-empty-state h2 {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: var(--font-size-xl);
+  font-variation-settings: "opsz" 34, "SOFT" 22;
+  font-size: 1.7rem;
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
 }
@@ -919,7 +1042,7 @@ textarea:focus-visible,
 .chat-empty-state p {
   margin: 0;
   max-width: 380px;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   line-height: var(--line-height-relaxed);
 }
 
@@ -953,6 +1076,17 @@ textarea:focus-visible,
   padding: 0 2px;
 }
 
+/* The assistant's role label ("Newton") gets a small touch of the editorial
+   display voice — a quiet way of giving the assistant a distinct "presence"
+   in the transcript without a full avatar. The user's own label stays plain
+   UI type. */
+.message-row--assistant .message-meta {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-variation-settings: "opsz" 12, "SOFT" 45;
+  color: var(--color-text-muted);
+}
+
 .message-bubble {
   max-width: 78%;
   border-radius: var(--radius-lg);
@@ -965,12 +1099,16 @@ textarea:focus-visible,
   background-color: var(--color-accent);
   color: var(--color-accent-contrast);
   border-bottom-right-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
 }
 
 .message-row--assistant .message-bubble {
-  border-left: 2px solid var(--color-accent);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-2);
+  border-left: 3px solid var(--color-accent);
   border-bottom-left-radius: var(--radius-sm);
-  padding-left: 14px;
+  padding-left: 15px;
+  box-shadow: var(--shadow-sm);
 }
 
 .message-row--assistant .message-bubble.message-bubble--error {
@@ -1316,7 +1454,8 @@ textarea:focus-visible,
 /* ---------- Login screen ---------- */
 
 .login-screen {
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   display: flex;
   align-items: center;
@@ -1343,29 +1482,28 @@ textarea:focus-visible,
 }
 
 .login-brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-md);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
   background-color: var(--color-accent);
   color: var(--color-accent-contrast);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-serif);
-  font-weight: var(--font-weight-bold);
-  font-size: 1.1rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .login-brand-name {
   font-family: var(--font-serif);
-  font-size: 1.3rem;
+  font-variation-settings: "opsz" 34, "SOFT" 20;
+  font-size: 1.5rem;
   font-weight: var(--font-weight-semibold);
   letter-spacing: -0.01em;
 }
 
 .login-tagline {
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   line-height: var(--line-height-relaxed);
   margin: 0 0 var(--space-6);
 }
@@ -1720,7 +1858,8 @@ textarea:focus-visible,
 .screen-snip__header h2 {
   margin: 0 0 4px;
   font-family: var(--font-serif);
-  font-size: var(--font-size-lg);
+  font-variation-settings: "opsz" 26, "SOFT" 15;
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
 }
@@ -1786,19 +1925,11 @@ textarea:focus-visible,
 /* ---------- Always-on-top companion Notepad window ---------- */
 
 .notepad-window {
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background-color: var(--color-bg);
-}
-
-.notepad-window__header {
-  padding: var(--space-3) var(--space-4);
-  font-family: var(--font-serif);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  border-bottom: 1px solid var(--color-border);
-  background-color: var(--color-surface);
 }
 
 .notepad-window__body {
@@ -1814,7 +1945,10 @@ textarea:focus-visible,
   justify-content: center;
   text-align: center;
   padding: var(--space-6);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-variation-settings: "opsz" 14, "SOFT" 50;
+  font-size: var(--font-size-md);
   color: var(--color-text-muted);
   line-height: var(--line-height-relaxed);
 }
