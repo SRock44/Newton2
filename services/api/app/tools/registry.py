@@ -3,11 +3,14 @@ import inspect
 from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
+from app.tools.check_work import CheckStudentWorkTool
 from app.tools.citation import CitationFormatterTool
 from app.tools.classroom_sync import ClassroomSyncTool
 from app.tools.code_interpreter import CodeInterpreterTool
 from app.tools.flashcard_generation import FlashcardGenerationTool
+from app.tools.get_weak_areas import GetWeakAreasTool
 from app.tools.grammar_check import GrammarCheckTool
+from app.tools.math_hint import GetMathHintTool
 from app.tools.practice_exam_generation import PracticeExamGenerationTool
 from app.tools.study_plan_generation import StudyPlanGenerationTool
 from app.tools.study_session import StudySessionTool
@@ -39,6 +42,9 @@ _TOOLS: dict[str, Tool] = {
         PracticeExamGenerationTool(),
         StudyPlanGenerationTool(),
         ClassroomSyncTool(),
+        CheckStudentWorkTool(),
+        GetWeakAreasTool(),
+        GetMathHintTool(),
     ]
 }
 

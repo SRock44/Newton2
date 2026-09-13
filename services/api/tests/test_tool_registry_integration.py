@@ -31,6 +31,9 @@ def test_all_expected_tools_are_registered():
         "generate_practice_exam",
         "generate_study_plan",
         "sync_google_classroom",
+        "check_student_work",
+        "get_weak_areas",
+        "get_math_hint",
     }
 
 

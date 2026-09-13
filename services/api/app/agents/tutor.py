@@ -67,6 +67,9 @@ _TOOL_LABELS: dict[str, str] = {
     "generate_practice_exam": "Building a practice exam",
     "generate_study_plan": "Building your study plan",
     "sync_google_classroom": "Syncing Google Classroom",
+    "check_student_work": "Checking your work",
+    "get_weak_areas": "Finding what you're weak on",
+    "get_math_hint": "Working out a hint",
 }
 
 
@@ -121,7 +124,16 @@ SYSTEM_PROMPT = (
     'plain text or with inline $LaTeX$", "next step", "..."]}. Each array entry is one '
     "step, revealed to the student one at a time rather than all at once — keep each "
     "step to a single clear idea, and make the final step state the answer you actually "
-    "got from symbolic_math, never a value you computed by hand instead."
+    "got from symbolic_math, never a value you computed by hand instead.\n\n"
+    "When a student shares their own typed answer or solution and asks if it's right, "
+    "call check_student_work rather than just re-solving the problem yourself and "
+    "comparing — it pinpoints exactly where their own reasoning is right or wrong. "
+    "When a student says they're stuck on a math problem and want a nudge rather than "
+    "the answer, call get_math_hint at the appropriate hint_level instead of giving the "
+    "answer outright. Consider calling get_weak_areas when a student asks something "
+    "like \"what should I study,\" \"what am I bad at,\" or \"am I ready for my exam,\" "
+    "or before generating a new practice exam or flashcard set — it's real performance "
+    "data, not a guess, so use it to target the material that's actually needed."
 )
 
 # A confused/looping model shouldn't be able to hold the WS connection open forever
