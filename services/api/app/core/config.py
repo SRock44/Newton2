@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # Same internal-only shape as SearXNG above.
     languagetool_url: str = "http://languagetool:8010"
 
+    # Self-hosted speech-to-text (onerahmet/openai-whisper-asr-webservice) and
+    # text-to-speech (custom Piper wrapper, services/piper-tts) servers. Same
+    # internal-only shape as SearXNG/LanguageTool above.
+    whisper_asr_url: str = "http://whisper-asr:9000"
+    piper_tts_url: str = "http://piper-tts:8000"
+
     # Origins the Tauri webview runs under: Vite dev server, and the custom-protocol
     # origins WebView2/WKWebView use for a packaged app in production.
     cors_allow_origins: list[str] = [

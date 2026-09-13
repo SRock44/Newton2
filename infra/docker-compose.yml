@@ -43,6 +43,8 @@ x-api-env: &api-env
   SANDBOX_RUNNER_URL: http://sandbox-runner:8000
   SEARXNG_URL: http://searxng:8080
   LANGUAGETOOL_URL: http://languagetool:8010
+  WHISPER_ASR_URL: http://whisper-asr:9000
+  PIPER_TTS_URL: http://piper-tts:8000
   # Same Google Cloud OAuth client already used for Keycloak's Google login IdP (see
   # infra/keycloak/setup_google_idp.py) -- this is a separate, app-managed OAuth grant for
   # Classroom read scopes, not something Keycloak brokers. GOOGLE_CLASSROOM_REDIRECT_URI
@@ -213,6 +215,23 @@ services:
     restart: unless-stopped
     networks: [newton_net]
     mem_limit: 700m
+    # no ports: — only `api`, over newton_net, ever calls this
+
+  whisper-asr:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    restart: unless-stopped
+    environment:
+      ASR_MODEL: base
+      ASR_ENGINE: faster_whisper
+    networks: [newton_net]
+    mem_limit: 1536m
+    # no ports: — only `api`, over newton_net, ever calls this
+
+  piper-tts:
+    build: ../services/piper-tts
+    restart: unless-stopped
+    networks: [newton_net]
+    mem_limit: 512m
     # no ports: — only `api`, over newton_net, ever calls this
 
   worker:

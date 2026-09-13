@@ -12,6 +12,7 @@ from app.routers import (
     practice_exams,
     study_plan,
     tools,
+    voice,
 )
 
 app = FastAPI(title="Newton API")
@@ -33,3 +34,4 @@ app.include_router(classroom.router)
 app.include_router(flashcards.router)
 app.include_router(gamification.router)
 app.include_router(practice_exams.router)
+app.include_router(voice.router)
