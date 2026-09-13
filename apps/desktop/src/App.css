@@ -1207,69 +1207,88 @@ textarea:focus-visible,
 .message-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 0 var(--space-5) var(--space-4);
+  padding: 0 var(--space-6) var(--space-4);
 }
 
-.message-row {
+/* ---------- Transcript (mandatory departure from the chat-bubble silhouette) ----------
+   No alternating left/right, no per-message rounded container, no shrink-to-content
+   bubble width. Every turn is a single-column grid row: a narrow marginal gutter
+   carries the role label + timestamp (the way a printed dialogue or annotated
+   notebook page marks the speaker), and the body runs the full measure of the
+   column. Role reads from typography and a hairline rule, not from which side of
+   the screen the text sits on. */
+
+.transcript-entry {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  column-gap: var(--space-4);
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--color-border-2);
+}
+
+.transcript-entry:first-child {
+  border-top: none;
+  padding-top: var(--space-1);
+}
+
+.transcript-gutter {
   display: flex;
   flex-direction: column;
-  padding: var(--space-2) 0;
-}
-
-.message-row--user {
-  align-items: flex-end;
-}
-
-.message-row--assistant {
   align-items: flex-start;
+  padding-top: 3px;
 }
 
-.message-meta {
+.transcript-role {
   font-size: var(--font-size-xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   color: var(--color-text-faint);
-  margin-bottom: var(--space-1);
-  padding: 0 2px;
 }
 
-/* The assistant's role label ("Newton") gets a small touch of the editorial
-   display voice — a quiet way of giving the assistant a distinct "presence"
-   in the transcript without a full avatar. The user's own label stays plain
-   UI type. */
-.message-row--assistant .message-meta {
+/* Newton's role label gets the editorial display voice — a quiet way of giving the
+   assistant a distinct "presence" in the transcript without a full avatar or a
+   differently-colored bubble. The student's own label stays plain, upright UI type. */
+.transcript-entry--assistant .transcript-role {
   font-family: var(--font-serif);
   font-style: italic;
-  font-variation-settings: "opsz" 12, "SOFT" 45;
-  color: var(--color-text-muted);
+  font-variation-settings: "opsz" 14, "SOFT" 45;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
 }
 
-.message-bubble {
-  max-width: 78%;
-  border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-4);
-  background-color: var(--color-surface-2);
+.transcript-time {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+  margin-top: 2px;
+}
+
+.transcript-body {
+  min-width: 0;
   line-height: var(--line-height-relaxed);
+  border-left: 2px solid var(--color-border-2);
+  padding-left: var(--space-4);
 }
 
-.message-row--user .message-bubble {
-  background-color: var(--color-accent);
-  color: var(--color-accent-contrast);
-  border-bottom-right-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
+/* The student's own words read like a highlighted passage on a notebook page —
+   a soft wash and a firmer rule — rather than a message sent off into a bubble.
+   It spans the full body column, never shrinks to fit the sentence, and never
+   moves to the right edge of the screen. */
+.transcript-entry--user .transcript-body {
+  background-color: var(--color-accent-tint);
+  border-left-color: var(--color-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--space-3) var(--space-4);
 }
 
-.message-row--assistant .message-bubble {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border-2);
-  border-left: 3px solid var(--color-accent);
-  border-bottom-left-radius: var(--radius-sm);
-  padding-left: 15px;
-  box-shadow: var(--shadow-sm);
+.transcript-entry--assistant .transcript-body {
+  border-left-color: var(--color-border-2);
 }
 
-.message-row--assistant .message-bubble.message-bubble--error {
+.transcript-body--error {
   border-left-color: var(--color-danger);
   background-color: var(--color-danger-tint);
   color: var(--color-danger);
@@ -1309,11 +1328,6 @@ textarea:focus-visible,
 .message-content td {
   border: 1px solid var(--color-border);
   padding: 4px 10px;
-}
-
-.message-row--user .message-content th,
-.message-row--user .message-content td {
-  border-color: rgba(255, 255, 255, 0.35);
 }
 
 .message-content a {
@@ -1543,15 +1557,10 @@ textarea:focus-visible,
   border-radius: var(--radius-md);
   background-color: var(--color-surface);
   overflow: hidden;
-  /* Chat bubbles are auto-width flex items that size to fit their content
-     (see .message-bubble). A bare width:100% child has no intrinsic size to
-     contribute to that fit-content calculation, so without a min-width the
-     bubble — and the chart inside it — collapses to a sliver. A percentage
-     min-width doesn't help here either (it resolves against this same
-     auto-sized ancestor chain, so it collapses to 0 too) — use a fixed
-     pixel floor instead. .message-bubble's max-width still caps the bubble
-     on narrow windows, so this can only make the chart wider, never force
-     the bubble to overflow its column. */
+  /* The transcript body is a real-width grid column (see .transcript-body), so a
+     width:100% chart already gets a sensible size from it — this floor just keeps
+     Plotly figures from getting uselessly narrow on a tight window; it can only
+     make the chart wider, never force it past the column's own width. */
   min-width: 420px;
 }
 
@@ -2263,8 +2272,9 @@ textarea:focus-visible,
     min-width: 160px;
   }
 
-  .message-bubble {
-    max-width: 90%;
+  .transcript-entry {
+    grid-template-columns: 72px minmax(0, 1fr);
+    column-gap: var(--space-3);
   }
 
   .main-header {
@@ -2290,5 +2300,16 @@ textarea:focus-visible,
 
   .modal-panel {
     padding: var(--space-4);
+  }
+
+  .transcript-entry {
+    grid-template-columns: 1fr;
+    row-gap: var(--space-1);
+  }
+
+  .transcript-gutter {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
   }
 }

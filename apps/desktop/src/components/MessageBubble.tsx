@@ -36,6 +36,11 @@ function formatTime(iso?: string): string | null {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+// A conversation renders as a single flowing transcript column, not a stack of chat
+// bubbles: each turn is a grid row with a narrow marginal gutter (role + timestamp,
+// the way a printed dialogue or annotated notebook page marks who's speaking) and a
+// full-measure body. Role is read from the gutter label and a hairline rule, never
+// from left/right alignment — see App.css's ".transcript-entry" rules for the rest.
 function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const roleLabel = isUser ? "You" : message.role === "assistant" ? "Newton" : message.role;
@@ -46,13 +51,13 @@ function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
   const persistKey = sessionId && message.created_at ? `${sessionId}|${message.created_at}` : undefined;
 
   return (
-    <div className={`message-row message-row--${isUser ? "user" : "assistant"}`}>
-      <div className="message-meta">
-        {roleLabel}
-        {time ? ` · ${time}` : ""}
+    <div className={`transcript-entry transcript-entry--${isUser ? "user" : "assistant"}`}>
+      <div className="transcript-gutter">
+        <span className="transcript-role">{roleLabel}</span>
+        {time && <span className="transcript-time">{time}</span>}
       </div>
       <div
-        className={`message-bubble${message.error ? " message-bubble--error" : ""}`}
+        className={`transcript-body${message.error ? " transcript-body--error" : ""}`}
         data-context-menu="message"
         data-message-content={message.content}
       >
