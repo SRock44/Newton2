@@ -11,13 +11,17 @@ afterEach(() => {
 describe("MessageBubble", () => {
   it("renders plain messages without an attached-image marker unaffected", () => {
     const message: ChatMessage = { role: "assistant", content: "Just some text." };
-    render(<MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} />);
+    render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
     expect(screen.getByText("Just some text.")).toBeInTheDocument();
   });
 
   it("renders no suggested-action button when the message has none", () => {
     const message: ChatMessage = { role: "assistant", content: "Just some text." };
-    render(<MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} />);
+    render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -43,7 +47,13 @@ describe("MessageBubble", () => {
         suggestedActions: [{ panel, label }],
       };
       render(
-        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={onOpenSuggestedPanel} />,
+        <MessageBubble
+          message={message}
+          token="tok"
+          sessionId="s1"
+          onOpenSuggestedPanel={onOpenSuggestedPanel}
+          onOpenDocument={vi.fn()}
+        />,
       );
 
       const button = screen.getByRole("button", { name: new RegExp(label) });
@@ -66,7 +76,13 @@ describe("MessageBubble", () => {
       ],
     };
     render(
-      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={onOpenSuggestedPanel} />,
+      <MessageBubble
+        message={message}
+        token="tok"
+        sessionId="s1"
+        onOpenSuggestedPanel={onOpenSuggestedPanel}
+        onOpenDocument={vi.fn()}
+      />,
     );
 
     expect(screen.getByRole("button", { name: /open study plan/i })).toBeInTheDocument();
@@ -92,7 +108,9 @@ describe("MessageBubble", () => {
       role: "user",
       content: "What's going on here?\n\n[Attached image: cb01da7d-0f16-4b08-9945-5aca60855cf5]",
     };
-    render(<MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} />);
+    render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
 
     // The raw bracket/UUID text must never be visible...
     expect(screen.queryByText(/Attached image: cb01da7d/)).not.toBeInTheDocument();
@@ -113,9 +131,67 @@ describe("MessageBubble", () => {
       role: "user",
       content: "[Attached image: some-old-id]",
     };
-    render(<MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} />);
+    render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
 
     expect(await screen.findByText(/no longer available/i)).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("strips the [Attached document: <id>|<filename>] marker from the visible text and renders a chip instead", () => {
+    const message: ChatMessage = {
+      role: "user",
+      content: "Let's talk about `syllabus.pdf`.\n\n[Attached document: doc-1|syllabus.pdf]",
+    };
+    render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
+
+    expect(screen.queryByText(/Attached document: doc-1/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Let's talk about/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /syllabus\.pdf/i })).toBeInTheDocument();
+  });
+
+  it("clicking an attached-document chip navigates to that document", async () => {
+    const user = userEvent.setup();
+    const onOpenDocument = vi.fn();
+    const message: ChatMessage = {
+      role: "user",
+      content: "[Attached document: doc-42|notes.txt]",
+    };
+    render(
+      <MessageBubble
+        message={message}
+        token="tok"
+        sessionId="s1"
+        onOpenSuggestedPanel={vi.fn()}
+        onOpenDocument={onOpenDocument}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /notes\.txt/i }));
+    expect(onOpenDocument).toHaveBeenCalledWith("doc-42");
+    expect(onOpenDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders both an attached image and an attached document on the same message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, blob: async () => new Blob(["x"], { type: "image/png" }) })),
+    );
+    vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:fake-url"), revokeObjectURL: vi.fn() });
+
+    const message: ChatMessage = {
+      role: "user",
+      content: "See both.\n\n[Attached image: img-1]\n\n[Attached document: doc-1|report.pdf]",
+    };
+    render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
+
+    expect(await screen.findByAltText("Attached to this message")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /report\.pdf/i })).toBeInTheDocument();
+    expect(screen.getByText("See both.")).toBeInTheDocument();
   });
 });

@@ -10,9 +10,10 @@ interface ChatPaneProps {
   token: string;
   sessionId: string | null;
   onOpenSuggestedPanel: (panel: string) => void;
+  onOpenDocument: (documentId: string) => void;
 }
 
-function ChatPane({ messages, loading, loadError, token, sessionId, onOpenSuggestedPanel }: ChatPaneProps) {
+function ChatPane({ messages, loading, loadError, token, sessionId, onOpenSuggestedPanel, onOpenDocument }: ChatPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ function ChatPane({ messages, loading, loadError, token, sessionId, onOpenSugges
             token={token}
             sessionId={sessionId}
             onOpenSuggestedPanel={onOpenSuggestedPanel}
+            onOpenDocument={onOpenDocument}
           />
         ))}
       </div>

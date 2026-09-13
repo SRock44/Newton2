@@ -946,14 +946,32 @@ textarea:focus-visible,
   line-height: var(--line-height-relaxed);
 }
 
-/* ---------- Documents drive (two-pane: file list + preview/edit) ---------- */
-
-.modal-panel--wide {
-  width: 900px;
-  max-width: 94vw;
-  max-height: 88vh;
+/* ---------- Documents page (two-pane drive: file list + preview/edit) ----------
+   Mounted in place of ChatPane+Composer inside .main-pane when mainView is
+   "documents" (see App.tsx) — a real page filling the same space chat normally
+   occupies, not a floating modal: no backdrop, no small "×" close button. Getting
+   back to chat is via the sidebar's Documents toggle, picking any chat session, or
+   starting a new one — see App.tsx's mainView wiring. */
+.documents-page {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  overflow: hidden;
+}
+
+.documents-page-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.documents-page-toolbar .modal-subtitle {
+  margin: 0;
+  max-width: 640px;
 }
 
 .documents-drive {
@@ -1129,8 +1147,8 @@ textarea:focus-visible,
 }
 
 @media (max-width: 760px) {
-  .modal-panel--wide {
-    width: 94vw;
+  .documents-page-toolbar {
+    flex-direction: column;
   }
 
   .documents-drive {
@@ -1742,6 +1760,49 @@ textarea:focus-visible,
   font-style: italic;
 }
 
+/* A document mentioned via "Chat about this document" or attached from the composer
+   (see the "[Attached document: <id>|<filename>]" marker in MessageBubble.tsx) reads
+   as a real attachment chip, mirroring .attached-image-chip's treatment — but it's a
+   clickable button, not a fetched thumbnail: it just needs an icon + name + click
+   target to jump to that document (see App.tsx's handleOpenDocument). */
+.attached-documents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.attached-document-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border-2);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.attached-document-chip:hover {
+  background-color: var(--color-surface-3);
+  border-color: var(--color-accent);
+}
+
+.attached-document-chip-icon {
+  flex-shrink: 0;
+}
+
+.attached-document-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
 .message-stopped-note {
   margin-top: var(--space-2);
   font-size: var(--font-size-xs);
@@ -1964,6 +2025,18 @@ textarea:focus-visible,
   outline: none;
 }
 
+/* The row already shows a focus ring via .composer-row:focus-within above — without
+   this, the textarea's own global `textarea:focus-visible` rule (see the app-wide
+   keyboard-focus-ring block near the top of this file) fires at the same time and
+   draws a second, tighter ring nested inside the row's, producing two visible rounded
+   rectangles instead of one. `.composer-input:focus-visible` (a class + pseudo-class)
+   outranks the global `textarea:focus-visible` (an element + pseudo-class) by CSS
+   specificity regardless of source order, so this reliably wins. */
+.composer-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .composer-input:disabled {
   opacity: 0.6;
 }
@@ -1980,16 +2053,24 @@ textarea:focus-visible,
   display: none;
 }
 
+/* Positions the popover menu/picker relative to the "+" button rather than at
+   viewport coordinates like ContextMenu.tsx — simpler than reusing that component
+   outright since this only ever opens anchored to one fixed spot. */
+.composer-attach-wrap {
+  position: relative;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
 .composer-attach {
   flex-shrink: 0;
   border: none;
   background: transparent;
   color: var(--color-text-muted);
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
-  padding: 6px 7px;
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
-  align-self: flex-end;
 }
 
 .composer-attach:hover:not(:disabled) {
@@ -2002,6 +2083,107 @@ textarea:focus-visible,
   cursor: default;
 }
 
+/* ---------- Composer "+" attach menu and existing-document picker ----------
+   Two small popovers anchored above the attach button: the top-level menu offers
+   "Upload from your computer" (images stay the ephemeral vision-attachment flow;
+   .txt/.md/.pdf route through the real document-upload endpoint instead) and "Attach
+   an existing document" (a quick listDocuments-backed picker) — see Composer.tsx. */
+.composer-attach-menu,
+.composer-document-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.composer-attach-menu {
+  min-width: 230px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+}
+
+.composer-attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.composer-attach-menu-item:hover:not(:disabled) {
+  background-color: var(--color-surface-2);
+}
+
+.composer-attach-menu-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.composer-document-picker {
+  width: 260px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.composer-document-picker-header {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.composer-document-picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.composer-document-picker-item:hover {
+  background-color: var(--color-surface-2);
+}
+
+.composer-document-picker-name {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-document-picker-date {
+  display: block;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+  margin-top: 1px;
+}
+
+.composer-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
 .composer-attachment {
   display: flex;
   align-items: center;
@@ -2011,7 +2193,6 @@ textarea:focus-visible,
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   padding: 5px var(--space-2);
-  margin-bottom: var(--space-2);
   font-size: var(--font-size-sm);
   color: var(--color-text);
 }

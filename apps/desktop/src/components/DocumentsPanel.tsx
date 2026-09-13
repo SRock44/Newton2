@@ -17,10 +17,19 @@ import MessageContent from "./MessageContent";
 
 interface DocumentsPanelProps {
   token: string;
+  /** Called after "Chat about this document" hands off to a new chat — App.tsx wires
+   * this to switching mainView back to "chat", the page-level equivalent of the old
+   * modal's onClose. Not rendered as a close button here (this is a real page, not a
+   * modal) — see App.tsx's mainView. */
   onClose: () => void;
   /** Starts a new chat scoped toward this document (see App.tsx) — the panel closes
    * itself right after so the student lands directly in the new conversation. */
   onChatAboutDocument: (doc: UploadedDocument) => void;
+  /** Set when a message's attached-document chip sends the student here for a specific
+   * document (see MessageBubble/AttachedDocumentChip and App.tsx's handleOpenDocument)
+   * — selects it as soon as the drive mounts. Undefined/null just lands on the drive
+   * with nothing selected, same as opening it any other way. */
+  initialSelectedDocumentId?: string | null;
 }
 
 function formatDate(iso: string): string {
@@ -49,7 +58,7 @@ interface ContentState {
  * searches across every uploaded document on every chat turn (see app/memory/rag.py)
  * — this panel is about actually seeing and touching what was uploaded, not about
  * making retrieval work. */
-function DocumentsPanel({ token, onClose, onChatAboutDocument }: DocumentsPanelProps) {
+function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDocumentId }: DocumentsPanelProps) {
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +68,7 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument }: DocumentsPanelP
   const [examStatusByDoc, setExamStatusByDoc] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedDocumentId ?? null);
   const [contentState, setContentState] = useState<ContentState>({ loading: false, error: null, data: null });
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -269,21 +278,12 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument }: DocumentsPanelP
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel modal-panel--wide" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Documents</h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-
+    <div className="documents-page">
+      <div className="documents-page-toolbar">
         <p className="modal-subtitle">
           Newton pulls relevant passages from these into chat automatically — no need to
           reference them by name. Select a document to view, edit, or chat about it.
         </p>
-
-        {error && <div className="banner banner--error">{error}</div>}
 
         <input
           ref={fileInputRef}
@@ -301,8 +301,11 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument }: DocumentsPanelP
         >
           {uploading ? "Uploading…" : "Upload a document"}
         </button>
+      </div>
 
-        <div className="documents-drive">
+      {error && <div className="banner banner--error">{error}</div>}
+
+      <div className="documents-drive">
           <div className="documents-list-pane">
             {loading ? (
               <p className="empty-state-text">Loading…</p>
@@ -448,8 +451,8 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument }: DocumentsPanelP
           </div>
         </div>
       </div>
-    </div>
   );
 }
+
 
 export default DocumentsPanel;

@@ -17,7 +17,7 @@ import { TokenManager, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import { getStudyRemindersEnabled } from "./lib/preferences";
-import type { ChatMessage, ChatSession, ConnectionStatus, UploadedDocument } from "./types";
+import type { ChatMessage, ChatSession, ConnectionStatus, MainView, UploadedDocument } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { latestMathStepsJson } from "./lib/notepadContent";
 import LoginScreen from "./components/LoginScreen";
@@ -83,7 +83,18 @@ function App() {
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>("closed");
-  const [showDocuments, setShowDocuments] = useState(false);
+  // Which UI fills the main content area next to the always-visible sidebar/title bar
+  // — a general mechanism (see types.ts's MainView) rather than a Documents-specific
+  // boolean, since Documents is likely the first of more panels to get this "real page,
+  // not a modal" treatment. Going back to "chat" happens from several obvious places:
+  // toggling the sidebar's Documents button again, picking any chat session, starting a
+  // new one, or finishing "Chat about this document" (see the handlers below).
+  const [mainView, setMainView] = useState<MainView>("chat");
+  // Set when an attached-document chip in a chat message (see MessageBubble /
+  // AttachedDocumentChip) sends the student to a specific document — read once by
+  // DocumentsPanel as its initial selection when it mounts fresh into the "documents"
+  // view (see handleOpenDocument below).
+  const [openDocumentId, setOpenDocumentId] = useState<string | null>(null);
   const [showStudyPlan, setShowStudyPlan] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [showPracticeExams, setShowPracticeExams] = useState(false);
@@ -136,7 +147,8 @@ function App() {
     setFirstMessageBySession({});
     setIsStreaming(false);
     setWsStatus("closed");
-    setShowDocuments(false);
+    setMainView("chat");
+    setOpenDocumentId(null);
     setShowStudyPlan(false);
     setShowFlashcards(false);
     setShowPracticeExams(false);
@@ -542,16 +554,43 @@ function App() {
 
   async function handleNewChat() {
     await createNewSession();
+    setMainView("chat");
+  }
+
+  // Sidebar session click: switch chats and, if Documents was showing, bring chat back
+  // into view — one of several obvious ways back (see the mainView comment above).
+  function handleSelectSession(id: string) {
+    setActiveSessionId(id);
+    setMainView("chat");
   }
 
   // "Chat about this document" (DocumentsPanel): start a fresh chat, then once that
   // exact session's socket is actually open (see the pendingDocumentMessage effect
   // below), send an opening message naming the document so Newton's per-turn RAG
-  // retrieval has an obvious document to reach for first.
+  // retrieval has an obvious document to reach for first. Embeds the same
+  // "[Attached document: <id>|<filename>]" marker a composer attachment would (see
+  // MessageBubble's AttachedDocumentChip) so the opener renders as a real attachment
+  // chip, not just a backtick-quoted filename.
   async function handleChatAboutDocument(doc: UploadedDocument) {
     const id = await createNewSession();
     if (!id) return;
-    setPendingDocumentMessage({ sessionId: id, text: `Let's talk about \`${doc.filename}\`.` });
+    setPendingDocumentMessage({
+      sessionId: id,
+      text: `Let's talk about \`${doc.filename}\`.\n\n[Attached document: ${doc.id}|${doc.filename}]`,
+    });
+  }
+
+  // Sidebar's "Documents" nav button: toggle between the chat view and the Documents
+  // page (see the mainView comment above) — a second click is the obvious way back.
+  function handleToggleDocuments() {
+    setMainView((v) => (v === "documents" ? "chat" : "documents"));
+  }
+
+  // An attached-document chip in a chat message (see MessageBubble/AttachedDocumentChip)
+  // was clicked: jump to the Documents page with that exact document selected.
+  function handleOpenDocument(documentId: string) {
+    setOpenDocumentId(documentId);
+    setMainView("documents");
   }
 
   // Backs every "Open Flashcards"-style suggested-action button on a message (see
@@ -612,22 +651,25 @@ function App() {
   const headerTitle = activeSession
     ? sessionDisplayTitle(activeSession, activeSessionId ? firstMessageBySession[activeSessionId] : undefined)
     : "Newton";
+  // The window title bar and main-pane header both track whichever view is actually
+  // showing, not always the chat title — "Documents" while browsing the drive.
+  const pageTitle = mainView === "documents" ? "Documents" : headerTitle;
 
   return (
     <div className="app-root">
-      <TitleBar title={headerTitle} />
+      <TitleBar title={pageTitle} />
       <div className="app-shell">
         <Sidebar
           sessions={sessions}
           activeSessionId={activeSessionId}
           firstMessageBySession={firstMessageBySession}
-          onSelectSession={setActiveSessionId}
+          onSelectSession={handleSelectSession}
           onNewChat={handleNewChat}
           onDeleteSession={handleDeleteSession}
           creatingChat={creatingChat}
           username={username || "student"}
           onSignOut={handleSignOut}
-          onOpenDocuments={() => setShowDocuments(true)}
+          onOpenDocuments={handleToggleDocuments}
           onOpenStudyPlan={() => setShowStudyPlan(true)}
           onOpenFlashcards={() => setShowFlashcards(true)}
           onOpenPracticeExams={() => setShowPracticeExams(true)}
@@ -637,37 +679,55 @@ function App() {
 
         <main className="main-pane">
           <header className="main-header">
-            <h1 className="main-header-title">{headerTitle}</h1>
-            <span className="main-header-status" title={`Connection: ${wsStatus}`}>
-              <span className={`live-dot live-dot--${wsStatus}`} aria-hidden="true" />
-              {CONNECTION_LABEL[wsStatus]}
-            </span>
+            <h1 className="main-header-title">{pageTitle}</h1>
+            {mainView === "chat" && (
+              <span className="main-header-status" title={`Connection: ${wsStatus}`}>
+                <span className={`live-dot live-dot--${wsStatus}`} aria-hidden="true" />
+                {CONNECTION_LABEL[wsStatus]}
+              </span>
+            )}
           </header>
 
-          {sessionsError && <div className="banner banner--error chat-pane-banner">{sessionsError}</div>}
-
-          {sessionsLoading && sessions.length === 0 ? (
-            <div className="chat-empty-state">
-              <p>Loading your chats…</p>
-            </div>
+          {mainView === "documents" ? (
+            // A real page filling the same space chat normally occupies — no modal
+            // backdrop, no floating dialog (see DocumentsPanel.tsx and App.css's
+            // ".documents-page" rules). onClose here is what "Chat about this
+            // document" uses to hand back to the chat view once it's done.
+            <DocumentsPanel
+              token={token}
+              onClose={() => setMainView("chat")}
+              onChatAboutDocument={handleChatAboutDocument}
+              initialSelectedDocumentId={openDocumentId}
+            />
           ) : (
             <>
-              <ChatPane
-                messages={messages}
-                loading={messagesLoading}
-                loadError={messagesError}
-                token={token}
-                sessionId={activeSessionId}
-                onOpenSuggestedPanel={handleOpenSuggestedPanel}
-              />
-              <Composer
-                onSend={handleSend}
-                onStop={handleStop}
-                disabled={isStreaming || !activeSessionId}
-                streaming={isStreaming}
-                token={token}
-                sessionId={activeSessionId}
-              />
+              {sessionsError && <div className="banner banner--error chat-pane-banner">{sessionsError}</div>}
+
+              {sessionsLoading && sessions.length === 0 ? (
+                <div className="chat-empty-state">
+                  <p>Loading your chats…</p>
+                </div>
+              ) : (
+                <>
+                  <ChatPane
+                    messages={messages}
+                    loading={messagesLoading}
+                    loadError={messagesError}
+                    token={token}
+                    sessionId={activeSessionId}
+                    onOpenSuggestedPanel={handleOpenSuggestedPanel}
+                    onOpenDocument={handleOpenDocument}
+                  />
+                  <Composer
+                    onSend={handleSend}
+                    onStop={handleStop}
+                    disabled={isStreaming || !activeSessionId}
+                    streaming={isStreaming}
+                    token={token}
+                    sessionId={activeSessionId}
+                  />
+                </>
+              )}
             </>
           )}
         </main>
@@ -683,13 +743,6 @@ function App() {
         />
       </div>
 
-      {showDocuments && (
-        <DocumentsPanel
-          token={token}
-          onClose={() => setShowDocuments(false)}
-          onChatAboutDocument={handleChatAboutDocument}
-        />
-      )}
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
       {showFlashcards && (
         <FlashcardsPanel

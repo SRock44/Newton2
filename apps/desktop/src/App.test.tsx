@@ -10,7 +10,10 @@ const sessions: ChatSession[] = [
 ];
 
 const messagesBySession: Record<string, ChatMessage[]> = {
-  s1: [{ role: "user", content: "Hello from s1" }],
+  s1: [
+    { role: "user", content: "Hello from s1" },
+    { role: "assistant", content: "Here's the file.\n\n[Attached document: doc-1|syllabus.pdf]" },
+  ],
   s2: [{ role: "assistant", content: "Reply in s2" }],
 };
 
@@ -39,6 +42,8 @@ vi.mock("./api", () => ({
   getGamificationStats: vi.fn(async () => ({ streak_days: 0, xp: 0, level: 1, xp_to_next_level: 100 })),
   listFlashcards: vi.fn(async () => []),
   listStudyPlan: vi.fn(async () => []),
+  listDocuments: vi.fn(async () => []),
+  getDocumentContent: vi.fn(async () => ({ content: "", editable: true })),
 }));
 
 vi.mock("./notifications", () => ({
@@ -72,7 +77,7 @@ vi.mock("./auth", async () => {
   };
 });
 
-import { deleteSession, listFlashcards, listStudyPlan, openChatSocket } from "./api";
+import { deleteSession, getDocumentContent, listDocuments, listFlashcards, listStudyPlan, openChatSocket } from "./api";
 import { notifyStudyReminders } from "./notifications";
 import { signInWithBrowser } from "./auth";
 
@@ -94,6 +99,8 @@ describe("App", () => {
     vi.mocked(deleteSession).mockClear();
     vi.mocked(listFlashcards).mockClear();
     vi.mocked(listStudyPlan).mockClear();
+    vi.mocked(listDocuments).mockClear();
+    vi.mocked(getDocumentContent).mockClear();
     vi.mocked(notifyStudyReminders).mockClear();
     // Every render now calls the real TokenManager.tryRestoreSession() on mount (see
     // App.tsx's bootstrap effect), which reads real localStorage — clear it so one
@@ -419,5 +426,55 @@ describe("App", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Flashcards" })).toBeInTheDocument();
+  });
+
+  // Item 1: Documents is a real page that replaces chat in the main pane, not a modal
+  // popup — the sidebar and title bar stay put, and there's no backdrop/overlay.
+  it("shows Documents as a full page in place of chat, keeping the sidebar visible, with no modal backdrop — and toggles back", async () => {
+    const user = await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await user.click(screen.getByRole("button", { name: "Documents" }));
+
+    // Sidebar (nav + other chats) is still there — this replaced only the main pane.
+    expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+    expect(screen.getByText("Physics review")).toBeInTheDocument();
+    // Chat is gone, not just covered by an overlay.
+    expect(screen.queryByTestId("message-list")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/ask newton/i)).not.toBeInTheDocument();
+    expect(document.querySelector(".modal-overlay")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
+    expect(await screen.findByText(/no documents yet/i)).toBeInTheDocument();
+
+    // A second click on the same nav button is the obvious way back.
+    await user.click(screen.getByRole("button", { name: "Documents" }));
+    expect(await (await messageList()).findByText("Hello from s1")).toBeInTheDocument();
+  });
+
+  // Item 1 (continued): picking a chat session from the sidebar is another obvious way
+  // back to chat from the Documents page.
+  it("selecting a chat session from the sidebar returns from Documents to chat", async () => {
+    const user = await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await user.click(screen.getByRole("button", { name: "Documents" }));
+    await screen.findByText(/no documents yet/i);
+
+    await user.click(screen.getByText("Physics review"));
+    expect(await (await messageList()).findByText("Reply in s2")).toBeInTheDocument();
+    expect(screen.queryByText(/no documents yet/i)).not.toBeInTheDocument();
+  });
+
+  // Item 2: an attached-document chip in a message is a real, clickable attachment —
+  // clicking it jumps straight to that document on the Documents page.
+  it("clicking an attached-document chip in a message switches to Documents with that document selected", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    const chip = await (await messageList()).findByRole("button", { name: /syllabus\.pdf/i });
+    await userEvent.click(chip);
+
+    expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(getDocumentContent)).toHaveBeenCalledWith(expect.any(String), "doc-1"));
   });
 });

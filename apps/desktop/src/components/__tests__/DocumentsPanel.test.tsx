@@ -115,15 +115,36 @@ describe("DocumentsPanel", () => {
     expect(screen.queryByText("syllabus.pdf")).not.toBeInTheDocument();
   });
 
-  it("calls onClose when the overlay is clicked", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
+  // Documents is a real page mounted in place of chat (see App.tsx's mainView), not a
+  // floating modal — no backdrop/overlay, no dialog box, no "×" close button pretending
+  // to be one. onClose is still a prop (App.tsx wires it to switching back to the chat
+  // view once "Chat about this document" hands off — see the test below), just never
+  // rendered as a close affordance here.
+  it("renders as a plain page — no modal overlay, dialog panel, or close button", async () => {
     listDocuments.mockResolvedValue([]);
-    const { container } = render(<DocumentsPanel token="tok" onClose={onClose} onChatAboutDocument={() => {}} />);
+    const { container } = render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
     await screen.findByText(/no documents yet/i);
 
-    await user.click(container.querySelector(".modal-overlay") as HTMLElement);
-    expect(onClose).toHaveBeenCalled();
+    expect(container.querySelector(".modal-overlay")).not.toBeInTheDocument();
+    expect(container.querySelector(".modal-panel")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^close$/i })).not.toBeInTheDocument();
+    expect(container.querySelector(".documents-page")).toBeInTheDocument();
+  });
+
+  it("selects the given document up front when initialSelectedDocumentId is set (an attached-document chip's navigation)", async () => {
+    listDocuments.mockResolvedValue([NOTES]);
+    getDocumentContent.mockResolvedValue({ content: "Hello from the document.", editable: true });
+    render(
+      <DocumentsPanel
+        token="tok"
+        onClose={() => {}}
+        onChatAboutDocument={() => {}}
+        initialSelectedDocumentId="1"
+      />,
+    );
+
+    await waitFor(() => expect(getDocumentContent).toHaveBeenCalledWith("tok", "1"));
+    expect(await screen.findByText("Hello from the document.")).toBeInTheDocument();
   });
 
   it("generates a study plan and shows how many items were added", async () => {
