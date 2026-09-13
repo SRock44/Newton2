@@ -41,6 +41,9 @@ function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
   const roleLabel = isUser ? "You" : message.role === "assistant" ? "Newton" : message.role;
   const time = formatTime(message.created_at);
   const { text: displayContent, imageIds } = extractAttachedImages(message.content);
+  // Only a stable identity once the message has a real created_at (i.e. it came back
+  // from history, not a reply still streaming live) — see MessageContent's persistKey.
+  const persistKey = sessionId && message.created_at ? `${sessionId}|${message.created_at}` : undefined;
 
   return (
     <div className={`message-row message-row--${isUser ? "user" : "assistant"}`}>
@@ -73,7 +76,7 @@ function MessageBubble({ message, token, sessionId }: MessageBubbleProps) {
             ))}
           </div>
         )}
-        <MessageContent content={displayContent || " "} />
+        <MessageContent content={displayContent || " "} persistKey={persistKey} />
         {message.stoppedByUser && <div className="message-stopped-note">Stopped</div>}
         {message.streaming && (
           <span className="streaming-dots" aria-label="Newton is responding">

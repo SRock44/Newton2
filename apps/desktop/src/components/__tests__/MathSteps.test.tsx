@@ -5,28 +5,65 @@ import MessageContent from "../MessageContent";
 import MathSteps from "../MathSteps";
 
 describe("MathSteps", () => {
-  it("shows only the first step initially, with a button to reveal more", () => {
+  it("shows only the first step initially, with a button describing what it will reveal next", () => {
     const json = JSON.stringify({ steps: ["First step", "Second step", "Third step"] });
     render(<MathSteps json={json} />);
 
     expect(screen.getByText("First step")).toBeInTheDocument();
     expect(screen.queryByText("Second step")).not.toBeInTheDocument();
     expect(screen.queryByText("Third step")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /show next step \(1\/3\)/i })).toBeInTheDocument();
+    // Describes what clicking will reveal (2 of 3) — not what's already shown (1 of 3),
+    // which read as "you're already on step 1/5" while sitting on the first step.
+    expect(screen.getByRole("button", { name: /show next step \(2\/3\)/i })).toBeInTheDocument();
   });
 
-  it("reveals one more step per click, and removes the button once all are shown", async () => {
+  it("reveals one more step per click, updates the button's count each time, and removes it once all are shown", async () => {
     const user = userEvent.setup();
     const json = JSON.stringify({ steps: ["First", "Second", "Third"] });
     render(<MathSteps json={json} />);
 
-    await user.click(screen.getByRole("button", { name: /show next step/i }));
+    await user.click(screen.getByRole("button", { name: /show next step \(2\/3\)/i }));
     expect(screen.getByText("Second")).toBeInTheDocument();
     expect(screen.queryByText("Third")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /show next step \(2\/3\)/i }));
+    await user.click(screen.getByRole("button", { name: /show next step \(3\/3\)/i }));
     expect(screen.getByText("Third")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /show next step/i })).not.toBeInTheDocument();
+  });
+
+  it("persists revealed progress under a given storageKey, and restores it on remount", async () => {
+    const user = userEvent.setup();
+    const json = JSON.stringify({ steps: ["First", "Second", "Third", "Fourth"] });
+    const { unmount } = render(<MathSteps json={json} storageKey="test:key:1" />);
+
+    await user.click(screen.getByRole("button", { name: /show next step \(2\/4\)/i }));
+    await user.click(screen.getByRole("button", { name: /show next step \(3\/4\)/i }));
+    expect(screen.getByText("Third")).toBeInTheDocument();
+    unmount();
+
+    // Simulates leaving this chat (unmounting the component) and coming back —
+    // the exact scenario that used to silently reset progress to step 1.
+    render(<MathSteps json={json} storageKey="test:key:1" />);
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.getByText("Second")).toBeInTheDocument();
+    expect(screen.getByText("Third")).toBeInTheDocument();
+    expect(screen.queryByText("Fourth")).not.toBeInTheDocument();
+  });
+
+  it("a different storageKey never shares progress with another block", () => {
+    window.localStorage.setItem("test:key:A", "3");
+    const json = JSON.stringify({ steps: ["1", "2", "3", "4"] });
+    render(<MathSteps json={json} storageKey="test:key:B" />);
+    // key B has no stored progress of its own — starts fresh at step 1, unaffected by A.
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.queryByText("2")).not.toBeInTheDocument();
+  });
+
+  it("with no storageKey, behaves exactly as before (in-memory only, starts at step 1)", () => {
+    const json = JSON.stringify({ steps: ["First", "Second"] });
+    render(<MathSteps json={json} />);
+    expect(screen.getByText("First")).toBeInTheDocument();
+    expect(screen.queryByText("Second")).not.toBeInTheDocument();
   });
 
   it("renders inline LaTeX within a step through the normal markdown pipeline", () => {
@@ -68,5 +105,35 @@ describe("MessageContent + math-steps code fence", () => {
     // a real code block would have a copy button and a language label; this shouldn't.
     expect(screen.queryByRole("button", { name: /^copy$/i })).not.toBeInTheDocument();
     expect(screen.queryByText("math-steps")).not.toBeInTheDocument();
+  });
+
+  it("persists reveal progress end-to-end through MessageContent's persistKey, and restores it on remount", async () => {
+    const user = userEvent.setup();
+    const content = '```math-steps\n{"steps": ["Alpha", "Beta", "Gamma"]}\n```';
+
+    const { unmount } = render(<MessageContent content={content} persistKey="s1|2026-01-01T00:00:00Z" />);
+    await user.click(screen.getByRole("button", { name: /show next step \(2\/3\)/i }));
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    unmount();
+
+    render(<MessageContent content={content} persistKey="s1|2026-01-01T00:00:00Z" />);
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    expect(screen.queryByText("Gamma")).not.toBeInTheDocument();
+  });
+
+  it("a different persistKey (a different message) never shares progress with another", async () => {
+    const user = userEvent.setup();
+    const content = '```math-steps\n{"steps": ["Alpha", "Beta", "Gamma"]}\n```';
+
+    render(<MessageContent content={content} persistKey="s2|2026-01-01T00:00:00Z" />);
+    await user.click(screen.getByRole("button", { name: /show next step \(2\/3\)/i }));
+
+    render(<MessageContent content={content} persistKey="s2|2026-01-02T00:00:00Z" />);
+    // The second render is a *different* message — must start fresh, not inherit
+    // progress from an unrelated math-steps block elsewhere.
+    const alphas = screen.getAllByText("Alpha");
+    expect(alphas.length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Gamma")).toHaveLength(0);
   });
 });

@@ -6,16 +6,23 @@ import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import CodeBlock from "./CodeBlock";
 
-const components: Components = {
-  pre: CodeBlock,
-};
-
 interface MessageContentProps {
   content: string;
+  /** A stable identity for the message this content belongs to (e.g. `sessionId|
+   * created_at`) — threaded down to CodeBlock so a math-steps block can persist how
+   * many steps have been revealed. Omit when the message has no stable identity yet
+   * (still streaming in); reveal progress just won't survive a remount until it does. */
+  persistKey?: string;
 }
 
 /** Renders markdown, GFM tables, KaTeX math, and highlighted code blocks. */
-function MessageContent({ content }: MessageContentProps) {
+function MessageContent({ content, persistKey }: MessageContentProps) {
+  // Defined inline (not module-scope) so it can close over `persistKey` — the alternative
+  // is threading it through react-markdown's AST/node props, which it doesn't support.
+  const components: Components = {
+    pre: (preProps) => <CodeBlock {...preProps} mathStepsPersistKeyPrefix={persistKey} />,
+  };
+
   return (
     <div className="message-content">
       <ReactMarkdown

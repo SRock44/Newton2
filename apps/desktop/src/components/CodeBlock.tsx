@@ -3,8 +3,15 @@ import type { ComponentPropsWithoutRef, ReactElement, ReactNode } from "react";
 import { isValidElement } from "react";
 import MathSteps from "./MathSteps";
 import PlotlyFigure from "./PlotlyFigure";
+import { hashString } from "../lib/hashString";
 
-type PreProps = ComponentPropsWithoutRef<"pre"> & { node?: unknown };
+type PreProps = ComponentPropsWithoutRef<"pre"> & {
+  node?: unknown;
+  /** From MessageContent — a stable per-message key (session + message identity) used
+   * to build a math-steps block's reveal-progress storage key. Undefined when the
+   * containing message has no stable identity yet (still streaming in). */
+  mathStepsPersistKeyPrefix?: string;
+};
 
 function extractLanguage(children: PreProps["children"]): string {
   const codeChild = Array.isArray(children) ? children[0] : children;
@@ -33,7 +40,7 @@ function extractText(node: ReactNode): string {
 /** Renders fenced code blocks with a language label and a copy-to-clipboard button —
  * except a "plotly-figure" block, which renders as an actual interactive chart, or a
  * "math-steps" block, which renders as a progressive-reveal derivation. */
-function CodeBlock({ children, node: _node, ...rest }: PreProps) {
+function CodeBlock({ children, node: _node, mathStepsPersistKeyPrefix, ...rest }: PreProps) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
   const language = extractLanguage(children);
@@ -42,7 +49,13 @@ function CodeBlock({ children, node: _node, ...rest }: PreProps) {
     return <PlotlyFigure json={extractText(children)} />;
   }
   if (language === "math-steps") {
-    return <MathSteps json={extractText(children)} />;
+    const text = extractText(children);
+    // Keyed on the block's own content too (not just the message), so two distinct
+    // math-steps blocks in one message never share a storage key.
+    const storageKey = mathStepsPersistKeyPrefix
+      ? `newton:mathsteps:${mathStepsPersistKeyPrefix}:${hashString(text)}`
+      : undefined;
+    return <MathSteps json={text} storageKey={storageKey} />;
   }
 
   async function handleCopy() {

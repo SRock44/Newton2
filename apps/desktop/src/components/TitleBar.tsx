@@ -67,8 +67,11 @@ function TitleBar({ title, variant = "main" }: TitleBarProps) {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       await getCurrentWindow().minimize();
-    } catch {
-      // No Tauri context.
+    } catch (err) {
+      // Under jsdom (no real Tauri bridge) this is expected and silent. In a real
+      // window it means something is actually broken (e.g. a missing ACL permission
+      // in src-tauri/capabilities/*.json) — log it instead of failing invisibly.
+      console.error("TitleBar: minimize failed", err);
     }
   }
 
@@ -76,8 +79,8 @@ function TitleBar({ title, variant = "main" }: TitleBarProps) {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       await getCurrentWindow().toggleMaximize();
-    } catch {
-      // No Tauri context.
+    } catch (err) {
+      console.error("TitleBar: toggleMaximize failed", err);
     }
   }
 
@@ -85,13 +88,20 @@ function TitleBar({ title, variant = "main" }: TitleBarProps) {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       await getCurrentWindow().close();
-    } catch {
-      // No Tauri context.
+    } catch (err) {
+      console.error("TitleBar: close failed", err);
     }
   }
 
   return (
-    <div className="titlebar">
+    // The drag region now covers the whole bar, not just the brand's icon+title —
+    // previously only that narrow left-hand area was draggable/double-click-to-maximize,
+    // leaving most of the bar (the empty space between the title and the buttons) dead.
+    // Safe to also mark the container even though it structurally contains the control
+    // buttons: Tauri's drag-region handling matches the *exact* element under the
+    // pointer, not any ancestor, so a mousedown that starts directly on a button (which
+    // never carries this attribute itself) is never mistaken for a drag start.
+    <div className="titlebar" data-tauri-drag-region>
       <div className="titlebar-brand" data-tauri-drag-region>
         <span className="titlebar-mark">
           <NewtonMark size={13} />

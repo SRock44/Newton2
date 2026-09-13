@@ -89,13 +89,27 @@ describe("TitleBar", () => {
     expect(screen.queryByRole("button", { name: "Maximize" })).not.toBeInTheDocument();
   });
 
-  it("puts data-tauri-drag-region only on the brand background, never on a control button", () => {
+  // The whole bar is draggable (and double-click-to-maximize, which Tauri handles for
+  // any data-tauri-drag-region element automatically) — not just the narrow brand/title
+  // area — so a real user can grab it from anywhere along the top, matching a normal OS
+  // title bar. The one invariant that must still hold: no *button itself* ever carries
+  // the attribute, since Tauri matches the exact element under the pointer, not any
+  // ancestor — a button without the attribute stays independently clickable even though
+  // its container (correctly) has it.
+  it("marks the whole bar as a drag region, but never a control button itself", async () => {
     const { container } = render(<TitleBar title="Newton" />);
+    await waitFor(() => expect(isMaximized).toHaveBeenCalled());
     const dragRegions = container.querySelectorAll("[data-tauri-drag-region]");
     expect(dragRegions.length).toBeGreaterThan(0);
     dragRegions.forEach((el) => {
       expect(el.tagName.toLowerCase()).not.toBe("button");
-      expect(el.querySelector("button")).toBeNull();
+    });
+
+    const outerBar = container.querySelector(".titlebar");
+    expect(outerBar).toHaveAttribute("data-tauri-drag-region");
+
+    screen.getAllByRole("button").forEach((button) => {
+      expect(button).not.toHaveAttribute("data-tauri-drag-region");
     });
   });
 });
