@@ -1,4 +1,5 @@
 import type {
+  BillingStatus,
   ChatMessage,
   ChatSession,
   ClassroomStatus,
@@ -6,6 +7,7 @@ import type {
   GamificationStats,
   PracticeExamDetail,
   PracticeExamSummary,
+  ProModel,
   StudyPlanItem,
   ToolInfo,
   UploadedDocument,
@@ -270,4 +272,48 @@ export async function deletePracticeExam(token: string, examId: string): Promise
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this practice exam."));
+}
+
+export async function getBillingStatus(token: string): Promise<BillingStatus> {
+  const res = await fetch(`${API_URL}/billing/status`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your plan."));
+  return (await res.json()) as BillingStatus;
+}
+
+/** A curated list of frontier models available to Pro subscribers — informational only
+ * today (see SettingsPanel), there's no endpoint yet to persist a chosen preference. */
+export async function getProModels(token: string): Promise<ProModel[]> {
+  const res = await fetch(`${API_URL}/billing/pro-models`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load the available models."));
+  return (await res.json()) as ProModel[];
+}
+
+/** Returns a Stripe Checkout URL to open in the system browser — there's no clean
+ * redirect-back to a desktop app, so the caller polls getBillingStatus() afterward
+ * (see SettingsPanel) until the plan flips to "pro". 503s when billing isn't configured
+ * server-side yet, which reads here as a plain "not available" message rather than a
+ * raw error. */
+export async function createCheckoutSession(token: string): Promise<string> {
+  const res = await fetch(`${API_URL}/billing/checkout-session`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    const fallback = res.status === 503 ? "Pro isn't available on this server yet." : "Couldn't start checkout.";
+    throw new ApiError(await detailOrFallback(res, fallback));
+  }
+  const data = await res.json();
+  return data.checkout_url as string;
+}
+
+/** Returns a Stripe-hosted billing portal URL (manage payment method, cancel) to open
+ * in the system browser — self-service, nothing to poll for afterward. */
+export async function createPortalSession(token: string): Promise<string> {
+  const res = await fetch(`${API_URL}/billing/portal-session`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't open the billing portal."));
+  const data = await res.json();
+  return data.portal_url as string;
 }

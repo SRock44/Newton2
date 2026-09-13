@@ -17,6 +17,7 @@ interface SidebarProps {
   onOpenStudyPlan: () => void;
   onOpenFlashcards: () => void;
   onOpenPracticeExams: () => void;
+  onOpenSettings: () => void;
   onOpenHelp: () => void;
 }
 
@@ -40,6 +41,7 @@ function Sidebar({
   onOpenStudyPlan,
   onOpenFlashcards,
   onOpenPracticeExams,
+  onOpenSettings,
   onOpenHelp,
 }: SidebarProps) {
   const [now, setNow] = useState(new Date());
@@ -137,6 +139,9 @@ function Sidebar({
         </button>
         <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenPracticeExams}>
           Practice exams
+        </button>
+        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenSettings}>
+          Settings
         </button>
         <div className="sidebar-user">
           <span className="sidebar-user-name">{username}</span>

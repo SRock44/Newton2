@@ -16,6 +16,7 @@ import {
 import { TokenManager, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
+import { getStudyRemindersEnabled } from "./lib/preferences";
 import type { ChatMessage, ChatSession, ConnectionStatus } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { latestMathStepsJson } from "./lib/notepadContent";
@@ -29,6 +30,7 @@ import DocumentsPanel from "./components/DocumentsPanel";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import FlashcardsPanel from "./components/FlashcardsPanel";
 import PracticeExamsPanel from "./components/PracticeExamsPanel";
+import SettingsPanel from "./components/SettingsPanel";
 import ContextPanel from "./components/ContextPanel";
 import HelpModal from "./components/HelpModal";
 import ContextMenu from "./components/ContextMenu";
@@ -85,6 +87,7 @@ function App() {
   const [showStudyPlan, setShowStudyPlan] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [showPracticeExams, setShowPracticeExams] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [snipDataUrl, setSnipDataUrl] = useState<string | null>(null);
   const [snipError, setSnipError] = useState<string | null>(null);
@@ -130,6 +133,7 @@ function App() {
     setShowStudyPlan(false);
     setShowFlashcards(false);
     setShowPracticeExams(false);
+    setShowSettings(false);
     setShowHelp(false);
     setSnipDataUrl(null);
     setSnipError(null);
@@ -236,6 +240,7 @@ function App() {
   useEffect(() => {
     if (!token || remindersCheckedRef.current) return;
     remindersCheckedRef.current = true;
+    if (!getStudyRemindersEnabled()) return;
     const DUE_SOON_DAYS = 3;
 
     (async () => {
@@ -545,6 +550,7 @@ function App() {
           onOpenStudyPlan={() => setShowStudyPlan(true)}
           onOpenFlashcards={() => setShowFlashcards(true)}
           onOpenPracticeExams={() => setShowPracticeExams(true)}
+          onOpenSettings={() => setShowSettings(true)}
           onOpenHelp={() => setShowHelp(true)}
         />
 
@@ -592,6 +598,9 @@ function App() {
       {showFlashcards && <FlashcardsPanel token={token} onClose={() => setShowFlashcards(false)} />}
       {showPracticeExams && (
         <PracticeExamsPanel token={token} onClose={() => setShowPracticeExams(false)} />
+      )}
+      {showSettings && (
+        <SettingsPanel token={token} username={username || "student"} onClose={() => setShowSettings(false)} />
       )}
       {showHelp && <HelpModal token={token} onClose={() => setShowHelp(false)} />}
 

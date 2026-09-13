@@ -981,6 +981,130 @@ textarea:focus-visible,
   gap: var(--space-3);
 }
 
+/* ---------- Settings ---------- */
+
+.settings-section {
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border-2);
+}
+
+.settings-section:first-of-type {
+  padding-top: var(--space-2);
+}
+
+.settings-section--last {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-section-title {
+  margin: 0 0 var(--space-3);
+  font-family: inherit;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-faint);
+}
+
+.settings-account-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.settings-plan {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.settings-plan-line {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.settings-plan-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.settings-waiting {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.settings-plan .progress-bar-track {
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
+.settings-models {
+  width: 100%;
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-2);
+}
+
+.settings-models-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.settings-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.settings-model-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.settings-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.settings-toggle input {
+  margin-top: 3px;
+}
+
+.settings-toggle-label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.settings-toggle-desc {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-faint);
+  margin-top: 2px;
+}
+
 /* ---------- Main pane ---------- */
 
 .main-pane {

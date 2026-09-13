@@ -92,6 +92,20 @@ export interface PracticeExamDetail extends PracticeExamSummary {
   questions: PracticeExamQuestion[];
 }
 
+export interface BillingStatus {
+  plan: "free" | "pro";
+  subscription_status: string | null;
+  current_period_end: string | null;
+  credits_used_cents: number;
+  credits_limit_cents: number;
+  credits_reset_at: string | null;
+}
+
+export interface ProModel {
+  id: string;
+  label: string;
+}
+
 export interface Flashcard {
   id: string;
   document_id: string | null;
