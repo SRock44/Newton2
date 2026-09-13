@@ -19,7 +19,7 @@ function ChatPane({ messages, loading, loadError }: ChatPaneProps) {
 
   return (
     <div className="chat-pane" ref={containerRef}>
-      {loadError && <div className="chat-pane-banner chat-pane-banner--error">{loadError}</div>}
+      {loadError && <div className="banner banner--error chat-pane-banner">{loadError}</div>}
 
       {loading && messages.length === 0 && !loadError && (
         <div className="chat-empty-state">

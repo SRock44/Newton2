@@ -127,13 +127,13 @@ function FlashcardsPanel({ token, onClose }: FlashcardsPanelProps) {
           </button>
         </div>
 
-        {error && <div className="chat-pane-banner chat-pane-banner--error">{error}</div>}
+        {error && <div className="banner banner--error">{error}</div>}
 
         {mode === "review" ? (
           queueLoading ? (
-            <p className="session-list-empty">Loading…</p>
+            <p className="empty-state-text">Loading…</p>
           ) : !current ? (
-            <p className="session-list-empty">
+            <p className="empty-state-text">
               All caught up — nothing due right now. Generate more from a document in Documents.
             </p>
           ) : (
@@ -162,25 +162,25 @@ function FlashcardsPanel({ token, onClose }: FlashcardsPanelProps) {
             </div>
           )
         ) : allLoading ? (
-          <p className="session-list-empty">Loading…</p>
+          <p className="empty-state-text">Loading…</p>
         ) : allCards.length === 0 ? (
-          <p className="session-list-empty">
+          <p className="empty-state-text">
             No flashcards yet — generate some from a document in Documents.
           </p>
         ) : (
-          <ul className="document-list">
+          <ul className="item-list">
             {allCards.map((card) => (
-              <li key={card.id} className="document-item document-item--stacked">
-                <div className="document-item-row">
+              <li key={card.id} className="item-row item-row--stacked">
+                <div className="item-row-main">
                   <div>
-                    <div className="document-item-name">{card.front}</div>
-                    <div className="document-item-date">
+                    <div className="item-title">{card.front}</div>
+                    <div className="item-meta">
                       {card.state} · due {formatDate(card.due)}
                     </div>
                   </div>
                   <button
                     type="button"
-                    className="sidebar-signout"
+                    className="btn-secondary-sm btn-secondary-sm--danger"
                     onClick={() => handleDeleteFromBrowse(card.id)}
                     aria-label={`Delete flashcard: ${card.front}`}
                   >

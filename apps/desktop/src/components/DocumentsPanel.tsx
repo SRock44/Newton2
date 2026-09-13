@@ -146,7 +146,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
           reference them by name.
         </p>
 
-        {error && <div className="chat-pane-banner chat-pane-banner--error">{error}</div>}
+        {error && <div className="banner banner--error">{error}</div>}
 
         <input
           ref={fileInputRef}
@@ -158,7 +158,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
         />
         <button
           type="button"
-          className="new-chat-btn"
+          className="btn-primary"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
         >
@@ -166,22 +166,22 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
         </button>
 
         {loading ? (
-          <p className="session-list-empty">Loading…</p>
+          <p className="empty-state-text">Loading…</p>
         ) : documents.length === 0 ? (
-          <p className="session-list-empty">No documents yet.</p>
+          <p className="empty-state-text">No documents yet — upload one to get started.</p>
         ) : (
-          <ul className="document-list">
+          <ul className="item-list">
             {documents.map((doc) => (
-              <li key={doc.id} className="document-item document-item--stacked">
-                <div className="document-item-row">
+              <li key={doc.id} className="item-row item-row--stacked">
+                <div className="item-row-main">
                   <div>
-                    <div className="document-item-name">{doc.filename}</div>
-                    <div className="document-item-date">{formatDate(doc.created_at)}</div>
+                    <div className="item-title">{doc.filename}</div>
+                    <div className="item-meta">{formatDate(doc.created_at)}</div>
                   </div>
-                  <div className="document-item-actions">
+                  <div className="item-actions">
                     <button
                       type="button"
-                      className="sidebar-signout"
+                      className="btn-secondary-sm"
                       onClick={() => handleGeneratePlan(doc)}
                       disabled={planStatusByDoc[doc.id] === "Reading…"}
                     >
@@ -189,7 +189,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                     </button>
                     <button
                       type="button"
-                      className="sidebar-signout"
+                      className="btn-secondary-sm"
                       onClick={() => handleGenerateFlashcards(doc)}
                       disabled={cardStatusByDoc[doc.id] === "Reading…"}
                     >
@@ -197,7 +197,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                     </button>
                     <button
                       type="button"
-                      className="sidebar-signout"
+                      className="btn-secondary-sm"
                       onClick={() => handleGenerateExam(doc)}
                       disabled={examStatusByDoc[doc.id] === "Writing…"}
                     >
@@ -205,7 +205,7 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                     </button>
                     <button
                       type="button"
-                      className="sidebar-signout"
+                      className="btn-secondary-sm btn-secondary-sm--danger"
                       onClick={() => handleDelete(doc.id)}
                       aria-label={`Delete ${doc.filename}`}
                     >
@@ -214,13 +214,13 @@ function DocumentsPanel({ token, onClose }: DocumentsPanelProps) {
                   </div>
                 </div>
                 {planStatusByDoc[doc.id] && (
-                  <div className="document-item-plan-status">{planStatusByDoc[doc.id]}</div>
+                  <div className="item-status">{planStatusByDoc[doc.id]}</div>
                 )}
                 {cardStatusByDoc[doc.id] && (
-                  <div className="document-item-plan-status">{cardStatusByDoc[doc.id]}</div>
+                  <div className="item-status">{cardStatusByDoc[doc.id]}</div>
                 )}
                 {examStatusByDoc[doc.id] && (
-                  <div className="document-item-plan-status">{examStatusByDoc[doc.id]}</div>
+                  <div className="item-status">{examStatusByDoc[doc.id]}</div>
                 )}
               </li>
             ))}

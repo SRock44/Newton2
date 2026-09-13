@@ -181,48 +181,48 @@ function StudyPlanPanel({ token, onClose }: StudyPlanPanelProps) {
                 Google Classroom connected{classroom.google_email ? ` (${classroom.google_email})` : ""}
               </div>
               <div className="classroom-connect-actions">
-                <button type="button" className="sidebar-nav-more--active" onClick={handleSyncClassroom} disabled={syncing}>
+                <button type="button" className="btn-secondary" onClick={handleSyncClassroom} disabled={syncing}>
                   {syncing ? "Syncing…" : "Sync now"}
                 </button>
-                <button type="button" className="sidebar-signout" onClick={handleDisconnectClassroom}>
+                <button type="button" className="btn-secondary-sm" onClick={handleDisconnectClassroom}>
                   Disconnect
                 </button>
               </div>
             </>
           ) : (
-            <button type="button" className="sidebar-nav-more--active" onClick={handleConnectClassroom} disabled={connecting}>
+            <button type="button" className="btn-secondary" onClick={handleConnectClassroom} disabled={connecting}>
               {connecting ? "Waiting for Google sign-in…" : "Connect Google Classroom"}
             </button>
           )}
         </div>
 
-        {error && <div className="chat-pane-banner chat-pane-banner--error">{error}</div>}
+        {error && <div className="banner banner--error">{error}</div>}
 
         {loading ? (
-          <p className="session-list-empty">Loading…</p>
+          <p className="empty-state-text">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="session-list-empty">
+          <p className="empty-state-text">
             No study plan items yet — upload a syllabus in Documents and generate one.
           </p>
         ) : (
-          <ul className="document-list">
+          <ul className="item-list">
             {items.map((item) => (
-              <li key={item.id} className="document-item document-item--stacked">
-                <div className="document-item-row">
+              <li key={item.id} className="item-row item-row--stacked">
+                <div className="item-row-main">
                   <div>
-                    <div className="document-item-name">{item.title}</div>
-                    <div className="document-item-date">{formatDueDate(item)}</div>
+                    <div className="item-title">{item.title}</div>
+                    <div className="item-meta">{formatDueDate(item)}</div>
                   </div>
                   <button
                     type="button"
-                    className="sidebar-signout"
+                    className="btn-secondary-sm"
                     onClick={() => handleDelete(item.id)}
                     aria-label={`Remove ${item.title}`}
                   >
                     Remove
                   </button>
                 </div>
-                {item.notes && <div className="document-item-plan-status">{item.notes}</div>}
+                {item.notes && <div className="item-status">{item.notes}</div>}
               </li>
             ))}
           </ul>

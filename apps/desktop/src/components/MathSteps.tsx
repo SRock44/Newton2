@@ -37,14 +37,14 @@ function MathSteps({ json }: MathStepsProps) {
     <div className="math-steps">
       {steps.slice(0, visibleCount).map((step, i) => (
         <div key={i} className="math-steps__step fade-up">
-          <div className="math-steps__step-number">Step {i + 1}</div>
+          <div className="math-steps__step-number eyebrow">Step {i + 1}</div>
           <MessageContent content={step} />
         </div>
       ))}
       {hasMore && (
         <button
           type="button"
-          className="math-steps__reveal"
+          className="btn-primary math-steps__reveal"
           onClick={() => setRevealed((r) => Math.min(r + 1, steps.length))}
         >
           Show next step ({visibleCount}/{steps.length})

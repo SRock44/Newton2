@@ -125,12 +125,12 @@ function ScreenSnipModal({ dataUrl, onCancel, onCapture }: ScreenSnipModalProps)
         </div>
 
         <div className="screen-snip__actions">
-          <button type="button" className="screen-snip__cancel" onClick={onCancel}>
+          <button type="button" className="btn-secondary" onClick={onCancel}>
             Cancel
           </button>
           <button
             type="button"
-            className="screen-snip__send"
+            className="btn-primary"
             onClick={handleSend}
             disabled={!hasValidSelection || capturing}
           >

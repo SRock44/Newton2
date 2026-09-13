@@ -116,7 +116,7 @@ function Composer({ onSend, disabled, placeholder, token, sessionId }: ComposerP
         />
         <button
           type="button"
-          className="composer-send"
+          className="btn-primary composer-send"
           onClick={handleSend}
           disabled={disabled || (!draft.trim() && !attachedImage)}
           aria-label="Send message"

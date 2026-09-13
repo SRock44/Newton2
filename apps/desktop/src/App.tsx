@@ -461,7 +461,7 @@ function App() {
           <span className={`live-dot live-dot--${wsStatus}`} title={`Connection: ${wsStatus}`} />
         </header>
 
-        {sessionsError && <div className="chat-pane-banner chat-pane-banner--error">{sessionsError}</div>}
+        {sessionsError && <div className="banner banner--error chat-pane-banner">{sessionsError}</div>}
 
         {sessionsLoading && sessions.length === 0 ? (
           <div className="chat-empty-state">
@@ -497,7 +497,7 @@ function App() {
         />
       )}
       {snipError && (
-        <div className="chat-pane-banner chat-pane-banner--error snip-error-toast">
+        <div className="banner banner--error snip-error-toast">
           {snipError}
           <button type="button" onClick={() => setSnipError(null)} aria-label="Dismiss">
             ×

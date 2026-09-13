@@ -4,6 +4,13 @@ import "@fontsource/inter/300.css";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+// A reading serif, used sparingly for headings/titles only (see App.css's --font-serif) —
+// pairs with Inter body text to give the app an "educational/editorial" feel rather than
+// a generic all-sans SaaS look, without sacrificing body-text legibility during long
+// study sessions.
+import "@fontsource/source-serif-4/600.css";
+import "@fontsource/source-serif-4/700.css";
 import "./App.css";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";

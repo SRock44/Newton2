@@ -79,12 +79,12 @@ function Sidebar({
       </div>
 
       <div className="sidebar-nav">
-        <button type="button" className="new-chat-btn" onClick={onNewChat} disabled={creatingChat}>
+        <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
           <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
         </button>
 
         <nav className="session-list" aria-label="Chat sessions">
-          {sessions.length === 0 && <p className="session-list-empty">No chats yet.</p>}
+          {sessions.length === 0 && <p className="empty-state-text">No chats yet.</p>}
           {sessions.map((session, i) => {
             const isActive = session.id === activeSessionId;
             return (
@@ -139,7 +139,7 @@ function Sidebar({
         </button>
         <div className="sidebar-user">
           <span className="sidebar-user-name">{username}</span>
-          <button type="button" className="sidebar-signout" onClick={onSignOut}>
+          <button type="button" className="btn-secondary-sm" onClick={onSignOut}>
             Sign out
           </button>
         </div>

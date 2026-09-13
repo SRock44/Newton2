@@ -110,29 +110,29 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
           )}
         </div>
 
-        {error && <div className="chat-pane-banner chat-pane-banner--error">{error}</div>}
+        {error && <div className="banner banner--error">{error}</div>}
 
         {!active ? (
           loading ? (
-            <p className="session-list-empty">Loading…</p>
+            <p className="empty-state-text">Loading…</p>
           ) : exams.length === 0 ? (
-            <p className="session-list-empty">
+            <p className="empty-state-text">
               No practice exams yet — generate one from a document in Documents.
             </p>
           ) : (
-            <ul className="document-list">
+            <ul className="item-list">
               {exams.map((exam) => (
-                <li key={exam.id} className="document-item document-item--stacked">
-                  <div className="document-item-row">
+                <li key={exam.id} className="item-row item-row--stacked">
+                  <div className="item-row-main">
                     <button type="button" className="exam-list-title" onClick={() => openExam(exam.id)}>
-                      <div className="document-item-name">{exam.title}</div>
-                      <div className="document-item-date">
+                      <div className="item-title">{exam.title}</div>
+                      <div className="item-meta">
                         {exam.difficulty} · {scoreLabel(exam)} · {formatDate(exam.created_at)}
                       </div>
                     </button>
                     <button
                       type="button"
-                      className="sidebar-signout"
+                      className="btn-secondary-sm btn-secondary-sm--danger"
                       onClick={() => handleDelete(exam.id)}
                       aria-label={`Delete exam: ${exam.title}`}
                     >
@@ -144,11 +144,17 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
             </ul>
           )
         ) : activeLoading ? (
-          <p className="session-list-empty">Loading…</p>
+          <p className="empty-state-text">Loading…</p>
         ) : (
           <div className="exam-taking">
             {isComplete && (
-              <div className="exam-score-banner">Score: {Math.round((active.score ?? 0) * 100)}%</div>
+              <div
+                className={`exam-score-banner ${
+                  (active.score ?? 0) >= 0.7 ? "exam-score-banner--good" : "exam-score-banner--needs-review"
+                }`}
+              >
+                Score: {Math.round((active.score ?? 0) * 100)}%
+              </div>
             )}
             {active.questions.map((q, i) => (
               <div key={q.id} className="exam-question">
@@ -185,7 +191,7 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
             ))}
 
             {!isComplete && (
-              <button type="button" className="new-chat-btn" onClick={handleSubmit} disabled={submitting}>
+              <button type="button" className="btn-primary" onClick={handleSubmit} disabled={submitting}>
                 {submitting ? "Submitting…" : "Submit answers"}
               </button>
             )}

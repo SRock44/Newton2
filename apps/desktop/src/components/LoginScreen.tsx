@@ -36,7 +36,7 @@ function LoginScreen({ onSuccess }: LoginScreenProps) {
         </div>
         <p className="login-tagline">Your agentic learning environment.</p>
 
-        <button type="button" className="login-submit" onClick={handleSignIn} disabled={signingIn}>
+        <button type="button" className="btn-primary login-submit" onClick={handleSignIn} disabled={signingIn}>
           {signingIn ? "Opening browser…" : "Sign in"}
         </button>
         <p className="login-hint">
@@ -45,7 +45,7 @@ function LoginScreen({ onSuccess }: LoginScreenProps) {
         </p>
 
         {error && (
-          <div className="login-error" role="alert">
+          <div className="banner banner--error" role="alert">
             {error}
           </div>
         )}
