@@ -4,6 +4,7 @@ from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
 from app.tools.citation import CitationFormatterTool
+from app.tools.classroom_sync import ClassroomSyncTool
 from app.tools.code_interpreter import CodeInterpreterTool
 from app.tools.flashcard_generation import FlashcardGenerationTool
 from app.tools.grammar_check import GrammarCheckTool
@@ -37,6 +38,7 @@ _TOOLS: dict[str, Tool] = {
         FlashcardGenerationTool(),
         PracticeExamGenerationTool(),
         StudyPlanGenerationTool(),
+        ClassroomSyncTool(),
     ]
 }
 

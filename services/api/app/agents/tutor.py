@@ -66,6 +66,7 @@ _TOOL_LABELS: dict[str, str] = {
     "generate_flashcards": "Building your flashcards",
     "generate_practice_exam": "Building a practice exam",
     "generate_study_plan": "Building your study plan",
+    "sync_google_classroom": "Syncing Google Classroom",
 }
 
 

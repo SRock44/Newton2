@@ -30,6 +30,7 @@ def test_all_expected_tools_are_registered():
         "generate_flashcards",
         "generate_practice_exam",
         "generate_study_plan",
+        "sync_google_classroom",
     }
 
 
