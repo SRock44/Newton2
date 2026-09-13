@@ -113,6 +113,12 @@ function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const lastSyncedNotepadJson = useRef<string | null>(null);
   const remindersCheckedRef = useRef(false);
+  // A session id we just created client-side (see createNewSession) — its history is
+  // known to be empty, so the message-history effect below should skip fetching it
+  // rather than race a pending optimistic send (e.g. handleChatAboutDocument's opener):
+  // the GET can resolve *after* the send and overwrite `messages` with the stale-empty
+  // history it captured before the send landed, silently wiping the just-sent message.
+  const skipNextHistoryFetchRef = useRef<string | null>(null);
 
   const rememberFirstMessage = useCallback((sessionId: string, content: string) => {
     setFirstMessageBySession((prev) => (prev[sessionId] ? prev : { ...prev, [sessionId]: content }));
@@ -319,6 +325,18 @@ function App() {
   useEffect(() => {
     if (!token || !activeSessionId) {
       setMessages([]);
+      return;
+    }
+    // A session we just created client-side (createNewSession) is known to have zero
+    // messages — skip the fetch entirely rather than let it race a pending optimistic
+    // send (e.g. "Chat about this document"'s opener) and silently overwrite it with
+    // the stale-empty history the GET captured before that send landed.
+    if (skipNextHistoryFetchRef.current === activeSessionId) {
+      skipNextHistoryFetchRef.current = null;
+      setMessages([]);
+      setMessagesLoading(false);
+      setMessagesError(null);
+      setIsStreaming(false);
       return;
     }
     let cancelled = false;
@@ -541,6 +559,7 @@ function App() {
         status: "active",
         created_at: new Date().toISOString(),
       };
+      skipNextHistoryFetchRef.current = id;
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(id);
       return id;

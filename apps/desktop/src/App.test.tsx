@@ -77,7 +77,15 @@ vi.mock("./auth", async () => {
   };
 });
 
-import { deleteSession, getDocumentContent, listDocuments, listFlashcards, listStudyPlan, openChatSocket } from "./api";
+import {
+  deleteSession,
+  getDocumentContent,
+  getMessages,
+  listDocuments,
+  listFlashcards,
+  listStudyPlan,
+  openChatSocket,
+} from "./api";
 import { notifyStudyReminders } from "./notifications";
 import { signInWithBrowser } from "./auth";
 
@@ -476,5 +484,57 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
     await waitFor(() => expect(vi.mocked(getDocumentContent)).toHaveBeenCalledWith(expect.any(String), "doc-1"));
+  });
+
+  // Regression test for the reported bug: "Chat about this document" from the
+  // Documents page produced no visible indicator in the chat at all. Root cause: the
+  // message-history-load effect (keyed on activeSessionId) races the pending opener
+  // send — if its GET resolves *after* the send, it overwrites `messages` with the
+  // stale-empty history it captured before the send landed. This test deliberately
+  // forces that exact worst-case ordering (resolve the GET only after the send has
+  // already happened) to prove the fix, not just the lucky-timing happy path.
+  it("'Chat about this document' survives even if the history fetch resolves after the send", async () => {
+    vi.mocked(listDocuments).mockResolvedValueOnce([
+      { id: "doc-42", filename: "resume (4).pdf", mime_type: "application/pdf", created_at: new Date().toISOString() },
+    ]);
+    let resolveHistory: (() => void) | undefined;
+    vi.mocked(getMessages).mockImplementation((_token: string, sessionId: string) => {
+      if (sessionId === "new-session-id") {
+        return new Promise((resolve) => {
+          resolveHistory = () => resolve([]);
+        });
+      }
+      return Promise.resolve(messagesBySession[sessionId] ?? []);
+    });
+
+    const user = await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await user.click(screen.getByRole("button", { name: "Documents" }));
+    await user.click(await screen.findByRole("button", { name: /resume \(4\)\.pdf/i }));
+    await user.click(await screen.findByRole("button", { name: /chat about this document/i }));
+
+    // The new session's socket needs to report open before the queued opener sends —
+    // same as real usage, where the message waits for the WS handshake to finish.
+    const openResults = vi.mocked(openChatSocket).mock.results;
+    const newSocket = openResults[openResults.length - 1]!.value as {
+      onopen: (() => void) | null;
+    };
+    act(() => {
+      newSocket.onopen?.();
+    });
+
+    const list = await messageList();
+    expect(await list.findByRole("button", { name: /resume \(4\)\.pdf/i })).toBeInTheDocument();
+    expect(list.queryByText(/\[Attached document:/)).not.toBeInTheDocument();
+
+    // Now let the in-flight history fetch resolve, *after* the message already sent —
+    // the exact race. The chip (and the message) must still be there afterward.
+    await act(async () => {
+      resolveHistory?.();
+      await Promise.resolve();
+    });
+
+    expect(await list.findByRole("button", { name: /resume \(4\)\.pdf/i })).toBeInTheDocument();
   });
 });
