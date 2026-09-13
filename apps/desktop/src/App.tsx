@@ -29,9 +29,16 @@ import DocumentsPanel from "./components/DocumentsPanel";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import FlashcardsPanel from "./components/FlashcardsPanel";
 import PracticeExamsPanel from "./components/PracticeExamsPanel";
-import CapabilitiesPanel from "./components/CapabilitiesPanel";
+import ContextPanel from "./components/ContextPanel";
+import HelpModal from "./components/HelpModal";
 import ContextMenu from "./components/ContextMenu";
 import ScreenSnipModal from "./components/ScreenSnipModal";
+
+const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
+  open: "connected",
+  connecting: "connecting…",
+  closed: "offline",
+};
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -78,6 +85,7 @@ function App() {
   const [showStudyPlan, setShowStudyPlan] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [showPracticeExams, setShowPracticeExams] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [snipDataUrl, setSnipDataUrl] = useState<string | null>(null);
   const [snipError, setSnipError] = useState<string | null>(null);
 
@@ -122,6 +130,7 @@ function App() {
     setShowStudyPlan(false);
     setShowFlashcards(false);
     setShowPracticeExams(false);
+    setShowHelp(false);
     setSnipDataUrl(null);
     setSnipError(null);
     remindersCheckedRef.current = false;
@@ -536,13 +545,16 @@ function App() {
           onOpenStudyPlan={() => setShowStudyPlan(true)}
           onOpenFlashcards={() => setShowFlashcards(true)}
           onOpenPracticeExams={() => setShowPracticeExams(true)}
-          connectionStatus={wsStatus}
+          onOpenHelp={() => setShowHelp(true)}
         />
 
         <main className="main-pane">
           <header className="main-header">
             <h1 className="main-header-title">{headerTitle}</h1>
-            <span className={`live-dot live-dot--${wsStatus}`} title={`Connection: ${wsStatus}`} />
+            <span className="main-header-status" title={`Connection: ${wsStatus}`}>
+              <span className={`live-dot live-dot--${wsStatus}`} aria-hidden="true" />
+              {CONNECTION_LABEL[wsStatus]}
+            </span>
           </header>
 
           {sessionsError && <div className="banner banner--error chat-pane-banner">{sessionsError}</div>}
@@ -572,12 +584,7 @@ function App() {
           )}
         </main>
 
-        <CapabilitiesPanel
-          token={token}
-          connectionStatus={wsStatus}
-          sessionCount={sessions.length}
-          messageCount={messages.length}
-        />
+        <ContextPanel token={token} sessionCount={sessions.length} messageCount={messages.length} />
       </div>
 
       {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
@@ -586,6 +593,7 @@ function App() {
       {showPracticeExams && (
         <PracticeExamsPanel token={token} onClose={() => setShowPracticeExams(false)} />
       )}
+      {showHelp && <HelpModal token={token} onClose={() => setShowHelp(false)} />}
 
       <ContextMenu onDeleteSession={handleDeleteSession} />
 

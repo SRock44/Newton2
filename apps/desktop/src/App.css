@@ -569,12 +569,29 @@ textarea:focus-visible,
   letter-spacing: -0.01em;
 }
 
-.sidebar-status {
+.sidebar-help-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  font-size: var(--font-size-xs);
+  justify-content: center;
+  border: 1px solid var(--color-border-2);
+  border-radius: 50%;
+  background: transparent;
   color: var(--color-text-faint);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-help-btn:hover,
+.sidebar-help-btn:focus-visible {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-border);
 }
 
 .sidebar-clock {
@@ -796,6 +813,10 @@ textarea:focus-visible,
   border-bottom: 1px solid var(--color-border-2);
 }
 
+.right-panel .panel-section:last-child {
+  border-bottom: none;
+}
+
 .panel-section-title {
   font-size: var(--font-size-2xs);
   font-weight: var(--font-weight-semibold);
@@ -990,6 +1011,19 @@ textarea:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The one place connection status is shown — see the "Redundant connection-status
+   indicator" audit note: this used to render identically in the sidebar, the right
+   panel, and here, all driven by the same wsStatus value. Right beside the chat title
+   is where a dropped connection actually matters to what the user's doing. */
+.main-header-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-faint);
+  flex-shrink: 0;
 }
 
 /* ---------- Chat pane ---------- */
@@ -2089,7 +2123,7 @@ textarea:focus-visible,
 
 /* ---------- Responsive ----------
  * The window is freely resizable. The two flanking panels (Sidebar,
- * CapabilitiesPanel) are supplementary to the chat itself, so they're what
+ * ContextPanel) are supplementary to the chat itself, so they're what
  * gives way first as the window narrows — the core chat/compose experience
  * always keeps its room. */
 

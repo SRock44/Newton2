@@ -381,6 +381,30 @@ describe("App", () => {
     await waitFor(() => expect(vi.mocked(notifyStudyReminders)).toHaveBeenCalledWith(0, 0));
   });
 
+  // Regression test for the "tacky and redundant" triple connection dot: Sidebar,
+  // the right-hand context panel, and the main chat header all used to render their
+  // own copy of the same wsStatus-driven dot. Now there's exactly one, in the header.
+  it("shows the connection status exactly once, in the main chat header", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    const dots = document.querySelectorAll(".live-dot");
+    expect(dots).toHaveLength(1);
+    expect(dots[0]!.closest(".main-header")).not.toBeNull();
+  });
+
+  // Regression test for the capabilities list no longer squatting on permanent
+  // screen space: it's reference material now reachable via the sidebar's "?".
+  it("keeps the tool/capabilities list out of the always-visible layout, behind the sidebar's help button", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    expect(screen.queryByText("What Newton can do")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "What Newton can do" }));
+    expect(await screen.findByRole("heading", { name: "What Newton can do" })).toBeInTheDocument();
+  });
+
   it("opens the Flashcards panel when the system tray's quick action fires", async () => {
     await signIn();
     await (await messageList()).findByText("Hello from s1");

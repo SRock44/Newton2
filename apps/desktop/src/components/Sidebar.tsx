@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ChatSession, ConnectionStatus } from "../types";
+import type { ChatSession } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
 import NewtonMark from "./NewtonMark";
 
@@ -17,14 +17,8 @@ interface SidebarProps {
   onOpenStudyPlan: () => void;
   onOpenFlashcards: () => void;
   onOpenPracticeExams: () => void;
-  connectionStatus: ConnectionStatus;
+  onOpenHelp: () => void;
 }
-
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  open: "connected",
-  connecting: "connecting…",
-  closed: "offline",
-};
 
 function formatSessionDate(iso: string): string {
   const date = new Date(iso);
@@ -46,7 +40,7 @@ function Sidebar({
   onOpenStudyPlan,
   onOpenFlashcards,
   onOpenPracticeExams,
-  connectionStatus,
+  onOpenHelp,
 }: SidebarProps) {
   const [now, setNow] = useState(new Date());
 
@@ -64,10 +58,15 @@ function Sidebar({
           </span>
           <span className="sidebar-brand-name">Newton</span>
         </div>
-        <span className="sidebar-status">
-          <span className={`live-dot live-dot--${connectionStatus}`} aria-hidden="true" />
-          {STATUS_LABEL[connectionStatus]}
-        </span>
+        <button
+          type="button"
+          className="sidebar-help-btn"
+          onClick={onOpenHelp}
+          aria-label="What Newton can do"
+          title="What Newton can do"
+        >
+          ?
+        </button>
       </div>
 
       <div className="sidebar-clock">
