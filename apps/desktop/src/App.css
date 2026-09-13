@@ -1582,6 +1582,22 @@ textarea:focus-visible,
   padding: var(--space-6);
 }
 
+.bootstrap-mark {
+  display: flex;
+  color: var(--color-accent);
+  animation: bootstrap-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bootstrap-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .login-card {
   width: 100%;
   max-width: 380px;

@@ -48,7 +48,8 @@
       "requiredActions": [],
       "credentials": [
         { "type": "password", "value": "newton-dev", "temporary": false }
-      ]
+      ],
+      "realmRoles": ["default-roles-newton"]
     }
   ]
 }

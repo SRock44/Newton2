@@ -22,6 +22,42 @@ const REDIRECT_URI = `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/callback`;
 // against the token dying mid-request.
 const EXPIRY_BUFFER_MS = 30_000;
 
+// Persisted so a student doesn't have to sign in every time they open the app. Only the
+// refresh token actually matters for that (the access token is short-lived and gets
+// replaced within seconds of restoring a session anyway) — storing the whole set is
+// just convenient. Requires the `offline_access` scope below: a *plain* refresh token
+// is tied to the SSO session (Keycloak's default idle timeout is short, ~30 min), so it
+// would already be dead by the time someone reopens the app later — an offline token is
+// what's actually designed to keep working across real gaps between sessions.
+const TOKENS_STORAGE_KEY = "newton:auth:tokens";
+
+function loadStoredTokens(): TokenSet | null {
+  try {
+    const raw = window.localStorage.getItem(TOKENS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed?.accessToken === "string" &&
+      typeof parsed?.refreshToken === "string" &&
+      typeof parsed?.expiresAt === "number"
+    ) {
+      return parsed as TokenSet;
+    }
+  } catch {
+    // Corrupt or unavailable storage — treat it the same as no stored session.
+  }
+  return null;
+}
+
+function storeTokens(tokens: TokenSet | null): void {
+  try {
+    if (tokens) window.localStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify(tokens));
+    else window.localStorage.removeItem(TOKENS_STORAGE_KEY);
+  } catch {
+    // Best-effort only — worst case, the user just has to sign in again next launch.
+  }
+}
+
 function base64UrlEncode(bytes: Uint8Array): string {
   let str = "";
   for (const b of bytes) str += String.fromCharCode(b);
@@ -98,7 +134,9 @@ export async function signInWithBrowser(): Promise<TokenSet> {
   authUrl.searchParams.set("client_id", "newton-api");
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
-  authUrl.searchParams.set("scope", "openid");
+  // offline_access is what makes "stay signed in" actually work — see the comment on
+  // TOKENS_STORAGE_KEY above.
+  authUrl.searchParams.set("scope", "openid offline_access");
   authUrl.searchParams.set("code_challenge", challenge);
   authUrl.searchParams.set("code_challenge_method", "S256");
   authUrl.searchParams.set("state", state);
@@ -151,17 +189,42 @@ export class TokenManager {
 
   setTokens(tokens: TokenSet): void {
     this.tokens = tokens;
+    storeTokens(tokens);
     this.onChange(tokens.accessToken);
   }
 
   clear(): void {
     this.tokens = null;
     this.refreshing = null;
+    storeTokens(null);
     this.onChange(null);
   }
 
   hasSession(): boolean {
     return this.tokens !== null;
+  }
+
+  /** Call once, on app launch, before showing the login screen — tries to silently
+   * resume a session from tokens persisted locally by a previous run (see
+   * TOKENS_STORAGE_KEY). Returns true if a session was actually restored (onChange has
+   * already fired, exactly as if setTokens had just been called), false if there was
+   * nothing stored or it turned out to be stale (revoked, or past the offline session's
+   * own — much longer — max lifespan): the caller should fall back to the login screen. */
+  async tryRestoreSession(): Promise<boolean> {
+    const stored = loadStoredTokens();
+    if (!stored) return false;
+    this.tokens = stored;
+    try {
+      // Always refresh immediately on launch rather than trusting the stored
+      // expiresAt: the access token is virtually always already expired by the time
+      // the app is reopened, and this doubles as the actual validity check for the
+      // stored refresh token itself.
+      await this._refreshNow();
+      return true;
+    } catch {
+      this.clear();
+      return false;
+    }
   }
 
   /** Always returns a token valid for at least EXPIRY_BUFFER_MS — callers about to open

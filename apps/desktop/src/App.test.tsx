@@ -95,6 +95,11 @@ describe("App", () => {
     vi.mocked(listFlashcards).mockClear();
     vi.mocked(listStudyPlan).mockClear();
     vi.mocked(notifyStudyReminders).mockClear();
+    // Every render now calls the real TokenManager.tryRestoreSession() on mount (see
+    // App.tsx's bootstrap effect), which reads real localStorage — clear it so one
+    // test's sign-in never leaks a stale session into the next, which would otherwise
+    // trigger a real (unmocked) network refresh attempt at the start of an unrelated test.
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -131,6 +136,67 @@ describe("App", () => {
     );
     // The stale token must never reach a socket connection.
     expect(vi.mocked(openChatSocket)).not.toHaveBeenCalledWith("stale-access-token", expect.any(String));
+  });
+
+  // The actual "stay signed in" feature: a previous run's persisted tokens should let
+  // the app resume straight into the signed-in view on launch, with no click required.
+  it("silently restores a signed-in session on launch from persisted tokens", async () => {
+    window.localStorage.setItem(
+      "newton:auth:tokens",
+      JSON.stringify({ accessToken: "old-access", refreshToken: "persisted-refresh", expiresAt: 0 }),
+    );
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "restored-access-token",
+        refresh_token: "rotated-refresh-token",
+        expires_in: 3600,
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    // Never shown — the session resumes silently, no "Sign in" click needed.
+    expect(screen.queryByRole("button", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(await (await messageList()).findByText("Hello from s1")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/protocol/openid-connect/token"),
+      expect.objectContaining({ body: expect.any(URLSearchParams) }),
+    );
+    await waitFor(() =>
+      expect(vi.mocked(openChatSocket)).toHaveBeenCalledWith("restored-access-token", expect.any(String)),
+    );
+    // The rotated refresh token must be what's now persisted, not the original one —
+    // Keycloak invalidates the old one once a new one's been issued.
+    const stored = JSON.parse(window.localStorage.getItem("newton:auth:tokens") ?? "{}");
+    expect(stored.refreshToken).toBe("rotated-refresh-token");
+  });
+
+  it("falls back to the login screen, and clears the bad entry, when a persisted session can't be restored", async () => {
+    window.localStorage.setItem(
+      "newton:auth:tokens",
+      JSON.stringify({ accessToken: "old-access", refreshToken: "revoked-refresh", expiresAt: 0 }),
+    );
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false })));
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
+    expect(window.localStorage.getItem("newton:auth:tokens")).toBeNull();
+  });
+
+  it("with nothing persisted, goes straight to the login screen (no restore attempt)", async () => {
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("signing out clears the persisted session so the next launch doesn't silently resume it", async () => {
+    const user = await signIn();
+    expect(window.localStorage.getItem("newton:auth:tokens")).not.toBeNull();
+
+    await user.click(screen.getByText("Sign out"));
+    expect(window.localStorage.getItem("newton:auth:tokens")).toBeNull();
   });
 
   it("loads the active session's history and switches sessions from the sidebar", async () => {

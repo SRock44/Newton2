@@ -21,6 +21,7 @@ import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { latestMathStepsJson } from "./lib/notepadContent";
 import LoginScreen from "./components/LoginScreen";
 import TitleBar from "./components/TitleBar";
+import NewtonMark from "./components/NewtonMark";
 import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
@@ -36,10 +37,29 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
+function usernameFromAccessToken(accessToken: string): string {
+  const claims = decodeJwtPayload(accessToken);
+  return (claims.preferred_username as string) || (claims.email as string) || (claims.name as string) || "";
+}
+
 function App() {
   const [token, setToken] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
-  const [tokenManager] = useState(() => new TokenManager(setToken));
+  // One handler for every path that lands a token — a fresh sign-in, a launch-time
+  // session restore, or an ordinary background refresh — so username is always derived
+  // consistently instead of each caller re-deriving it (or, worse, forgetting to).
+  const [tokenManager] = useState(
+    () =>
+      new TokenManager((accessToken) => {
+        setToken(accessToken);
+        setUsername(accessToken ? usernameFromAccessToken(accessToken) : "");
+      }),
+  );
+  // True only for the brief moment on launch where we're checking whether a
+  // previously signed-in session can be silently resumed (see auth.ts's
+  // tryRestoreSession) — avoids flashing the login screen for someone who's actually
+  // already signed in.
+  const [bootstrapping, setBootstrapping] = useState(true);
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -71,10 +91,21 @@ function App() {
 
   function handleLoginSuccess(tokens: TokenSet) {
     tokenManager.setTokens(tokens);
-    const claims = decodeJwtPayload(tokens.accessToken);
-    const name = (claims.preferred_username as string) || (claims.email as string) || (claims.name as string) || "";
-    setUsername(name);
   }
+
+  // Runs once, before rendering the login screen: try to silently resume whatever
+  // session a previous run of the app persisted (see auth.ts) so signing in isn't
+  // required every single time the app is opened.
+  useEffect(() => {
+    let cancelled = false;
+    tokenManager.tryRestoreSession().finally(() => {
+      if (!cancelled) setBootstrapping(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleSignOut() {
     wsRef.current?.close();
@@ -457,6 +488,19 @@ function App() {
     if (activeSessionId === sessionId) {
       setActiveSessionId(remaining[0]?.id ?? null);
     }
+  }
+
+  if (bootstrapping) {
+    return (
+      <div className="app-root">
+        <TitleBar title="Newton" />
+        <div className="login-screen">
+          <span className="bootstrap-mark" aria-label="Signing you in…">
+            <NewtonMark size={26} />
+          </span>
+        </div>
+      </div>
+    );
   }
 
   if (!token) {
