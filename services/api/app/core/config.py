@@ -99,6 +99,26 @@ class Settings(BaseSettings):
     # cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
     secret_encryption_key: SecretStr | None = None
 
+    # Pro subscription tier ($15/mo, see app/routers/billing.py + app/services/billing.py)
+    # -- same dormant-until-configured pattern as groq_api_key/openrouter_api_key above:
+    # empty by default, and every billing endpoint degrades gracefully (a clear 503, not
+    # a crash) until an account owner supplies real values from their own Stripe
+    # Dashboard. See the STRIPE_* comments in infra/docker-compose.yml for the exact
+    # setup steps.
+    stripe_secret_key: SecretStr = SecretStr("")
+    stripe_webhook_secret: SecretStr = SecretStr("")
+    # The Price object id (price_...) for the $15/mo recurring Pro subscription, created
+    # in the Stripe Dashboard -- not something this code can create for itself.
+    stripe_price_id_pro: str = ""
+    # Tracked frontier-model spend (OpenRouter cost, in cents) a Pro subscriber can use
+    # per billing period before their tutor calls quietly fall back to the free-tier
+    # model for the rest of that period (see app/services/billing.py's is_pro/
+    # pro_credits_remaining and app/agents/tutor.py's routing). Deliberately less than
+    # the $15 price to preserve margin after Stripe's own fees and this app's infra
+    # cost -- a real, tunable setting rather than a hardcoded literal so it can move
+    # without a code change.
+    pro_monthly_credit_cents: int = 600
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.routers import (
+    billing,
     chat,
     classroom,
     documents,
@@ -35,3 +36,4 @@ app.include_router(flashcards.router)
 app.include_router(gamification.router)
 app.include_router(practice_exams.router)
 app.include_router(voice.router)
+app.include_router(billing.router)

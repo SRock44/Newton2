@@ -5,11 +5,17 @@ from typing import Any
 from sqlalchemy import select
 
 from app.db.base import SessionLocal
-from app.db.models import Document
+from app.db.models import Document, User
+from app.services import billing as billing_service
 from app.services.flashcards import generate_flashcards
 from app.services.practice_exams import generate_practice_exam, get_exam_questions
 from app.services.study_planner import generate_study_plan
 from app.tools.base import Tool
+
+PRO_ONLY_MESSAGE = (
+    "Preparing a full study session in one go is a Pro feature — you can still "
+    "generate a study plan, flashcards, or a practice exam individually."
+)
 
 
 async def _resolve_document(db, user_id: uuid.UUID, filename_hint: str | None) -> Document | None:
@@ -84,6 +90,10 @@ class StudySessionTool(Tool):
         uid = uuid.UUID(user_id)
 
         async with SessionLocal() as db:
+            user = await db.get(User, uid)
+            if user is None or not billing_service.is_pro(user):
+                return PRO_ONLY_MESSAGE
+
             document = await _resolve_document(db, uid, document_filename)
             if document is None:
                 if document_filename:

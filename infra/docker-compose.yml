@@ -56,6 +56,27 @@ x-api-env: &api-env
   # Fernet key encrypting Classroom OAuth tokens at rest (app/core/crypto.py) -- generate
   # with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
   SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+  # Pro subscription tier ($15/mo, see app/routers/billing.py + app/services/billing.py) --
+  # dormant until all three of these are set, same as every other optional integration
+  # above. To activate, in your own Stripe Dashboard (https://dashboard.stripe.com):
+  #   1. Products > add a Product with a recurring $15.00/month Price. Copy that Price's
+  #      id (starts "price_...") into STRIPE_PRICE_ID_PRO below.
+  #   2. Developers > API keys > copy the Secret key (starts "sk_...", NOT the publishable
+  #      key -- the backend never needs the publishable one) into STRIPE_SECRET_KEY.
+  #   3. Developers > Webhooks > add an endpoint at "<your public API URL>/billing/webhook"
+  #      (e.g. https://api.yourdomain.com/billing/webhook -- must be reachable from the
+  #      internet, so this step waits until the API is actually deployed somewhere public),
+  #      subscribed to at least: checkout.session.completed, customer.subscription.updated,
+  #      customer.subscription.deleted. Copy that endpoint's signing secret (starts
+  #      "whsec_...") into STRIPE_WEBHOOK_SECRET below.
+  # PRO_MONTHLY_CREDIT_CENTS is the tracked frontier-model spend (OpenRouter cost, in
+  # cents) a Pro subscriber gets per billing period before quietly falling back to the
+  # free-tier model -- deliberately less than the $15 price to preserve margin; tune
+  # freely, no code change needed.
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  STRIPE_PRICE_ID_PRO: ${STRIPE_PRICE_ID_PRO:-}
+  PRO_MONTHLY_CREDIT_CENTS: ${PRO_MONTHLY_CREDIT_CENTS:-600}
 
 services:
   postgres:

@@ -17,13 +17,17 @@ from app.services import flashcards as flashcards_service
 from app.services import practice_exams as practice_exams_service
 from app.services import study_planner
 from app.tools.registry import run_tool
-from app.tools.study_session import StudySessionTool, _resolve_document
+from app.tools.study_session import PRO_ONLY_MESSAGE, StudySessionTool, _resolve_document
 from tests.fakes import ScriptedToolCallingProvider
 
 
 @pytest_asyncio.fixture
 async def two_documents(db_session):
-    user = User(keycloak_sub=f"test-study-session-{uuid.uuid4()}")
+    # plan="pro": start_study_session is gated to Pro (see PRO_ONLY_MESSAGE in
+    # app/tools/study_session.py) -- these fixtures exercise the underlying
+    # multi-generation mechanics, not the gate itself (see the dedicated
+    # test_run_rejects_a_free_plan_user / test_run_allows_a_pro_plan_user below for that).
+    user = User(keycloak_sub=f"test-study-session-{uuid.uuid4()}", plan="pro")
     db_session.add(user)
     await db_session.flush()
 
@@ -173,8 +177,47 @@ async def test_run_returns_a_clear_error_with_no_user_context():
     assert result.startswith("Error:")
 
 
+# ---------------------------------------------------------------------------
+# Pro gate — start_study_session is a Pro-only feature (fans out three concurrent LLM
+# generations per call). Free-plan users get a clear student-facing message, not a raw
+# error and not the generation itself.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_rejects_a_free_plan_user(db_session):
+    user = User(keycloak_sub=f"test-study-session-free-{uuid.uuid4()}", plan="free")
+    db_session.add(user)
+    await db_session.commit()
+    try:
+        tool = StudySessionTool()
+        result = await tool.run(user_id=str(user.id))
+        assert result == PRO_ONLY_MESSAGE
+        assert not result.startswith("Error:")
+    finally:
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.commit()
+
+
+async def test_run_allows_a_pro_plan_user(two_documents, db_session, monkeypatch):
+    user, _older, _newer = two_documents
+
+    monkeypatch.setattr(study_planner, "get_provider", lambda **kwargs: (_study_plan_script(), "fake-model"))
+    monkeypatch.setattr(study_planner, "get_document_text", _fake_get_document_text)
+    monkeypatch.setattr(flashcards_service, "get_provider", lambda **kwargs: (_flashcards_script(), "fake-model"))
+    monkeypatch.setattr(flashcards_service, "get_document_text", _fake_get_document_text)
+    monkeypatch.setattr(
+        practice_exams_service, "get_provider", lambda **kwargs: (_exam_script(), "fake-model")
+    )
+    monkeypatch.setattr(practice_exams_service, "get_document_text", _fake_get_document_text)
+
+    tool = StudySessionTool()
+    result = await tool.run(document_filename="biology", user_id=str(user.id))
+    assert result != PRO_ONLY_MESSAGE
+    assert "biology-notes.txt" in result
+
+
 async def test_run_returns_a_clear_error_with_no_documents_at_all(db_session):
-    user = User(keycloak_sub=f"test-study-session-empty-{uuid.uuid4()}")
+    user = User(keycloak_sub=f"test-study-session-empty-{uuid.uuid4()}", plan="pro")
     db_session.add(user)
     await db_session.commit()
     try:

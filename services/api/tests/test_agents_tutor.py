@@ -1,8 +1,14 @@
 import uuid
 
+import pytest_asyncio
+from sqlalchemy import delete
+
 from app.agents import tutor
 from app.agents.tutor import TextChunk, ToolActivity
-from app.providers.base import ToolCall
+from app.core.config import Settings
+from app.db.models import User
+from app.providers.base import ChatProvider, TextDelta, ToolCall
+from app.services import billing as billing_service
 from tests.fakes import ScriptedToolCallingProvider
 
 
@@ -108,3 +114,143 @@ async def test_run_tutor_stops_after_max_rounds_with_a_clear_message(monkeypatch
     full = text_of(events)
     assert "round limit" in full
     assert len(fake.calls_seen) == tutor.MAX_TOOL_ROUNDS
+
+
+# ---------------------------------------------------------------------------
+# Plan-aware model routing + credit ledger (app/services/billing.py's is_pro/
+# pro_credits_remaining/resolve_pro_model, wired in via tutor._select_provider). A real
+# DB row is needed here (tutor._load_user reads one by user_id) -- unlike the tests
+# above, which never pass user_id and so never touch the DB at all.
+# ---------------------------------------------------------------------------
+
+
+class _FakeFrontierProvider(ChatProvider):
+    """Stands in for OpenAICompatibleProvider (monkeypatched onto `tutor.
+    OpenAICompatibleProvider`, the same name tutor.py both constructs and isinstance-
+    checks against) so frontier-routing tests don't need a real OpenRouter call. Always
+    answers with one text chunk and then reports a scripted last_usage, mimicking the
+    real provider's post-stream usage chunk."""
+
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url
+        self.api_key = api_key
+        self.last_usage: dict | None = None
+        self.calls_seen: list[dict] = []
+
+    async def stream_chat(self, messages, model, tools=None):
+        self.calls_seen.append({"messages": list(messages), "model": model, "tools": tools})
+        yield TextDelta("frontier answer")
+        self.last_usage = {"prompt_tokens": 100, "completion_tokens": 20}
+
+
+@pytest_asyncio.fixture
+async def tutor_user(db_session):
+    async def _make(**kwargs):
+        user = User(keycloak_sub=f"test-tutor-{uuid.uuid4()}", **kwargs)
+        db_session.add(user)
+        await db_session.commit()
+        return user
+
+    created: list[User] = []
+
+    async def factory(**kwargs):
+        user = await _make(**kwargs)
+        created.append(user)
+        return user
+
+    yield factory
+
+    for user in created:
+        await db_session.execute(delete(User).where(User.id == user.id))
+    await db_session.commit()
+
+
+async def test_run_tutor_routes_a_pro_user_with_credits_to_the_frontier_model(tutor_user, monkeypatch):
+    user = await tutor_user(plan="pro", credits_used_cents=0)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    recorded = {}
+
+    async def fake_record(user_id, model, prompt_tokens, completion_tokens):
+        recorded.update(
+            user_id=user_id, model=model, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+        )
+        return 5
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    assert text_of(events) == "frontier answer"
+    assert recorded["user_id"] == user.id
+    assert recorded["model"] == billing_service.DEFAULT_PRO_MODEL
+    assert recorded["prompt_tokens"] == 100
+    assert recorded["completion_tokens"] == 20
+
+
+async def test_run_tutor_routes_to_a_pro_users_selected_model(tutor_user, monkeypatch):
+    chosen = billing_service.PRO_MODELS[-1]["id"]
+    user = await tutor_user(plan="pro", credits_used_cents=0, preferred_pro_model=chosen)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    async def fake_record(*a, **kw):
+        return 0
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "frontier answer"
+
+
+async def test_run_tutor_falls_back_to_free_tier_when_pro_credits_are_exhausted(tutor_user, monkeypatch):
+    user = await tutor_user(plan="pro", credits_used_cents=10_000)
+
+    monkeypatch.setattr(
+        tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key", pro_monthly_credit_cents=600)
+    )
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    fake = ScriptedToolCallingProvider([["free tier answer"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    record_called = False
+
+    async def fake_record(*a, **kw):
+        nonlocal record_called
+        record_called = True
+        return 0
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    # Exhausted-Pro-credits never errors -- it quietly gets the free-tier model, same as
+    # any free user would.
+    assert text_of(events) == "free tier answer"
+    assert record_called is False
+
+
+async def test_run_tutor_falls_back_to_free_tier_when_openrouter_is_not_configured(tutor_user, monkeypatch):
+    user = await tutor_user(plan="pro", credits_used_cents=0)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key=None))
+
+    fake = ScriptedToolCallingProvider([["free tier answer"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "free tier answer"
+
+
+async def test_run_tutor_uses_free_tier_for_an_explicit_free_plan_user(tutor_user, monkeypatch):
+    user = await tutor_user(plan="free")
+
+    fake = ScriptedToolCallingProvider([["free tier answer"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "free tier answer"

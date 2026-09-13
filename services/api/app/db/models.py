@@ -23,6 +23,26 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    # Pro subscription (see app/services/billing.py) -- "free" until a Stripe checkout
+    # webhook flips it, reverted to "free" on subscription deletion. The three
+    # stripe_* fields are all null until this user has ever started a checkout.
+    plan: Mapped[str] = mapped_column(String, default="free", server_default="free")
+    stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    stripe_subscription_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Cumulative frontier-model cost (in cents) consumed this billing period -- reset to
+    # 0 whenever a new period starts (checkout completed, or a subscription-renewal
+    # webhook reports a later current_period_end than we had on file). Compared against
+    # Settings.pro_monthly_credit_cents to decide whether a Pro user's tutor calls still
+    # route to a frontier model or quietly fall back to the free-tier one.
+    credits_used_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    credits_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A Pro user's chosen frontier model (one of app/services/billing.py's PRO_MODELS
+    # ids) -- set by a future Settings UI action, not by this migration. Null means "use
+    # the roster's default" (see billing.resolve_pro_model), not "no access".
+    preferred_pro_model: Mapped[str | None] = mapped_column(String, nullable=True)
+
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"

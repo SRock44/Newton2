@@ -1,7 +1,9 @@
+import httpx
+
 from app.core.config import Settings
 from app.providers import registry as registry_module
 from app.providers.anthropic_provider import AnthropicProvider
-from app.providers.base import ChatTurn, TextDelta
+from app.providers.base import ChatTurn, TextDelta, ToolCallRequest
 from app.providers.echo import EchoProvider
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import get_provider
@@ -97,3 +99,82 @@ async def test_echo_provider_never_calls_tools_even_when_offered():
     ]
 
     assert all(isinstance(e, TextDelta) for e in events)
+
+
+# ---- OpenAICompatibleProvider.stream_chat: mocked-transport SSE parsing, incl. the
+# stream_options usage chunk this provider needs for app/services/billing.py's
+# credit-ledger math (see app/agents/tutor.py's is_frontier accounting). ----------------
+
+
+def _mock_transport(handler):
+    return httpx.MockTransport(handler)
+
+
+async def test_stream_chat_requests_usage_and_captures_it_after_text_deltas():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = request.content.decode()
+        body = (
+            'data: {"choices": [{"delta": {"content": "Hi"}}]}\n\n'
+            'data: {"choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 3}}\n\n'
+            "data: [DONE]\n\n"
+        )
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    assert provider.last_usage is None  # nothing sent yet
+
+    events = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi")], "some-model")]
+
+    assert len(events) == 1
+    assert isinstance(events[0], TextDelta)
+    assert events[0].text == "Hi"
+    assert '"include_usage":true' in seen["body"]
+    assert provider.last_usage == {"prompt_tokens": 12, "completion_tokens": 3}
+
+
+async def test_stream_chat_handles_tool_calls_alongside_a_trailing_usage_chunk():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = (
+            'data: {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "call_1", '
+            '"type": "function", "function": {"name": "calculator", "arguments": ""}}]}}]}\n\n'
+            'data: {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": '
+            '{"arguments": "{\\"expression\\": \\"2+2\\"}"}}]}}]}\n\n'
+            'data: {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 1}}\n\n'
+            "data: [DONE]\n\n"
+        )
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    events = [e async for e in provider.stream_chat([ChatTurn(role="user", content="2+2?")], "some-model")]
+
+    assert len(events) == 1
+    assert isinstance(events[0], ToolCallRequest)
+    assert events[0].calls[0].name == "calculator"
+    assert events[0].calls[0].arguments == {"expression": "2+2"}
+    assert provider.last_usage == {"prompt_tokens": 5, "completion_tokens": 1}
+
+
+async def test_stream_chat_resets_last_usage_at_the_start_of_every_call():
+    def handler_with_usage(request: httpx.Request) -> httpx.Response:
+        body = 'data: {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}\n\ndata: [DONE]\n\n'
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    def handler_without_usage(request: httpx.Request) -> httpx.Response:
+        body = 'data: {"choices": [{"delta": {"content": "ok"}}]}\n\ndata: [DONE]\n\n'
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler_with_usage)
+    )
+    _ = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi")], "m")]
+    assert provider.last_usage == {"prompt_tokens": 1, "completion_tokens": 1}
+
+    provider._transport = _mock_transport(handler_without_usage)
+    _ = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi again")], "m")]
+    assert provider.last_usage is None  # this response never sent a usage chunk
