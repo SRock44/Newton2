@@ -2,8 +2,6 @@ import asyncio
 import uuid
 from typing import Any
 
-from sqlalchemy import select
-
 from app.db.base import SessionLocal
 from app.db.models import Document, User
 from app.services import billing as billing_service
@@ -11,19 +9,12 @@ from app.services.flashcards import generate_flashcards
 from app.services.practice_exams import generate_practice_exam, get_exam_questions
 from app.services.study_planner import generate_study_plan
 from app.tools.base import Tool
+from app.tools.document_resolution import resolve_document
 
 PRO_ONLY_MESSAGE = (
     "Preparing a full study session in one go is a Pro feature — you can still "
     "generate a study plan, flashcards, or a practice exam individually."
 )
-
-
-async def _resolve_document(db, user_id: uuid.UUID, filename_hint: str | None) -> Document | None:
-    stmt = select(Document).where(Document.user_id == user_id)
-    if filename_hint:
-        stmt = stmt.where(Document.filename.ilike(f"%{filename_hint}%"))
-    stmt = stmt.order_by(Document.created_at.desc()).limit(1)
-    return (await db.execute(stmt)).scalars().first()
 
 
 async def _generate_study_plan_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> int:
@@ -94,7 +85,7 @@ class StudySessionTool(Tool):
             if user is None or not billing_service.is_pro(user):
                 return PRO_ONLY_MESSAGE
 
-            document = await _resolve_document(db, uid, document_filename)
+            document = await resolve_document(db, uid, document_filename)
             if document is None:
                 if document_filename:
                     return f"Error: no uploaded document matching '{document_filename}' found."

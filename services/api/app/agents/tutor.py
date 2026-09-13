@@ -31,7 +31,22 @@ class ToolActivity:
     phase: Literal["started", "finished"]
 
 
-TutorEvent = TextChunk | ToolActivity
+@dataclass
+class UsageInfo:
+    """Total token usage across every provider call this run_tutor() invocation made
+    (there may be several, one per tool-call round) — yielded once, as the last event,
+    so the caller can persist it on the assistant's ChatMessage row for a running
+    per-chat token total. Tracked for every call this provider type supports usage
+    reporting for (both free-tier and Pro/frontier — see OpenAICompatibleProvider.
+    last_usage), not just Pro ones; the separate Pro credit-ledger charge in this
+    function's `finally` block is a different concern that happens to reuse the same
+    numbers."""
+
+    prompt_tokens: int
+    completion_tokens: int
+
+
+TutorEvent = TextChunk | ToolActivity | UsageInfo
 
 # Short, student-facing descriptions of what each tool is doing — keyed by each tool's
 # real registry `.name` (see app/tools/registry.py's _TOOLS). Deliberately not technical
@@ -48,6 +63,9 @@ _TOOL_LABELS: dict[str, str] = {
     "start_study_session": "Preparing your study session",
     "grammar_check": "Checking grammar",
     "format_citation": "Formatting the citation",
+    "generate_flashcards": "Building your flashcards",
+    "generate_practice_exam": "Building a practice exam",
+    "generate_study_plan": "Building your study plan",
 }
 
 
@@ -138,10 +156,11 @@ async def run_tutor(
     provider, model, is_frontier = _select_provider(user, byok_anthropic_key)
     tools = get_tool_specs()
 
-    # Only populated (and only ever read) when is_frontier — tracks real token usage
-    # across every round of this call so the cost gets added to the user's credit
-    # ledger exactly once, after the whole turn (which may span several tool-call
-    # rounds, each its own provider call), not per round.
+    # Tracks real token usage across every round of this call (which may span several
+    # tool-call rounds, each its own provider call) — yielded once as UsageInfo for the
+    # caller to persist a per-chat running total, and, only when is_frontier, also
+    # charged against the user's Pro credit ledger exactly once in the finally block
+    # below rather than per round.
     prompt_tokens_total = 0
     completion_tokens_total = 0
 
@@ -155,11 +174,12 @@ async def run_tutor(
                     pending_calls = event.calls
                     break
 
-            if is_frontier and isinstance(provider, OpenAICompatibleProvider) and provider.last_usage:
+            if isinstance(provider, OpenAICompatibleProvider) and provider.last_usage:
                 prompt_tokens_total += provider.last_usage.get("prompt_tokens", 0)
                 completion_tokens_total += provider.last_usage.get("completion_tokens", 0)
 
             if pending_calls is None:
+                yield UsageInfo(prompt_tokens_total, completion_tokens_total)
                 return  # model gave a final text answer — done
 
             turns.append(ChatTurn(role="assistant", content="", tool_calls=pending_calls))
@@ -174,6 +194,7 @@ async def run_tutor(
         yield TextChunk(
             "\n\n_(Newton hit the tool-use round limit without a final answer — try rephrasing.)_"
         )
+        yield UsageInfo(prompt_tokens_total, completion_tokens_total)
     finally:
         # Runs whether this call ended in a final answer, the round-limit message, or
         # (via the generator's own close/GC) the caller giving up early -- a Pro user's

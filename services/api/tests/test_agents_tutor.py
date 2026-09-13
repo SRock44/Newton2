@@ -4,7 +4,7 @@ import pytest_asyncio
 from sqlalchemy import delete
 
 from app.agents import tutor
-from app.agents.tutor import TextChunk, ToolActivity
+from app.agents.tutor import TextChunk, ToolActivity, UsageInfo
 from app.core.config import Settings
 from app.db.models import User
 from app.providers.base import ChatProvider, TextDelta, ToolCall
@@ -232,6 +232,25 @@ async def test_run_tutor_falls_back_to_free_tier_when_pro_credits_are_exhausted(
     # any free user would.
     assert text_of(events) == "free tier answer"
     assert record_called is False
+
+
+async def test_run_tutor_tracks_token_usage_on_free_tier_calls_too(monkeypatch):
+    """Regression test: token accumulation used to be gated on is_frontier, so a
+    free-tier call's real usage (which OpenAICompatibleProvider reports identically
+    regardless of which tier is calling it) was silently dropped -- UsageInfo always
+    came back (0, 0) for everyone except Pro. Fixed by tracking unconditionally; only
+    the *billing* charge in run_tutor's finally block stays Pro-only."""
+    fake = _FakeFrontierProvider(base_url="https://example.test", api_key="k")
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]  # no user_id -> free path
+
+    assert text_of(events) == "frontier answer"
+    usage_events = [e for e in events if isinstance(e, UsageInfo)]
+    assert len(usage_events) == 1
+    assert usage_events[0].prompt_tokens == 100
+    assert usage_events[0].completion_tokens == 20
 
 
 async def test_run_tutor_falls_back_to_free_tier_when_openrouter_is_not_configured(tutor_user, monkeypatch):

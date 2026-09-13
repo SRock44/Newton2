@@ -16,8 +16,9 @@ from app.db.models import (
 from app.services import flashcards as flashcards_service
 from app.services import practice_exams as practice_exams_service
 from app.services import study_planner
+from app.tools.document_resolution import resolve_document
 from app.tools.registry import run_tool
-from app.tools.study_session import PRO_ONLY_MESSAGE, StudySessionTool, _resolve_document
+from app.tools.study_session import PRO_ONLY_MESSAGE, StudySessionTool
 from tests.fakes import ScriptedToolCallingProvider
 
 
@@ -68,31 +69,33 @@ async def two_documents(db_session):
 
 
 # ---------------------------------------------------------------------------
-# _resolve_document — pure DB lookups, no network.
+# resolve_document (app/tools/document_resolution.py) — pure DB lookups, no network.
+# Shared by every generation tool, not just this one; see test_generation_tools.py for
+# the flashcard/practice-exam/study-plan tools that reuse this same helper.
 # ---------------------------------------------------------------------------
 
 
 async def test_resolve_document_defaults_to_most_recently_uploaded(db_session, two_documents):
     user, _older, newer = two_documents
-    resolved = await _resolve_document(db_session, user.id, None)
+    resolved = await resolve_document(db_session, user.id, None)
     assert resolved.id == newer.id
 
 
 async def test_resolve_document_matches_a_filename_substring(db_session, two_documents):
     user, older, _newer = two_documents
-    resolved = await _resolve_document(db_session, user.id, "old-notes")
+    resolved = await resolve_document(db_session, user.id, "old-notes")
     assert resolved.id == older.id
 
 
 async def test_resolve_document_returns_none_for_no_match(db_session, two_documents):
     user, _older, _newer = two_documents
-    assert await _resolve_document(db_session, user.id, "nonexistent-file") is None
+    assert await resolve_document(db_session, user.id, "nonexistent-file") is None
 
 
 async def test_resolve_document_is_scoped_to_the_given_user(db_session, two_documents):
     _user, _older, _newer = two_documents
     other_user_id = uuid.uuid4()
-    assert await _resolve_document(db_session, other_user_id, None) is None
+    assert await resolve_document(db_session, other_user_id, None) is None
 
 
 # ---------------------------------------------------------------------------

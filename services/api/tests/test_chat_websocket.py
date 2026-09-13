@@ -21,6 +21,7 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
 
     try:
         chunks: list[str] = []
+        done_frame: dict = {}
         async with websockets.connect(uri) as ws:
             await ws.send(json.dumps({"type": "user_message", "content": message}))
 
@@ -30,6 +31,7 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
                 raw = await asyncio.wait_for(ws.recv(), timeout=30)
                 frame = json.loads(raw)
                 if frame["type"] == "done":
+                    done_frame = frame
                     break
                 if frame["type"] in ("tool_start", "tool_end"):
                     # A real model may genuinely reach for symbolic_math for a
@@ -46,6 +48,17 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
         # server). Either way, a real, non-empty reply must come back and persist.
         assert full_response
 
+        # Same provider-agnostic stance for token usage: a real OpenAI-compatible
+        # provider reports it (both fields present and positive); the keyless
+        # EchoProvider doesn't report usage at all (both None) — either is valid, but
+        # they must be consistent with each other, never one present and one missing.
+        assert ("prompt_tokens" in done_frame) and ("completion_tokens" in done_frame)
+        has_usage = done_frame["prompt_tokens"] is not None
+        assert has_usage == (done_frame["completion_tokens"] is not None)
+        if has_usage:
+            assert done_frame["prompt_tokens"] > 0
+            assert done_frame["completion_tokens"] > 0
+
         messages_resp = await http_client.get(
             f"/chat/sessions/{session_id}/messages", headers=auth_headers
         )
@@ -55,9 +68,14 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
 
         assert persisted[0]["role"] == "user"
         assert persisted[0]["content"] == message
+        assert persisted[0]["prompt_tokens"] is None  # only ever tracked on assistant replies
 
         assert persisted[1]["role"] == "assistant"
         assert persisted[1]["content"] == full_response
+        # The persisted row must match exactly what the "done" frame already told the
+        # client — no separate, potentially-diverging source of truth.
+        assert persisted[1]["prompt_tokens"] == done_frame["prompt_tokens"]
+        assert persisted[1]["completion_tokens"] == done_frame["completion_tokens"]
     finally:
         session_uuid = uuid.UUID(session_id)
         await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))

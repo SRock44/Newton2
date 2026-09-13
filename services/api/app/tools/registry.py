@@ -5,7 +5,10 @@ from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
 from app.tools.citation import CitationFormatterTool
 from app.tools.code_interpreter import CodeInterpreterTool
+from app.tools.flashcard_generation import FlashcardGenerationTool
 from app.tools.grammar_check import GrammarCheckTool
+from app.tools.practice_exam_generation import PracticeExamGenerationTool
+from app.tools.study_plan_generation import StudyPlanGenerationTool
 from app.tools.study_session import StudySessionTool
 from app.tools.symbolic_math import SymbolicMathTool
 from app.tools.textbook_lookup import TextbookLookupTool
@@ -31,6 +34,9 @@ _TOOLS: dict[str, Tool] = {
         StudySessionTool(),
         GrammarCheckTool(),
         CitationFormatterTool(),
+        FlashcardGenerationTool(),
+        PracticeExamGenerationTool(),
+        StudyPlanGenerationTool(),
     ]
 }
 

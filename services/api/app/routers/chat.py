@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.router import route
-from app.agents.tutor import TextChunk, ToolActivity, run_tutor
+from app.agents.tutor import TextChunk, ToolActivity, UsageInfo, run_tutor
 from app.core.auth import decode_token, require_user
 from app.db.base import SessionLocal, get_db
 from app.db.models import ChatMessage, ChatSession
@@ -86,7 +86,16 @@ async def list_messages(
         .scalars()
         .all()
     )
-    return [{"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in rows]
+    return [
+        {
+            "role": m.role,
+            "content": m.content,
+            "created_at": m.created_at.isoformat(),
+            "prompt_tokens": m.prompt_tokens,
+            "completion_tokens": m.completion_tokens,
+        }
+        for m in rows
+    ]
 
 
 @router.post("/sessions/{session_id}/images")
@@ -248,9 +257,10 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                     continue
 
                 full_response = ""
+                usage: UsageInfo | None = None
 
                 async def _drain_generation() -> None:
-                    nonlocal full_response
+                    nonlocal full_response, usage
                     async for event in run_tutor(str(session_id), user_message, user_id=str(user.id)):
                         if isinstance(event, TextChunk):
                             full_response += event.text
@@ -263,6 +273,8 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                                     "label": event.label,
                                 }
                             )
+                        elif isinstance(event, UsageInfo):
+                            usage = event
 
                 # Run generation concurrently with listening for the next incoming
                 # frame, so a "stop" sent mid-generation is actually seen instead of
@@ -301,12 +313,30 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                     gen_task = None
 
                 # Persist whatever came back — the full reply, or (if stopped) just
-                # the partial text streamed so far. Never silently drop it.
-                db.add(ChatMessage(session_id=session_id, role="assistant", content=full_response))
+                # the partial text streamed so far. Never silently drop it. usage stays
+                # None if generation was stopped before UsageInfo's yield point (the
+                # provider's trailing usage chunk hadn't arrived yet) — that reply's
+                # tokens just don't count toward the chat's running total, same
+                # graceful-degradation spirit as everything else about Stop.
+                db.add(
+                    ChatMessage(
+                        session_id=session_id,
+                        role="assistant",
+                        content=full_response,
+                        prompt_tokens=usage.prompt_tokens if usage else None,
+                        completion_tokens=usage.completion_tokens if usage else None,
+                    )
+                )
                 await db.commit()
                 await append_turn(str(session_id), "assistant", full_response)
 
-                await websocket.send_json({"type": "stopped" if stopped else "done"})
+                await websocket.send_json(
+                    {
+                        "type": "stopped" if stopped else "done",
+                        "prompt_tokens": usage.prompt_tokens if usage else None,
+                        "completion_tokens": usage.completion_tokens if usage else None,
+                    }
+                )
         except WebSocketDisconnect:
             pass
         finally:

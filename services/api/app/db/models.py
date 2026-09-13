@@ -71,6 +71,12 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String)  # user | assistant | system
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Only ever set on assistant messages (see app/agents/tutor.py's UsageInfo) -- null
+    # for user messages, and for assistant messages predating this column or ones ended
+    # by Stop before the provider's trailing usage chunk arrived. Summed client-side for
+    # the "Newton Context" panel's per-chat token total.
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
 

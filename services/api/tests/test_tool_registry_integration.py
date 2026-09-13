@@ -27,6 +27,9 @@ def test_all_expected_tools_are_registered():
         "start_study_session",
         "grammar_check",
         "format_citation",
+        "generate_flashcards",
+        "generate_practice_exam",
+        "generate_study_plan",
     }
 
 
