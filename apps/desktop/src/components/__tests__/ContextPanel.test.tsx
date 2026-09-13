@@ -56,4 +56,15 @@ describe("ContextPanel", () => {
     render(<ContextPanel token="tok" sessionCount={0} messageCount={0} />);
     expect(screen.queryByText("What Newton can do")).not.toBeInTheDocument();
   });
+
+  it("shows a formatted token total when usage is available", () => {
+    render(<ContextPanel token="tok" sessionCount={1} messageCount={2} totalTokens={12345} />);
+    expect(screen.getByText("Tokens used")).toBeInTheDocument();
+    expect(screen.getByText("12,345")).toBeInTheDocument();
+  });
+
+  it("hides the token row entirely when no usage is available (0, or omitted)", () => {
+    render(<ContextPanel token="tok" sessionCount={1} messageCount={2} />);
+    expect(screen.queryByText("Tokens used")).not.toBeInTheDocument();
+  });
 });

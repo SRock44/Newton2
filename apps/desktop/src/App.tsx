@@ -355,7 +355,14 @@ function App() {
       ws.onclose = () => setWsStatus("closed");
       ws.onerror = () => setWsStatus("closed");
       ws.onmessage = (event) => {
-        let payload: { type?: string; content?: string; tool?: string; label?: string };
+        let payload: {
+          type?: string;
+          content?: string;
+          tool?: string;
+          label?: string;
+          prompt_tokens?: number | null;
+          completion_tokens?: number | null;
+        };
         try {
           payload = JSON.parse(event.data);
         } catch {
@@ -409,7 +416,17 @@ function App() {
           setIsStreaming(false);
           const stoppedByUser = payload.type === "stopped";
           setMessages((prev) =>
-            prev.map((m) => (m.streaming ? { ...m, streaming: false, stoppedByUser } : m)),
+            prev.map((m) =>
+              m.streaming
+                ? {
+                    ...m,
+                    streaming: false,
+                    stoppedByUser,
+                    prompt_tokens: payload.prompt_tokens ?? null,
+                    completion_tokens: payload.completion_tokens ?? null,
+                  }
+                : m,
+            ),
           );
         } else if (payload.type === "error") {
           setIsStreaming(false);
@@ -590,7 +607,15 @@ function App() {
           )}
         </main>
 
-        <ContextPanel token={token} sessionCount={sessions.length} messageCount={messages.length} />
+        <ContextPanel
+          token={token}
+          sessionCount={sessions.length}
+          messageCount={messages.length}
+          totalTokens={messages.reduce(
+            (sum, m) => sum + (m.prompt_tokens ?? 0) + (m.completion_tokens ?? 0),
+            0,
+          )}
+        />
       </div>
 
       {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}

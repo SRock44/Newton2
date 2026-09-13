@@ -19,6 +19,12 @@ export interface ChatMessage {
   activity?: ToolActivityEntry[];
   /** Client-side only: true if the user hit Stop before this reply finished. */
   stoppedByUser?: boolean;
+  /** Only ever set on assistant messages — null for user messages, and for replies
+   * where the provider didn't report usage (e.g. the keyless dev EchoProvider) or that
+   * were stopped before the trailing usage chunk arrived. Summed across a session's
+   * messages for the "Newton Context" panel's token total. */
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
 }
 
 export interface ChatSession {

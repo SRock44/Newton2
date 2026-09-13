@@ -6,6 +6,10 @@ interface ContextPanelProps {
   token: string;
   sessionCount: number;
   messageCount: number;
+  /** Sum of prompt_tokens + completion_tokens across every message loaded for the
+   * active chat — 0 (and hidden) if usage reporting isn't available, e.g. the keyless
+   * dev EchoProvider or a BYOK Anthropic key, which don't report token counts. */
+  totalTokens?: number;
 }
 
 /** Shows what's actually true right now — real session/message counts and live
@@ -13,7 +17,7 @@ interface ContextPanelProps {
  * used to live here too, but that's help content, not live state, so it now lives
  * behind its own on-demand affordance (see HelpModal, opened from the sidebar's "?")
  * instead of permanently competing for space with things that actually change. */
-function ContextPanel({ token, sessionCount, messageCount }: ContextPanelProps) {
+function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0 }: ContextPanelProps) {
   const [stats, setStats] = useState<GamificationStats | null>(null);
 
   useEffect(() => {
@@ -43,6 +47,12 @@ function ContextPanel({ token, sessionCount, messageCount }: ContextPanelProps) 
           <span className="context-row-label">This conversation</span>
           <span className="context-row-value">{messageCount} messages</span>
         </div>
+        {totalTokens > 0 && (
+          <div className="context-row">
+            <span className="context-row-label">Tokens used</span>
+            <span className="context-row-value">{totalTokens.toLocaleString()}</span>
+          </div>
+        )}
       </div>
 
       {stats && (
