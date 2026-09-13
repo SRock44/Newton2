@@ -17,7 +17,7 @@ import { TokenManager, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import { getStudyRemindersEnabled } from "./lib/preferences";
-import type { ChatMessage, ChatSession, ConnectionStatus } from "./types";
+import type { ChatMessage, ChatSession, ConnectionStatus, UploadedDocument } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { latestMathStepsJson } from "./lib/notepadContent";
 import LoginScreen from "./components/LoginScreen";
@@ -91,6 +91,13 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [snipDataUrl, setSnipDataUrl] = useState<string | null>(null);
   const [snipError, setSnipError] = useState<string | null>(null);
+  // Set by handleChatAboutDocument right after it creates and activates a new session
+  // (session creation, then the WebSocket connecting to it, are both async) — the
+  // effect below actually sends the message once that exact session's socket reports
+  // "open", so the opener text can never land in a stale/wrong chat.
+  const [pendingDocumentMessage, setPendingDocumentMessage] = useState<{ sessionId: string; text: string } | null>(
+    null,
+  );
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastSyncedNotepadJson = useRef<string | null>(null);
@@ -137,6 +144,7 @@ function App() {
     setShowHelp(false);
     setSnipDataUrl(null);
     setSnipError(null);
+    setPendingDocumentMessage(null);
     remindersCheckedRef.current = false;
   }
 
@@ -494,8 +502,23 @@ function App() {
     }
   }
 
-  async function handleNewChat() {
-    if (!tokenManager.hasSession() || creatingChat) return;
+  // Fires the queued "chat about this document" opener the moment its own session's
+  // socket reports open — guards on both the session id and wsStatus so a fast click
+  // to a *different* chat in the meantime can't misfire the message there instead.
+  useEffect(() => {
+    if (!pendingDocumentMessage) return;
+    if (activeSessionId !== pendingDocumentMessage.sessionId) return;
+    if (wsStatus !== "open") return;
+    handleSend(pendingDocumentMessage.text);
+    setPendingDocumentMessage(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDocumentMessage, activeSessionId, wsStatus]);
+
+  // Shared by handleNewChat and handleChatAboutDocument — the only place that knows
+  // how to create a session and make it the active one. Returns the new session id,
+  // or null if creation failed (already surfaced via sessionsError).
+  async function createNewSession(): Promise<string | null> {
+    if (!tokenManager.hasSession() || creatingChat) return null;
     setCreatingChat(true);
     try {
       const accessToken = await tokenManager.getValidAccessToken();
@@ -508,11 +531,27 @@ function App() {
       };
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(id);
+      return id;
     } catch (err) {
       setSessionsError(errorMessage(err, "Couldn't start a new chat."));
+      return null;
     } finally {
       setCreatingChat(false);
     }
+  }
+
+  async function handleNewChat() {
+    await createNewSession();
+  }
+
+  // "Chat about this document" (DocumentsPanel): start a fresh chat, then once that
+  // exact session's socket is actually open (see the pendingDocumentMessage effect
+  // below), send an opening message naming the document so Newton's per-turn RAG
+  // retrieval has an obvious document to reach for first.
+  async function handleChatAboutDocument(doc: UploadedDocument) {
+    const id = await createNewSession();
+    if (!id) return;
+    setPendingDocumentMessage({ sessionId: id, text: `Let's talk about \`${doc.filename}\`.` });
   }
 
   // Backs every "Open Flashcards"-style suggested-action button on a message (see
@@ -644,7 +683,13 @@ function App() {
         />
       </div>
 
-      {showDocuments && <DocumentsPanel token={token} onClose={() => setShowDocuments(false)} />}
+      {showDocuments && (
+        <DocumentsPanel
+          token={token}
+          onClose={() => setShowDocuments(false)}
+          onChatAboutDocument={handleChatAboutDocument}
+        />
+      )}
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
       {showFlashcards && (
         <FlashcardsPanel

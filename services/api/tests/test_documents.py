@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 import uuid
 
@@ -252,3 +253,145 @@ async def test_uploaded_document_content_is_retrieved_into_chat_bundle(
         await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
         await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
         await db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Content viewing/editing/renaming — the "document drive" endpoints.
+# ---------------------------------------------------------------------------
+
+
+async def test_get_content_returns_extracted_text_and_editable_flag(uploaded_document, http_client, auth_headers):
+    resp = await http_client.get(f"/documents/{uploaded_document}/content", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["editable"] is True
+    assert "mitochondria" in body["content"]
+
+
+async def test_get_raw_returns_original_bytes_with_content_type(uploaded_document, http_client, auth_headers):
+    resp = await http_client.get(f"/documents/{uploaded_document}/raw", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"].startswith("text/plain")
+    assert b"mitochondria" in resp.content
+
+
+async def test_update_content_rechunks_and_new_content_wins_in_rag(
+    uploaded_document, http_client, auth_headers, db_session
+):
+    unique_marker = f"editedmarker{uuid.uuid4().hex[:10]}"
+    new_content = f"After editing, this document is now entirely about {unique_marker} and photosynthesis."
+
+    put_resp = await http_client.put(
+        f"/documents/{uploaded_document}/content",
+        headers=auth_headers,
+        json={"content": new_content},
+    )
+    assert put_resp.status_code == 200, put_resp.text
+
+    # The viewer reflects the edit immediately.
+    get_resp = await http_client.get(f"/documents/{uploaded_document}/content", headers=auth_headers)
+    assert unique_marker in get_resp.json()["content"]
+
+    # RAG retrieval was re-chunked against the NEW content, not the stale old text.
+    rows = (
+        (
+            await db_session.execute(
+                select(DocumentChunk).where(DocumentChunk.document_id == uploaded_document)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert rows, "expected re-chunked rows after the edit"
+    assert any(unique_marker in row.content for row in rows)
+    assert not any("mitochondria" in row.content for row in rows)
+
+
+async def test_rename_document_updates_filename_only(uploaded_document, http_client, auth_headers):
+    resp = await http_client.patch(
+        f"/documents/{uploaded_document}",
+        headers=auth_headers,
+        json={"filename": "renamed-notes.txt"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["filename"] == "renamed-notes.txt"
+
+    list_resp = await http_client.get("/documents", headers=auth_headers)
+    assert any(d["id"] == str(uploaded_document) and d["filename"] == "renamed-notes.txt" for d in list_resp.json())
+
+
+@pytest_asyncio.fixture
+async def uploaded_pdf(http_client, auth_headers, db_session):
+    """A minimal, real, parseable single-page PDF — not just bytes with a .pdf name —
+    so upload's own PDF text extraction succeeds and this exercises the genuine
+    view-only-PDF path rather than an upload-time rejection."""
+    from pypdf import PdfWriter
+
+    buffer = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.write(buffer)
+    content = buffer.getvalue()
+
+    resp = await http_client.post(
+        "/documents/upload",
+        headers=auth_headers,
+        files={"file": ("scan.pdf", content, "application/pdf")},
+    )
+    assert resp.status_code == 200, resp.text
+    document_id = uuid.UUID(resp.json()["id"])
+
+    yield document_id
+
+    document = await db_session.get(Document, document_id)
+    if document is not None:
+        await documents_service.delete_document(db_session, document)
+
+
+async def test_pdf_content_is_view_only(uploaded_pdf, http_client, auth_headers):
+    get_resp = await http_client.get(f"/documents/{uploaded_pdf}/content", headers=auth_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.json()["editable"] is False
+
+    put_resp = await http_client.put(
+        f"/documents/{uploaded_pdf}/content",
+        headers=auth_headers,
+        json={"content": "trying to edit a pdf"},
+    )
+    assert put_resp.status_code == 400
+
+
+@pytest_asyncio.fixture
+async def someone_elses_document(db_session):
+    """A document owned by a throwaway user who is NOT the authenticated test
+    account (auth_headers always logs in as student1) — for asserting the ownership
+    check on the new per-document endpoints, mirroring test_practice_exams.py's
+    throwaway_document fixture."""
+    user = User(keycloak_sub=f"test-documents-owner-{uuid.uuid4()}")
+    db_session.add(user)
+    await db_session.flush()
+
+    document = Document(user_id=user.id, filename="not-yours.txt", mime_type="text/plain", minio_key="unused/doc")
+    db_session.add(document)
+    await db_session.flush()
+    await db_session.commit()
+
+    yield document
+
+    await db_session.execute(delete(Document).where(Document.id == document.id))
+    await db_session.execute(delete(User).where(User.id == user.id))
+    await db_session.commit()
+
+
+async def test_content_endpoints_404_for_another_users_document(
+    someone_elses_document, http_client, auth_headers
+):
+    doc_id = someone_elses_document.id
+    assert (await http_client.get(f"/documents/{doc_id}/content", headers=auth_headers)).status_code == 404
+    assert (await http_client.get(f"/documents/{doc_id}/raw", headers=auth_headers)).status_code == 404
+    assert (
+        await http_client.put(f"/documents/{doc_id}/content", headers=auth_headers, json={"content": "x"})
+    ).status_code == 404
+    assert (
+        await http_client.patch(f"/documents/{doc_id}", headers=auth_headers, json={"filename": "x"})
+    ).status_code == 404

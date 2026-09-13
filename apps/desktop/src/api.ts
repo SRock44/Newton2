@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   ChatSession,
   ClassroomStatus,
+  DocumentContent,
   Flashcard,
   GamificationStats,
   PracticeExamDetail,
@@ -117,6 +118,51 @@ export async function deleteDocument(token: string, documentId: string): Promise
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete this document."));
+}
+
+/** Extracted text for the viewer/editor pane. `editable` is false for PDFs — see the
+ * backend's is_editable — the frontend uses it to decide whether to offer an Edit
+ * toggle at all rather than letting a save attempt fail. */
+export async function getDocumentContent(token: string, documentId: string): Promise<DocumentContent> {
+  const res = await fetch(`${API_URL}/documents/${documentId}/content`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load this document."));
+  return (await res.json()) as DocumentContent;
+}
+
+/** The URL for a document's raw, original bytes (correct Content-Type, no text
+ * extraction) — for a PDF viewer's blob source or a download affordance. Auth-gated
+ * like every other document endpoint, so fetch it the way AttachedImage.tsx does
+ * (fetch + Authorization header + blob()), not a plain <embed src>. */
+export function documentRawUrl(documentId: string): string {
+  return `${API_URL}/documents/${documentId}/raw`;
+}
+
+export async function updateDocumentContent(
+  token: string,
+  documentId: string,
+  content: string,
+): Promise<UploadedDocument> {
+  const res = await fetch(`${API_URL}/documents/${documentId}/content`, {
+    method: "PUT",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save this document."));
+  return (await res.json()) as UploadedDocument;
+}
+
+export async function renameDocument(
+  token: string,
+  documentId: string,
+  filename: string,
+): Promise<UploadedDocument> {
+  const res = await fetch(`${API_URL}/documents/${documentId}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ filename }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't rename this document."));
+  return (await res.json()) as UploadedDocument;
 }
 
 /** The live tool belt, straight from the backend registry — never hand-duplicated

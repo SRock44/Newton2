@@ -56,6 +56,11 @@ export interface UploadedDocument {
   created_at: string;
 }
 
+export interface DocumentContent {
+  content: string;
+  editable: boolean;
+}
+
 export interface ToolInfo {
   name: string;
   description: string;

@@ -94,6 +94,38 @@ async def get_document_text(document: Document) -> str:
     return await asyncio.to_thread(_extract_text, document.filename, document.mime_type, raw)
 
 
+async def get_document_raw(document: Document) -> bytes:
+    """Returns the exact bytes stored in MinIO for this document, with no text
+    extraction — used to serve the raw file (e.g. embedding a PDF viewer)."""
+    settings = get_settings()
+    return await asyncio.to_thread(get_object_sync, settings.minio_bucket, document.minio_key)
+
+
+def is_editable(document: Document) -> bool:
+    """True only for plain text/markdown documents — PDFs are view-only since editing
+    extracted PDF text and writing it back as a PDF isn't attempted (see the module
+    docstring-level rationale in the router)."""
+    lower_name = document.filename.lower()
+    if lower_name.endswith(_PDF_EXTENSION) or document.mime_type == "application/pdf":
+        return False
+    return lower_name.endswith(_TEXT_EXTENSIONS) or document.mime_type in _TEXT_MIME_TYPES
+
+
+async def update_document_content(db: AsyncSession, document: Document, content: str) -> Document:
+    """Overwrites the stored file with edited text and re-chunks it for RAG, so
+    retrieval always reflects exactly what the student sees and last edited."""
+    settings = get_settings()
+    raw = content.encode("utf-8")
+    await asyncio.to_thread(
+        put_object_sync, settings.minio_bucket, document.minio_key, raw, document.mime_type
+    )
+    await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
+    await store_document_chunks(db, document.id, content)
+    await db.commit()
+    await db.refresh(document)
+    return document
+
+
 async def delete_document(db: AsyncSession, document: Document) -> None:
     """Removes a document's chunks and DB row, then its raw object in MinIO."""
     settings = get_settings()
