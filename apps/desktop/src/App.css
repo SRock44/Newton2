@@ -1294,10 +1294,50 @@ textarea:focus-visible,
   color: var(--color-danger);
 }
 
+/* A quiet "live" cue while a reply is still streaming in — a slow breathing pulse on
+   the rule Newton's replies already read against, rather than anything that competes
+   with the text itself for attention. Purely decorative: message.streaming already
+   drives the streaming-dots indicator below, this just extends the same signal to the
+   body's own edge so the whole reply feels like it's actively arriving. */
+.transcript-body--streaming {
+  animation: transcript-streaming-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes transcript-streaming-pulse {
+  0%,
+  100% {
+    border-left-color: var(--color-border-2);
+  }
+  50% {
+    border-left-color: var(--color-accent);
+  }
+}
+
 .message-content {
   font-size: var(--font-size-base);
   line-height: var(--line-height-relaxed);
   word-wrap: break-word;
+}
+
+/* Each new block (paragraph, heading, list item, table, code fence) that streaming
+   text produces eases in rather than snapping into place — real latency is untouched
+   (this fires on the same DOM insertion that would have happened anyway), it just
+   reads less like an abrupt re-render jump. Continued text within an already-open
+   paragraph still appends live (no per-character effect, per design), so long-form
+   prose still feels immediate rather than typewritten. */
+.message-content > * {
+  animation: message-block-reveal 0.35s ease-out both;
+}
+
+@keyframes message-block-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .message-content > *:first-child {
@@ -1405,6 +1445,20 @@ textarea:focus-visible,
   font-family: var(--font-serif);
   font-style: italic;
   line-height: 1.4;
+  opacity: 0;
+  animation: tool-activity-chip-enter 0.3s ease-out both;
+  transition: opacity 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+}
+
+@keyframes tool-activity-chip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .tool-activity-chip--done {
@@ -1419,10 +1473,11 @@ textarea:focus-visible,
   border: 2px solid var(--color-accent);
   border-top-color: transparent;
   animation: tool-activity-spin 0.7s linear infinite;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .tool-activity-chip--done .tool-activity-icon {
-  animation: none;
+  animation: tool-activity-check-pop 0.3s ease-out both;
   border: none;
   background-color: var(--color-success, var(--color-accent));
   position: relative;
@@ -1443,6 +1498,17 @@ textarea:focus-visible,
 @keyframes tool-activity-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Plays once, right when a chip flips from spinner to done — a small confident "pop"
+   rather than the icon just silently swapping shape. */
+@keyframes tool-activity-check-pop {
+  from {
+    transform: scale(0.4);
+  }
+  to {
+    transform: scale(1);
   }
 }
 
@@ -1480,6 +1546,53 @@ textarea:focus-visible,
   font-size: var(--font-size-xs);
   font-style: italic;
   color: var(--color-text-faint);
+}
+
+/* ---------- Suggested actions ("Open Flashcards" etc.) ----------
+   The deterministic "check the panel" call to action the backend attaches right after
+   a generation tool finishes (see App.tsx's "suggested_action" handling) — a real
+   button, not just the model's own prose promising something happened. Sits after the
+   reply text, styled as a quiet accent-colored affordance rather than a loud primary
+   button: it's a shortcut for something the student can always reach from the sidebar
+   anyway, not the main call to action of the reply. */
+.suggested-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  animation: message-block-reveal 0.35s ease-out both;
+}
+
+.suggested-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-accent);
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.suggested-action-btn:hover {
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.suggested-action-btn:active {
+  transform: scale(0.97);
+}
+
+.suggested-action-arrow {
+  transition: transform 0.15s ease;
+}
+
+.suggested-action-btn:hover .suggested-action-arrow {
+  transform: translateX(2px);
 }
 
 .composer-stop {
