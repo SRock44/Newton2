@@ -6,13 +6,14 @@ import {
   generateFlashcards,
   generatePracticeExam,
   generateStudyPlan,
+  getBillingStatus,
   getDocumentContent,
   listDocuments,
   renameDocument,
   updateDocumentContent,
   uploadDocument,
 } from "../api";
-import type { DocumentContent, UploadedDocument } from "../types";
+import type { BillingStatus, DocumentContent, UploadedDocument } from "../types";
 import MessageContent from "./MessageContent";
 
 interface DocumentsPanelProps {
@@ -66,6 +67,7 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
   const [planStatusByDoc, setPlanStatusByDoc] = useState<Record<string, string>>({});
   const [cardStatusByDoc, setCardStatusByDoc] = useState<Record<string, string>>({});
   const [examStatusByDoc, setExamStatusByDoc] = useState<Record<string, string>>({});
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedDocumentId ?? null);
@@ -95,6 +97,24 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Drives the free-plan generation-count note next to the Flashcards/Practice
+  // exam/Study plan buttons below — see handleGenerate*'s honest-expectations note
+  // beside those buttons. Non-fatal if this fails: the note just doesn't render,
+  // same "don't block the rest of the panel" pattern as SettingsPanel's billing fetch.
+  useEffect(() => {
+    let cancelled = false;
+    getBillingStatus(token)
+      .then((status) => {
+        if (!cancelled) setBilling(status);
+      })
+      .catch(() => {
+        // Non-fatal — see comment above.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Reset per-document UI state whenever the selection changes, and load that
   // document's content (and, for a view-only PDF, its raw bytes for the embedded
@@ -402,6 +422,19 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
                     </button>
                   </div>
                 </div>
+
+                {/* Honest, non-punitive heads-up before generating — free accounts get a
+                    smaller item count per request, never a time-based limit (no
+                    daily/weekly cap exists anywhere in this app). Shown next to the
+                    generation buttons rather than only after the fact, so a student
+                    knows what to expect going in. Pro users already get the larger
+                    count, so nothing to show them here. */}
+                {billing && billing.plan !== "pro" && (
+                  <p className="doc-generation-note">
+                    Free plan generates up to {billing.free_generation_target} items per request — Pro generates
+                    up to {billing.pro_generation_target}.
+                  </p>
+                )}
 
                 {detailError && <div className="banner banner--error">{detailError}</div>}
                 {planStatusByDoc[selectedDoc.id] && (

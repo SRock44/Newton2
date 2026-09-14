@@ -407,11 +407,17 @@ async def test_billing_status_returns_the_expected_shape(http_client, auth_heade
         "credits_limit_cents",
         "credits_reset_at",
         "preferred_pro_model",
+        "free_generation_target",
+        "pro_generation_target",
     }
     assert body["plan"] in ("free", "pro")
     assert isinstance(body["credits_used_cents"], int)
     assert isinstance(body["credits_limit_cents"], int)
     assert body["preferred_pro_model"] in billing_service._PRO_MODEL_IDS
+    # Static plan constants, not user-specific -- always the real generation_target_count()
+    # inputs, never a stale/hardcoded copy (see DocumentsPanel.tsx's generation note).
+    assert body["free_generation_target"] == billing_service.FREE_GENERATION_TARGET
+    assert body["pro_generation_target"] == billing_service.PRO_GENERATION_TARGET
 
 
 async def test_billing_status_requires_auth(http_client):

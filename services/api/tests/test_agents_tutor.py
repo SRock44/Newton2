@@ -273,3 +273,20 @@ async def test_run_tutor_uses_free_tier_for_an_explicit_free_plan_user(tutor_use
 
     events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
     assert text_of(events) == "free tier answer"
+
+
+def test_system_prompt_honestly_describes_the_free_vs_pro_generation_target():
+    """The Tutor's own system prompt should be able to set expectations conversationally
+    if a free-plan student asks for a large flashcard/exam/study-plan set -- see
+    ROADMAP.md's "Free-tier usage-ceiling visibility" item. It must name the real numbers
+    (kept in sync with billing_service's actual constants, never a hardcoded copy that
+    could drift) and must never imply a time-based limit, since no daily/weekly cap
+    exists anywhere in this codebase."""
+    prompt = tutor.SYSTEM_PROMPT
+
+    assert str(billing_service.FREE_GENERATION_TARGET) in prompt
+    assert str(billing_service.PRO_GENERATION_TARGET) in prompt
+
+    lowered = prompt.lower()
+    for phrase in ("per day", "daily", "per week", "weekly", "per hour", "hourly", "per month", "monthly", "24 hours"):
+        assert phrase not in lowered, f"system prompt must not imply a time-based limit ({phrase!r} found)"

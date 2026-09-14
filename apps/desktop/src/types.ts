@@ -134,6 +134,13 @@ export interface BillingStatus {
   // they're Pro and it's still a curated option, else the roster's default (see
   // app/services/billing.py's resolve_pro_model, which this field always mirrors).
   preferred_pro_model: string;
+  // Static plan constants (not user-specific) — how many items a single flashcard/
+  // practice-exam/study-plan generation call aims for on each plan. Not a rate limit of
+  // any kind (no daily/weekly cap exists anywhere in this app) — see
+  // app/services/billing.py's FREE_GENERATION_TARGET/PRO_GENERATION_TARGET, which these
+  // always mirror, and DocumentsPanel.tsx's generation note.
+  free_generation_target: number;
+  pro_generation_target: number;
 }
 
 export interface ProModel {

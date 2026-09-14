@@ -44,6 +44,17 @@ vi.mock("./api", () => ({
   listStudyPlan: vi.fn(async () => []),
   listDocuments: vi.fn(async () => []),
   getDocumentContent: vi.fn(async () => ({ content: "", editable: true })),
+  getBillingStatus: vi.fn(async () => ({
+    plan: "free",
+    subscription_status: null,
+    current_period_end: null,
+    credits_used_cents: 0,
+    credits_limit_cents: 0,
+    credits_reset_at: null,
+    preferred_pro_model: "deepseek/deepseek-v4-flash-0731",
+    free_generation_target: 5,
+    pro_generation_target: 15,
+  })),
 }));
 
 vi.mock("./notifications", () => ({

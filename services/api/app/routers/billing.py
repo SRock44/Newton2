@@ -37,6 +37,13 @@ def _serialize_status(user: User) -> dict:
         "credits_limit_cents": settings.pro_monthly_credit_cents,
         "credits_reset_at": user.credits_period_start.isoformat() if user.credits_period_start else None,
         "preferred_pro_model": billing_service.resolve_pro_model(user),
+        # Static plan constants (not user-specific) so the desktop UI can show an honest
+        # "free generates up to N, Pro generates up to M" note without hardcoding numbers
+        # that could drift from billing_service's actual generation_target_count() -- see
+        # DocumentsPanel.tsx's generation note next to the Flashcards/Practice exam/Study
+        # plan buttons.
+        "free_generation_target": billing_service.FREE_GENERATION_TARGET,
+        "pro_generation_target": billing_service.PRO_GENERATION_TARGET,
     }
 
 

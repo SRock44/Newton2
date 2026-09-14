@@ -12,6 +12,8 @@ const freeStatus: BillingStatus = {
   credits_limit_cents: 500,
   credits_reset_at: null,
   preferred_pro_model: "model-a",
+  free_generation_target: 5,
+  pro_generation_target: 15,
 };
 
 const proStatus: BillingStatus = {
@@ -22,6 +24,8 @@ const proStatus: BillingStatus = {
   credits_limit_cents: 1500,
   credits_reset_at: "2026-10-13T12:00:00Z",
   preferred_pro_model: "model-a",
+  free_generation_target: 5,
+  pro_generation_target: 15,
 };
 
 const proModels: ProModel[] = [

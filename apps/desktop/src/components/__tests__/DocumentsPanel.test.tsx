@@ -12,6 +12,7 @@ vi.mock("../../api", async () => {
     uploadDocument: vi.fn(),
     deleteDocument: vi.fn(),
     generateStudyPlan: vi.fn(),
+    getBillingStatus: vi.fn(),
     getDocumentContent: vi.fn(),
     updateDocumentContent: vi.fn(),
     renameDocument: vi.fn(),
@@ -22,6 +23,7 @@ const listDocuments = api.listDocuments as ReturnType<typeof vi.fn>;
 const uploadDocument = api.uploadDocument as ReturnType<typeof vi.fn>;
 const deleteDocument = api.deleteDocument as ReturnType<typeof vi.fn>;
 const generateStudyPlan = api.generateStudyPlan as ReturnType<typeof vi.fn>;
+const getBillingStatus = api.getBillingStatus as ReturnType<typeof vi.fn>;
 const getDocumentContent = api.getDocumentContent as ReturnType<typeof vi.fn>;
 const updateDocumentContent = api.updateDocumentContent as ReturnType<typeof vi.fn>;
 const renameDocument = api.renameDocument as ReturnType<typeof vi.fn>;
@@ -29,16 +31,35 @@ const renameDocument = api.renameDocument as ReturnType<typeof vi.fn>;
 const SYLLABUS = { id: "1", filename: "syllabus.pdf", mime_type: "application/pdf", created_at: "2026-01-01T00:00:00Z" };
 const NOTES = { id: "1", filename: "notes.txt", mime_type: "text/plain", created_at: "2026-01-01T00:00:00Z" };
 
+const FREE_BILLING_STATUS = {
+  plan: "free" as const,
+  subscription_status: null,
+  current_period_end: null,
+  credits_used_cents: 0,
+  credits_limit_cents: 0,
+  credits_reset_at: null,
+  preferred_pro_model: "deepseek/deepseek-v4-flash-0731",
+  free_generation_target: 5,
+  pro_generation_target: 15,
+};
+
+const PRO_BILLING_STATUS = {
+  ...FREE_BILLING_STATUS,
+  plan: "pro" as const,
+};
+
 describe("DocumentsPanel", () => {
   beforeEach(() => {
     listDocuments.mockReset();
     uploadDocument.mockReset();
     deleteDocument.mockReset();
     generateStudyPlan.mockReset();
+    getBillingStatus.mockReset();
     getDocumentContent.mockReset();
     updateDocumentContent.mockReset();
     renameDocument.mockReset();
     getDocumentContent.mockResolvedValue({ content: "", editable: true });
+    getBillingStatus.mockResolvedValue(FREE_BILLING_STATUS);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Blob(["pdf bytes"])));
   });
 
@@ -221,5 +242,59 @@ describe("DocumentsPanel", () => {
 
     expect(onChatAboutDocument).toHaveBeenCalledWith(NOTES);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // Free-tier usage-ceiling visibility (ROADMAP.md) — the real limit is the number of
+  // items one generation call produces, not any kind of time-based rate limit (no
+  // daily/weekly cap exists anywhere in this app). The note must appear next to the
+  // generation buttons for a free-plan student, be absent for Pro, and never use
+  // wording that could be misread as a time-based limit.
+  it("shows a free-plan student an honest generation-count note next to the generation buttons", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    getBillingStatus.mockResolvedValue(FREE_BILLING_STATUS);
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(await screen.findByText("syllabus.pdf"));
+
+    const note = await screen.findByText(/free plan generates up to 5 items per request/i);
+    expect(note).toBeInTheDocument();
+    expect(note.textContent).toMatch(/pro generates up to 15/i);
+  });
+
+  it("does not show the generation-count note to a Pro-plan student", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    getBillingStatus.mockResolvedValue(PRO_BILLING_STATUS);
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(await screen.findByText("syllabus.pdf"));
+
+    // Give the billing fetch a chance to resolve before asserting absence.
+    await waitFor(() => expect(getBillingStatus).toHaveBeenCalled());
+    expect(screen.queryByText(/generates up to/i)).not.toBeInTheDocument();
+  });
+
+  it("never implies a time-based limit in the generation-count note", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    getBillingStatus.mockResolvedValue(FREE_BILLING_STATUS);
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(await screen.findByText("syllabus.pdf"));
+
+    const note = await screen.findByText(/free plan generates up to 5 items per request/i);
+    const lowered = note.textContent?.toLowerCase() ?? "";
+    for (const phrase of ["per day", "daily", "per week", "weekly", "per hour", "hourly", "per month", "monthly", "24 hours"]) {
+      expect(lowered).not.toContain(phrase);
+    }
+  });
+
+  it("does not block the panel from rendering when the billing-status fetch fails", async () => {
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getBillingStatus.mockRejectedValue(new api.ApiError("Couldn't load your plan."));
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+
+    expect(await screen.findByText("syllabus.pdf")).toBeInTheDocument();
   });
 });
