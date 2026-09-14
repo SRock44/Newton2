@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.router import route
 from app.agents.tutor import TextChunk, ToolActivity, UsageInfo, run_tutor
 from app.core.auth import decode_token, require_user
+from app.core.crisis_detection import CRISIS_RESPONSE_TEXT, classify_crisis, detects_crisis
 from app.core.logging import correlation_id_scope, new_correlation_id
 from app.core.sentry import report_exception
 from app.db.base import SessionLocal, get_db
@@ -276,6 +277,53 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                     db.add(ChatMessage(session_id=session_id, role="user", content=user_message))
                     await db.commit()
                     await append_turn(str(session_id), "user", user_message)
+
+                    # Baseline crisis-response safety net (ROADMAP.md Phase 7): a
+                    # deterministic, local pattern match -- NOT an LLM call, so this adds
+                    # no latency/cost to the overwhelming majority of ordinary turns that
+                    # don't match. See app/core/crisis_detection.py's module docstring for
+                    # scope/design. When it matches, the normal tutor/provider pipeline is
+                    # skipped entirely for this turn -- the fixed resource text is
+                    # persisted/streamed through the exact same paths a normal reply uses,
+                    # so it shows up in chat history like any other assistant message, and
+                    # the student can keep chatting normally afterward.
+                    if detects_crisis(user_message):
+                        # detects_crisis() already ran this same, pure, exception-free
+                        # match to get True -- re-running it here to get the category
+                        # name for the log line below cannot newly raise.
+                        crisis_category = classify_crisis(user_message)
+                        # WARNING per spec, deliberately without the triggering message
+                        # text itself -- it's already stored normally in chat_messages as
+                        # part of ordinary history; the concern here is not duplicating
+                        # sensitive content into general app/Sentry logs. Intentionally
+                        # NOT reported to Sentry (app/core/sentry.py): this is a working
+                        # safety response, not an application error.
+                        logger.warning(
+                            "crisis pattern detected session_id=%s user_id=%s category=%s",
+                            session_id,
+                            user.id,
+                            crisis_category,
+                        )
+                        await websocket.send_json({"type": "chunk", "content": CRISIS_RESPONSE_TEXT})
+                        db.add(
+                            ChatMessage(
+                                session_id=session_id,
+                                role="assistant",
+                                content=CRISIS_RESPONSE_TEXT,
+                            )
+                        )
+                        await db.commit()
+                        await append_turn(str(session_id), "assistant", CRISIS_RESPONSE_TEXT)
+                        await websocket.send_json(
+                            {"type": "done", "prompt_tokens": None, "completion_tokens": None}
+                        )
+                        logger.info(
+                            "chat turn done session_id=%s user_id=%s stopped=False "
+                            "prompt_tokens=None completion_tokens=None crisis=True",
+                            session_id,
+                            user.id,
+                        )
+                        continue
 
                     # Tier 3 read path: pull only what's relevant to *this* message into
                     # the Tier 1 bundle, rather than dumping the whole profile into every
