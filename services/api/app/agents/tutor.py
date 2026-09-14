@@ -1,3 +1,4 @@
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -12,6 +13,14 @@ from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import get_provider
 from app.services import billing as billing_service
 from app.tools.registry import get_tool_specs, run_tool
+
+# Demonstration call site #2 for the correlation-id logging mechanism (see
+# app/core/logging.py's module docstring and app/routers/chat.py's WS handler, the other
+# one): this module never touches app/core/logging.py directly -- it just logs normally
+# through the standard `logging.getLogger("newton.*")` convention, and the id set as the
+# ambient turn context in chat.py's WS loop shows up automatically in every line below
+# because run_tutor() always runs inside a task spawned while that context was active.
+logger = logging.getLogger("newton.tutor")
 
 
 @dataclass
@@ -228,8 +237,18 @@ async def run_tutor(
             turns.append(ChatTurn(role="assistant", content="", tool_calls=pending_calls))
             for call in pending_calls:
                 label = _label_for(call.name)
+                logger.info(
+                    "tutor tool call round=%s tool=%s session_id=%s", _round, call.name, session_id
+                )
                 yield ToolActivity(tool=call.name, label=label, phase="started")
                 result = await run_tool(call.name, call.arguments, session_id=session_id, user_id=user_id)
+                logger.info(
+                    "tutor tool call finished round=%s tool=%s session_id=%s result_len=%s",
+                    _round,
+                    call.name,
+                    session_id,
+                    len(result) if isinstance(result, str) else None,
+                )
                 yield ToolActivity(tool=call.name, label=label, phase="finished")
                 turns.append(ChatTurn(role="tool", content=result, tool_call_id=call.id, name=call.name))
             # loop again: the model sees the tool results and either answers or calls again

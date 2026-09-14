@@ -77,6 +77,11 @@ x-api-env: &api-env
   STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
   STRIPE_PRICE_ID_PRO: ${STRIPE_PRICE_ID_PRO:-}
   PRO_MONTHLY_CREDIT_CENTS: ${PRO_MONTHLY_CREDIT_CENTS:-600}
+  # Optional error tracking (https://sentry.io) -- same dormant-until-configured shape as
+  # every other optional integration above: empty by default, and app/core/sentry.py's
+  # init_sentry() no-ops with no DSN set. To activate: create a Sentry project (Python/
+  # FastAPI), copy its DSN (Settings > Client Keys (DSN)) into SENTRY_DSN below.
+  SENTRY_DSN: ${SENTRY_DSN:-}
 
 services:
   postgres:

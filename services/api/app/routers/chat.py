@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.router import route
 from app.agents.tutor import TextChunk, ToolActivity, UsageInfo, run_tutor
 from app.core.auth import decode_token, require_user
+from app.core.logging import correlation_id_scope, new_correlation_id
+from app.core.sentry import report_exception
 from app.db.base import SessionLocal, get_db
 from app.db.models import ChatMessage, ChatSession
 from app.jobs.pool import get_arq_pool
@@ -21,6 +24,8 @@ from app.services.images import get_image_for_session, upload_image
 from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+logger = logging.getLogger("newton.chat")
 
 # ToolActivity.phase -> outgoing WS frame "type"
 _PHASE_TO_FRAME_TYPE = {"started": "tool_start", "finished": "tool_end"}
@@ -229,6 +234,7 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
 
         recv_task: asyncio.Task | None = None
         gen_task: asyncio.Task | None = None
+        turn_id: str | None = None
 
         try:
             while True:
@@ -250,114 +256,167 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
 
                 user_message = frame.get("content") or ""
 
-                db.add(ChatMessage(session_id=session_id, role="user", content=user_message))
-                await db.commit()
-                await append_turn(str(session_id), "user", user_message)
-
-                # Tier 3 read path: pull only what's relevant to *this* message into the
-                # Tier 1 bundle, rather than dumping the whole profile into every turn.
-                relevant_facts = await profile_memory.retrieve_relevant_facts(db, user.id, user_message)
-                await set_profile_facts(
-                    str(session_id), [f"{f.subject_key}: {f.value}" for f in relevant_facts]
-                )
-
-                # Same shape, for the student's uploaded documents: retrieve only what's
-                # relevant to this message and stash it in the Tier 1 bundle for the Tutor.
-                relevant_chunks = await rag_memory.retrieve_relevant_chunks(db, user.id, user_message)
-                await set_retrieved_chunks(str(session_id), [c.content for c in relevant_chunks])
-
-                plan = route(user_message)
-                if plan.agent != "tutor":
-                    await websocket.send_json({"type": "error", "content": f"unknown agent {plan.agent}"})
-                    continue
-
-                full_response = ""
-                usage: UsageInfo | None = None
-
-                async def _drain_generation() -> None:
-                    nonlocal full_response, usage
-                    async for event in run_tutor(str(session_id), user_message, user_id=str(user.id)):
-                        if isinstance(event, TextChunk):
-                            full_response += event.text
-                            await websocket.send_json({"type": "chunk", "content": event.text})
-                        elif isinstance(event, ToolActivity):
-                            await websocket.send_json(
-                                {
-                                    "type": _PHASE_TO_FRAME_TYPE[event.phase],
-                                    "tool": event.tool,
-                                    "label": event.label,
-                                }
-                            )
-                            if event.phase == "finished":
-                                action = _TOOL_TO_SUGGESTED_ACTION.get(event.tool)
-                                if action is not None:
-                                    await websocket.send_json({"type": "suggested_action", **action})
-                        elif isinstance(event, UsageInfo):
-                            usage = event
-
-                # Run generation concurrently with listening for the next incoming
-                # frame, so a "stop" sent mid-generation is actually seen instead of
-                # sitting unread behind a blocking receive_text() until this reply
-                # finishes on its own.
-                gen_task = asyncio.create_task(_drain_generation())
-                stopped = False
-                try:
-                    while True:
-                        if recv_task is None:
-                            recv_task = asyncio.create_task(_receive_frame())
-                        await asyncio.wait(
-                            {gen_task, recv_task}, return_when=asyncio.FIRST_COMPLETED
-                        )
-
-                        if gen_task.done():
-                            gen_task.result()  # re-raise if generation itself crashed
-                            break
-
-                        # recv_task completed first
-                        incoming = recv_task.result()
-                        recv_task = None
-                        if incoming.get("type") == "stop":
-                            stopped = True
-                            break
-                        # Anything else arriving mid-generation (e.g. a stray
-                        # user_message) is ignored — only one reply generates at a
-                        # time, and there's no safe way to interleave a second send
-                        # on this socket while _drain_generation may itself be
-                        # mid-send. Loop back and keep waiting.
-                finally:
-                    if not gen_task.done():
-                        gen_task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await gen_task
-                    gen_task = None
-
-                # Persist whatever came back — the full reply, or (if stopped) just
-                # the partial text streamed so far. Never silently drop it. usage stays
-                # None if generation was stopped before UsageInfo's yield point (the
-                # provider's trailing usage chunk hadn't arrived yet) — that reply's
-                # tokens just don't count toward the chat's running total, same
-                # graceful-degradation spirit as everything else about Stop.
-                db.add(
-                    ChatMessage(
-                        session_id=session_id,
-                        role="assistant",
-                        content=full_response,
-                        prompt_tokens=usage.prompt_tokens if usage else None,
-                        completion_tokens=usage.completion_tokens if usage else None,
+                # One id per chat turn (not per connection -- a student can send many
+                # messages over the same socket), set as the ambient correlation id for
+                # every log line emitted while this turn is processed, including deep
+                # inside run_tutor's tool-calling loop (app/agents/tutor.py) and any tool
+                # it calls (e.g. app/tools/research_fetch.py's own logger calls) -- see
+                # app/core/logging.py's module docstring for why that "just works" via
+                # asyncio's context-copying on task creation, with no extra plumbing.
+                # Kept in a plain variable (not just inside the `with` below) so the
+                # except-Exception safety net further down can still log it even after
+                # the `with` block's own reset has already run while the exception
+                # unwound through this frame.
+                turn_id = new_correlation_id()
+                with correlation_id_scope(turn_id):
+                    logger.info(
+                        "chat turn start session_id=%s user_id=%s", session_id, user.id
                     )
-                )
-                await db.commit()
-                await append_turn(str(session_id), "assistant", full_response)
 
-                await websocket.send_json(
-                    {
-                        "type": "stopped" if stopped else "done",
-                        "prompt_tokens": usage.prompt_tokens if usage else None,
-                        "completion_tokens": usage.completion_tokens if usage else None,
-                    }
-                )
+                    db.add(ChatMessage(session_id=session_id, role="user", content=user_message))
+                    await db.commit()
+                    await append_turn(str(session_id), "user", user_message)
+
+                    # Tier 3 read path: pull only what's relevant to *this* message into
+                    # the Tier 1 bundle, rather than dumping the whole profile into every
+                    # turn.
+                    relevant_facts = await profile_memory.retrieve_relevant_facts(db, user.id, user_message)
+                    await set_profile_facts(
+                        str(session_id), [f"{f.subject_key}: {f.value}" for f in relevant_facts]
+                    )
+
+                    # Same shape, for the student's uploaded documents: retrieve only
+                    # what's relevant to this message and stash it in the Tier 1 bundle
+                    # for the Tutor.
+                    relevant_chunks = await rag_memory.retrieve_relevant_chunks(db, user.id, user_message)
+                    await set_retrieved_chunks(str(session_id), [c.content for c in relevant_chunks])
+
+                    plan = route(user_message)
+                    if plan.agent != "tutor":
+                        await websocket.send_json({"type": "error", "content": f"unknown agent {plan.agent}"})
+                        continue
+
+                    full_response = ""
+                    usage: UsageInfo | None = None
+
+                    async def _drain_generation() -> None:
+                        nonlocal full_response, usage
+                        async for event in run_tutor(str(session_id), user_message, user_id=str(user.id)):
+                            if isinstance(event, TextChunk):
+                                full_response += event.text
+                                await websocket.send_json({"type": "chunk", "content": event.text})
+                            elif isinstance(event, ToolActivity):
+                                await websocket.send_json(
+                                    {
+                                        "type": _PHASE_TO_FRAME_TYPE[event.phase],
+                                        "tool": event.tool,
+                                        "label": event.label,
+                                    }
+                                )
+                                if event.phase == "finished":
+                                    action = _TOOL_TO_SUGGESTED_ACTION.get(event.tool)
+                                    if action is not None:
+                                        await websocket.send_json({"type": "suggested_action", **action})
+                            elif isinstance(event, UsageInfo):
+                                usage = event
+
+                    # Run generation concurrently with listening for the next incoming
+                    # frame, so a "stop" sent mid-generation is actually seen instead of
+                    # sitting unread behind a blocking receive_text() until this reply
+                    # finishes on its own. Created while turn_id's scope is active, so
+                    # this task's copied context -- and everything it awaits -- carries
+                    # the same correlation id (see app/core/logging.py).
+                    gen_task = asyncio.create_task(_drain_generation())
+                    stopped = False
+                    try:
+                        while True:
+                            if recv_task is None:
+                                recv_task = asyncio.create_task(_receive_frame())
+                            await asyncio.wait(
+                                {gen_task, recv_task}, return_when=asyncio.FIRST_COMPLETED
+                            )
+
+                            if gen_task.done():
+                                gen_task.result()  # re-raise if generation itself crashed
+                                break
+
+                            # recv_task completed first
+                            incoming = recv_task.result()
+                            recv_task = None
+                            if incoming.get("type") == "stop":
+                                stopped = True
+                                break
+                            # Anything else arriving mid-generation (e.g. a stray
+                            # user_message) is ignored — only one reply generates at a
+                            # time, and there's no safe way to interleave a second send
+                            # on this socket while _drain_generation may itself be
+                            # mid-send. Loop back and keep waiting.
+                    finally:
+                        if not gen_task.done():
+                            gen_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await gen_task
+                        gen_task = None
+
+                    # Persist whatever came back — the full reply, or (if stopped) just
+                    # the partial text streamed so far. Never silently drop it. usage
+                    # stays None if generation was stopped before UsageInfo's yield point
+                    # (the provider's trailing usage chunk hadn't arrived yet) — that
+                    # reply's tokens just don't count toward the chat's running total,
+                    # same graceful-degradation spirit as everything else about Stop.
+                    db.add(
+                        ChatMessage(
+                            session_id=session_id,
+                            role="assistant",
+                            content=full_response,
+                            prompt_tokens=usage.prompt_tokens if usage else None,
+                            completion_tokens=usage.completion_tokens if usage else None,
+                        )
+                    )
+                    await db.commit()
+                    await append_turn(str(session_id), "assistant", full_response)
+
+                    await websocket.send_json(
+                        {
+                            "type": "stopped" if stopped else "done",
+                            "prompt_tokens": usage.prompt_tokens if usage else None,
+                            "completion_tokens": usage.completion_tokens if usage else None,
+                        }
+                    )
+
+                    logger.info(
+                        "chat turn done session_id=%s user_id=%s stopped=%s prompt_tokens=%s "
+                        "completion_tokens=%s",
+                        session_id,
+                        user.id,
+                        stopped,
+                        usage.prompt_tokens if usage else None,
+                        usage.completion_tokens if usage else None,
+                    )
         except WebSocketDisconnect:
             pass
+        except Exception as exc:  # noqa: BLE001 - last-resort safety net: a bug anywhere
+            # in this handler (the tutor/tool loop included -- see gen_task.result()'s
+            # re-raise above) closes the socket cleanly with a real error frame instead
+            # of crashing the connection with a bare traceback and no signal to the
+            # client. turn_id is read directly (not via get_correlation_id()) because the
+            # `with correlation_id_scope(...)` block's own reset has already run by the
+            # time an exception raised inside it reaches this outer except clause.
+            logger.error(
+                "chat_ws unhandled exception correlation_id=%s session_id=%s user_id=%s: %s",
+                turn_id,
+                session_id,
+                user.id,
+                exc,
+                exc_info=exc,
+            )
+            report_exception(exc)
+            with contextlib.suppress(Exception):
+                await websocket.send_json(
+                    {"type": "error", "content": "Something went wrong on our end. Please try again."}
+                )
+            with contextlib.suppress(Exception):
+                await websocket.close(code=1011)
         finally:
             if recv_task is not None and not recv_task.done():
                 recv_task.cancel()

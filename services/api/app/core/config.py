@@ -124,6 +124,13 @@ class Settings(BaseSettings):
     # without a code change.
     pro_monthly_credit_cents: int = 600
 
+    # Optional error tracking (https://sentry.io) -- dormant-until-configured, same
+    # pattern as every other optional integration above (Stripe, Groq/OpenRouter, Google
+    # Classroom): empty by default, and app/core/sentry.py's init_sentry() no-ops with no
+    # DSN set, never a startup failure either way. See infra/docker-compose.yml's
+    # SENTRY_DSN comment for where to get one (Sentry project settings > Client Keys).
+    sentry_dsn: SecretStr | None = None
+
 
 def check_no_default_secrets(settings: Settings) -> None:
     """Refuse to run outside local dev with a publicly-known default secret still in
