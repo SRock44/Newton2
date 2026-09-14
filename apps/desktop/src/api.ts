@@ -406,6 +406,26 @@ export async function createCheckoutSession(token: string): Promise<string> {
   return data.checkout_url as string;
 }
 
+/** Returns a Stripe Checkout URL (one-time payment, not a subscription) for a top-up
+ * credit purchase, to open in the system browser — same "open a URL, then poll
+ * getBillingStatus()" pattern as createCheckoutSession above (see SettingsPanel's "Add
+ * credits" section). `amountCents` must be one of the tiers in BillingStatus.
+ * topup_tiers_cents; the backend itself validates this too. 503s when billing isn't
+ * configured server-side yet, same graceful-degradation message as createCheckoutSession. */
+export async function createTopupCheckoutSession(token: string, amountCents: number): Promise<string> {
+  const res = await fetch(`${API_URL}/billing/topup-checkout-session`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ amount_cents: amountCents }),
+  });
+  if (!res.ok) {
+    const fallback = res.status === 503 ? "Adding credits isn't available on this server yet." : "Couldn't start checkout.";
+    throw new ApiError(await detailOrFallback(res, fallback));
+  }
+  const data = await res.json();
+  return data.checkout_url as string;
+}
+
 /** Returns a Stripe-hosted billing portal URL (manage payment method, cancel) to open
  * in the system browser — self-service, nothing to poll for afterward. */
 export async function createPortalSession(token: string): Promise<string> {

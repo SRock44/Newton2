@@ -212,6 +212,191 @@ async def test_record_frontier_usage_is_a_noop_for_zero_cost(billing_user, db_se
 
 
 # ---------------------------------------------------------------------------
+# Top-up balance -- frontier_access_available, compute_topup_credit_cents, and
+# record_frontier_usage's split between the Pro monthly allowance and the purchased,
+# non-expiring topup_credits_cents balance (see ROADMAP.md Phase 7 and this module's
+# own docstring for the exact product-logic decision: Pro monthly credit is spent FIRST,
+# up to its cap, and only the remainder spills onto topup_credits_cents).
+# ---------------------------------------------------------------------------
+
+
+def test_frontier_access_available_is_false_with_no_user_or_no_openrouter():
+    assert billing_service.frontier_access_available(None, True) is False
+    assert billing_service.frontier_access_available(_make_user(plan="pro"), False) is False
+
+
+def test_frontier_access_available_true_for_a_pro_user_with_credit_remaining(monkeypatch):
+    monkeypatch.setattr(billing_service, "get_settings", lambda: Settings(pro_monthly_credit_cents=600))
+    user = _make_user(plan="pro", credits_used_cents=0, topup_credits_cents=0)
+    assert billing_service.frontier_access_available(user, True) is True
+
+
+def test_frontier_access_available_false_for_a_pro_user_with_no_credit_and_no_topup(monkeypatch):
+    monkeypatch.setattr(billing_service, "get_settings", lambda: Settings(pro_monthly_credit_cents=600))
+    user = _make_user(plan="pro", credits_used_cents=600, topup_credits_cents=0)
+    assert billing_service.frontier_access_available(user, True) is False
+
+
+def test_frontier_access_available_true_for_a_pro_user_exhausted_on_credit_but_with_topup(monkeypatch):
+    monkeypatch.setattr(billing_service, "get_settings", lambda: Settings(pro_monthly_credit_cents=600))
+    user = _make_user(plan="pro", credits_used_cents=600, topup_credits_cents=100)
+    assert billing_service.frontier_access_available(user, True) is True
+
+
+def test_frontier_access_available_true_for_a_free_user_with_topup_balance():
+    # The real product decision this feature is built on: a free (non-Pro) user can
+    # still fund frontier-model access entirely from a purchased top-up balance.
+    user = _make_user(plan="free", topup_credits_cents=1)
+    assert billing_service.frontier_access_available(user, True) is True
+
+
+def test_frontier_access_available_false_for_a_free_user_with_no_topup_balance():
+    user = _make_user(plan="free", topup_credits_cents=0)
+    assert billing_service.frontier_access_available(user, True) is False
+
+
+def test_compute_topup_credit_cents_is_exact_for_real_dollar_tiers():
+    # $5 / $10 / $25 tiers, each an exact multiple of 8% -- proves the integer-basis-
+    # points math has zero drift for the amounts real users will actually pay.
+    assert billing_service.compute_topup_credit_cents(500) == 460  # $5.00 -> $4.60 (8% = 40c)
+    assert billing_service.compute_topup_credit_cents(1000) == 920  # $10.00 -> $9.20 (8% = 80c)
+    assert billing_service.compute_topup_credit_cents(2500) == 2300  # $25.00 -> $23.00 (8% = $2.00)
+
+
+def test_compute_topup_credit_cents_floors_a_fractional_cent_in_newtons_favor():
+    # $7.77 * 0.92 = $7.1484 -> floors to 714 cents, never 715 -- Newton keeps the
+    # sub-cent remainder rather than the user, mirroring compute_cost_cents's own bias
+    # (there, a fractional cent of cost always rounds UP against the user; here, a
+    # fractional cent of credit always rounds DOWN against the user -- same direction).
+    assert billing_service.compute_topup_credit_cents(777) == 714
+
+
+def test_compute_topup_credit_cents_matches_the_margin_constant_exactly():
+    # Cross-check against TOPUP_MARGIN directly (not just hardcoded expected numbers
+    # above) so a future change to the margin constant is caught by this test too.
+    amount = 10_000  # $100.00, chosen to divide evenly regardless of the exact margin
+    credited = billing_service.compute_topup_credit_cents(amount)
+    expected = amount - round(amount * billing_service.TOPUP_MARGIN)
+    assert credited == expected
+
+
+async def test_record_frontier_usage_charges_pro_credit_first_when_it_fully_covers_the_cost(
+    billing_user, db_session, monkeypatch
+):
+    billing_user.plan = "pro"
+    billing_user.credits_used_cents = 0
+    billing_user.topup_credits_cents = 500
+    await db_session.commit()
+
+    async def fake_compute(model_id, prompt_tokens, completion_tokens):
+        return 50
+
+    monkeypatch.setattr(billing_service, "compute_cost_cents", fake_compute)
+    monkeypatch.setattr(billing_service, "get_settings", lambda: Settings(pro_monthly_credit_cents=600))
+
+    added = await billing_service.record_frontier_usage(billing_user.id, "any-model", 100, 50)
+    assert added == 50
+
+    await db_session.refresh(billing_user)
+    # Fully funded by the Pro monthly allowance -- the top-up balance is untouched.
+    assert billing_user.credits_used_cents == 50
+    assert billing_user.topup_credits_cents == 500
+
+
+async def test_record_frontier_usage_spills_the_remainder_onto_topup_once_pro_credit_is_exhausted(
+    billing_user, db_session, monkeypatch
+):
+    billing_user.plan = "pro"
+    billing_user.credits_used_cents = 580  # only 20 cents of monthly allowance left
+    billing_user.topup_credits_cents = 500
+    await db_session.commit()
+
+    async def fake_compute(model_id, prompt_tokens, completion_tokens):
+        return 50
+
+    monkeypatch.setattr(billing_service, "compute_cost_cents", fake_compute)
+    monkeypatch.setattr(billing_service, "get_settings", lambda: Settings(pro_monthly_credit_cents=600))
+
+    added = await billing_service.record_frontier_usage(billing_user.id, "any-model", 100, 50)
+    assert added == 50
+
+    await db_session.refresh(billing_user)
+    # The last 20 cents of Pro allowance is used up first (credits_used_cents hits the
+    # 600 cap exactly), and the remaining 30 cents of real cost spills onto topup.
+    assert billing_user.credits_used_cents == 600
+    assert billing_user.topup_credits_cents == 470
+
+
+async def test_record_frontier_usage_funds_a_free_users_call_entirely_from_topup(
+    billing_user, db_session, monkeypatch
+):
+    billing_user.plan = "free"
+    billing_user.credits_used_cents = 0
+    billing_user.topup_credits_cents = 200
+    await db_session.commit()
+
+    async def fake_compute(model_id, prompt_tokens, completion_tokens):
+        return 75
+
+    monkeypatch.setattr(billing_service, "compute_cost_cents", fake_compute)
+
+    added = await billing_service.record_frontier_usage(billing_user.id, "any-model", 100, 50)
+    assert added == 75
+
+    await db_session.refresh(billing_user)
+    # A free user has no Pro monthly allowance to draw from at all -- the entire cost
+    # comes out of the purchased top-up balance, and credits_used_cents never moves.
+    assert billing_user.credits_used_cents == 0
+    assert billing_user.topup_credits_cents == 125
+
+
+# ---------------------------------------------------------------------------
+# apply_topup_checkout_completed -- webhook-driven crediting of a real one-time payment.
+# ---------------------------------------------------------------------------
+
+
+async def test_apply_topup_checkout_completed_credits_the_post_margin_amount(billing_user, db_session):
+    billing_user.topup_credits_cents = 0
+    await db_session.commit()
+
+    event_object = {"client_reference_id": str(billing_user.id), "amount_total": 1000, "mode": "payment"}
+    await billing_service.apply_topup_checkout_completed(db_session, event_object)
+
+    await db_session.refresh(billing_user)
+    # $10.00 paid -> $9.20 credited (8% margin), exact integer cents.
+    assert billing_user.topup_credits_cents == 920
+
+
+async def test_apply_topup_checkout_completed_accumulates_across_multiple_purchases(billing_user, db_session):
+    billing_user.topup_credits_cents = 460  # one prior $5 top-up already credited
+    await db_session.commit()
+
+    event_object = {"client_reference_id": str(billing_user.id), "amount_total": 2500, "mode": "payment"}
+    await billing_service.apply_topup_checkout_completed(db_session, event_object)
+
+    await db_session.refresh(billing_user)
+    assert billing_user.topup_credits_cents == 460 + 2300
+
+
+async def test_apply_topup_checkout_completed_ignores_an_unknown_user(db_session):
+    await billing_service.apply_topup_checkout_completed(
+        db_session, {"client_reference_id": str(uuid.uuid4()), "amount_total": 1000, "mode": "payment"}
+    )
+
+
+async def test_apply_topup_checkout_completed_is_a_noop_with_no_amount(billing_user, db_session):
+    billing_user.topup_credits_cents = 0
+    await db_session.commit()
+
+    await billing_service.apply_topup_checkout_completed(
+        db_session, {"client_reference_id": str(billing_user.id), "mode": "payment"}
+    )
+
+    await db_session.refresh(billing_user)
+    assert billing_user.topup_credits_cents == 0
+
+
+# ---------------------------------------------------------------------------
 # Stripe customer/checkout/portal helpers — Stripe SDK mocked, real DB for persistence.
 # ---------------------------------------------------------------------------
 
@@ -413,6 +598,8 @@ async def test_billing_status_returns_the_expected_shape(http_client, auth_heade
         "free_generation_target",
         "pro_generation_target",
         "focus_mode_enabled",
+        "topup_credits_cents",
+        "topup_tiers_cents",
     }
     assert body["plan"] in ("free", "pro")
     assert isinstance(body["credits_used_cents"], int)
@@ -422,6 +609,11 @@ async def test_billing_status_returns_the_expected_shape(http_client, auth_heade
     # inputs, never a stale/hardcoded copy (see DocumentsPanel.tsx's generation note).
     assert body["free_generation_target"] == billing_service.FREE_GENERATION_TARGET
     assert body["pro_generation_target"] == billing_service.PRO_GENERATION_TARGET
+    # Top-up balance -- see billing_service.TOPUP_MARGIN/TOPUP_TIERS_CENTS and
+    # User.topup_credits_cents. A real integer balance (never negative for a fresh/never-
+    # topped-up user) and the exact tier list the topup-checkout-session endpoint accepts.
+    assert isinstance(body["topup_credits_cents"], int)
+    assert body["topup_tiers_cents"] == billing_service.TOPUP_TIERS_CENTS
 
 
 async def test_billing_status_requires_auth(http_client):
@@ -593,6 +785,25 @@ async def test_portal_session_returns_503_when_stripe_not_configured(http_client
     assert resp.status_code == 503
 
 
+async def test_topup_checkout_session_returns_503_when_stripe_not_configured(http_client, auth_headers):
+    # Same genuinely-true-in-this-dev-stack proof as checkout-session's own 503 test
+    # above -- no real Stripe keys exist yet.
+    resp = await http_client.post(
+        "/billing/topup-checkout-session",
+        json={"amount_cents": billing_service.TOPUP_TIERS_CENTS[0]},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 503
+    assert "configured" in resp.json()["detail"].lower()
+
+
+async def test_topup_checkout_session_requires_auth(http_client):
+    resp = await http_client.post(
+        "/billing/topup-checkout-session", json={"amount_cents": billing_service.TOPUP_TIERS_CENTS[0]}
+    )
+    assert resp.status_code in (401, 403)
+
+
 async def test_checkout_complete_page_is_public_and_returns_html(http_client):
     resp = await http_client.get("/billing/checkout-complete")
     assert resp.status_code == 200
@@ -649,6 +860,48 @@ async def test_checkout_session_returns_a_url_when_stripe_is_configured_and_mock
     resp = await inprocess_client.post("/billing/checkout-session", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json() == {"checkout_url": "https://checkout.stripe.com/fake-inprocess"}
+
+
+async def test_topup_checkout_session_returns_a_url_when_stripe_is_configured_and_mocked(
+    inprocess_client, auth_headers, student1_user, monkeypatch
+):
+    fake_settings = Settings(stripe_secret_key="sk_fake", stripe_price_id_pro="price_fake")
+    monkeypatch.setattr(billing_service, "get_settings", lambda: fake_settings)
+
+    monkeypatch.setattr(stripe.Customer, "create", lambda **kwargs: {"id": "cus_inprocess_topup"})
+
+    seen = {}
+
+    def fake_create(**kwargs):
+        seen.update(kwargs)
+        return {"url": "https://checkout.stripe.com/fake-topup"}
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
+
+    resp = await inprocess_client.post(
+        "/billing/topup-checkout-session",
+        json={"amount_cents": billing_service.TOPUP_TIERS_CENTS[1]},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"checkout_url": "https://checkout.stripe.com/fake-topup"}
+
+    # A one-time payment, never a subscription -- and the chosen tier's amount is what
+    # actually got sent to Stripe as the line item's unit_amount.
+    assert seen["mode"] == "payment"
+    assert seen["line_items"][0]["price_data"]["unit_amount"] == billing_service.TOPUP_TIERS_CENTS[1]
+
+
+async def test_topup_checkout_session_rejects_an_amount_outside_the_curated_tiers(
+    inprocess_client, auth_headers, student1_user, monkeypatch
+):
+    fake_settings = Settings(stripe_secret_key="sk_fake", stripe_price_id_pro="price_fake")
+    monkeypatch.setattr(billing_service, "get_settings", lambda: fake_settings)
+
+    resp = await inprocess_client.post(
+        "/billing/topup-checkout-session", json={"amount_cents": 999}, headers=auth_headers
+    )
+    assert resp.status_code == 400
 
 
 async def test_portal_session_requires_an_existing_customer(
@@ -711,6 +964,43 @@ async def test_webhook_dispatches_checkout_completed_and_updates_the_user(
     await db_session.refresh(billing_user)
     assert billing_user.plan == "pro"
     assert billing_user.stripe_subscription_id == "sub_webhook"
+
+
+async def test_webhook_dispatches_a_topup_checkout_completed_and_credits_the_balance(
+    inprocess_client, billing_user, db_session, monkeypatch
+):
+    """checkout.session.completed with mode="payment" must route to
+    apply_topup_checkout_completed (credits topup_credits_cents), NOT
+    apply_checkout_completed (which would incorrectly flip the user to Pro) -- proves
+    the webhook's mode-based dispatch, not just the underlying handler function."""
+    from app.routers import billing as billing_router
+
+    billing_user.plan = "free"
+    billing_user.topup_credits_cents = 0
+    await db_session.commit()
+
+    monkeypatch.setattr(billing_router, "get_settings", lambda: Settings(stripe_webhook_secret="whsec_fake"))
+
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "client_reference_id": str(billing_user.id),
+                "mode": "payment",
+                "amount_total": 500,
+                "customer": "cus_webhook_topup",
+            }
+        },
+    }
+    monkeypatch.setattr(stripe.Webhook, "construct_event", lambda payload, sig_header, secret: fake_event)
+
+    resp = await inprocess_client.post("/billing/webhook", content=b"{}", headers={"stripe-signature": "valid"})
+    assert resp.status_code == 200
+
+    await db_session.refresh(billing_user)
+    # $5.00 paid -> $4.60 credited (8% margin) -- and plan must NOT have changed.
+    assert billing_user.topup_credits_cents == 460
+    assert billing_user.plan == "free"
 
 
 async def test_webhook_dispatches_subscription_deleted(inprocess_client, billing_user, db_session, monkeypatch):

@@ -276,6 +276,89 @@ async def test_run_tutor_uses_free_tier_for_an_explicit_free_plan_user(tutor_use
 
 
 # ---------------------------------------------------------------------------
+# Top-up balance funding frontier routing (app/services/billing.py's
+# frontier_access_available/record_frontier_usage, ROADMAP.md Phase 7) -- a real
+# product decision: a FREE user with a purchased, non-expiring top-up balance can reach
+# a frontier model too, without any Pro subscription at all. A Pro user whose monthly
+# allowance is exhausted but who also holds a top-up balance keeps working too, funded
+# by the spillover pool -- see billing_service.record_frontier_usage's own docstring for
+# the exact "Pro credit spent first, top-up as overflow" ordering this proves.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_tutor_routes_a_free_user_with_topup_balance_to_the_frontier_model(tutor_user, monkeypatch):
+    user = await tutor_user(plan="free", topup_credits_cents=200)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    recorded = {}
+
+    async def fake_record(user_id, model, prompt_tokens, completion_tokens):
+        recorded.update(user_id=user_id, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+        return 5
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    # A free plan, with no Pro subscription at all, still reaches the frontier model --
+    # funded entirely by the purchased top-up balance.
+    assert text_of(events) == "frontier answer"
+    assert recorded["user_id"] == user.id
+
+
+async def test_run_tutor_uses_free_tier_for_a_free_user_with_zero_topup_balance(tutor_user, monkeypatch):
+    user = await tutor_user(plan="free", topup_credits_cents=0)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    fake = ScriptedToolCallingProvider([["free tier answer"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "free tier answer"
+
+
+async def test_run_tutor_routes_a_pro_user_with_exhausted_credit_but_a_topup_balance(tutor_user, monkeypatch):
+    user = await tutor_user(plan="pro", credits_used_cents=10_000, topup_credits_cents=200)
+
+    monkeypatch.setattr(
+        tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key", pro_monthly_credit_cents=600)
+    )
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    async def fake_record(*a, **kw):
+        return 0
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    # Exhausted Pro monthly credit no longer falls back to the free tier once a top-up
+    # balance exists -- it spills over onto that instead (see record_frontier_usage).
+    assert text_of(events) == "frontier answer"
+
+
+async def test_run_tutor_falls_back_to_free_tier_for_a_pro_user_with_no_credit_and_no_topup(
+    tutor_user, monkeypatch
+):
+    user = await tutor_user(plan="pro", credits_used_cents=10_000, topup_credits_cents=0)
+
+    monkeypatch.setattr(
+        tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key", pro_monthly_credit_cents=600)
+    )
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    fake = ScriptedToolCallingProvider([["free tier answer"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "free tier answer"
+
+
+# ---------------------------------------------------------------------------
 # Self-service Focus Mode (User.focus_mode_enabled) -- see app/agents/tutor.py's
 # FOCUS_MODE_SYSTEM_ADDENDUM. A direct string-content assertion is enough to prove the
 # prompt text itself is correct; no live-model call needed for that.

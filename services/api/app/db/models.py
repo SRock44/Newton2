@@ -56,6 +56,18 @@ class User(Base):
     # what a real implementation would still need.
     age_band: Mapped[str | None] = mapped_column(String, nullable=True)
     consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A real, purchased, NON-expiring credit balance (in cents) -- see ROADMAP.md's
+    # Phase 7 "Newton balance" item and app/services/billing.py's TOPUP_MARGIN/
+    # compute_topup_credit_cents/apply_topup_checkout_completed. Deliberately a SEPARATE
+    # pool from credits_used_cents above: that one tracks spend against a Pro
+    # subscriber's monthly allowance and resets to 0 every billing period; this one is
+    # topped up via a one-time Stripe Checkout purchase (mode="payment", not
+    # "subscription") and only ever goes up (a purchase) or down (real frontier-model
+    # spend, see record_frontier_usage) -- never reset on a timer. Available to ANY
+    # user, Pro or free -- see billing.frontier_access_available, the single place that
+    # decides whether a call routes to a frontier model, reused by
+    # app/agents/tutor.py's _select_provider.
+    topup_credits_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # Self-service "Focus Mode" (see app/routers/billing.py's PATCH /billing/focus-mode,
     # SettingsPanel.tsx) -- a student opting THEMSELVES into a stricter, Socratic-only

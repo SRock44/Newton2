@@ -10,6 +10,16 @@ Every Stripe call here is a thin, mockable wrapper around the `stripe` SDK. The 
 calls are synchronous (blocking) HTTP, so each is pushed onto a worker thread via
 asyncio.to_thread rather than blocking the event loop -- this app is otherwise async
 end to end.
+
+Two SEPARATE frontier-model funding pools live on User, both spent via the same
+compute_cost_cents/record_frontier_usage machinery: `credits_used_cents`, a Pro
+subscriber's monthly allowance (resets every billing period, funded by the recurring
+Stripe subscription above), and `topup_credits_cents`, a real, purchased,
+NON-expiring balance (funded by a one-time Stripe Checkout purchase, see
+create_topup_checkout_session/apply_topup_checkout_completed below -- ROADMAP.md Phase
+7). See frontier_access_available for whether a call routes to a frontier model at all,
+and record_frontier_usage's docstring for exactly how a call that runs gets charged
+against one or both pools.
 """
 
 import asyncio
@@ -197,24 +207,130 @@ def generation_target_count(user: User | None) -> int:
     return FREE_GENERATION_TARGET
 
 
+def frontier_access_available(user: User | None, openrouter_configured: bool) -> bool:
+    """Whether this user's tutor calls should route to a frontier (Pro-tier) model at
+    all right now -- the single place that decision is made, reused by
+    app/agents/tutor.py's _select_provider so the real routing logic and any future
+    caller never drift apart. True when OpenRouter is actually configured AND either:
+
+      - the user is Pro and still has monthly subscription credit left this period
+        (is_pro + pro_credits_remaining, the original, pre-top-up condition), OR
+      - regardless of plan, the user has a nonzero PURCHASED top-up balance
+        (topup_credits_cents > 0) -- see the module docstring's "Pro-monthly-credit vs.
+        top-up-balance" note and record_frontier_usage below for how a call that
+        actually runs gets charged against whichever pool(s) fund it.
+
+    A free user with a top-up balance is a deliberate, real product decision (see
+    ROADMAP.md Phase 7): topping up buys real spendable credit, not a Pro subscription,
+    so it has to work standalone without requiring Pro at all.
+    """
+    if user is None or not openrouter_configured:
+        return False
+    if is_pro(user) and pro_credits_remaining(user):
+        return True
+    return user.topup_credits_cents > 0
+
+
 async def record_frontier_usage(
     user_id: uuid.UUID, model_id: str, prompt_tokens: int, completion_tokens: int
 ) -> int:
-    """Adds one frontier-model call's real cost to this user's credit ledger. Uses a raw
-    atomic UPDATE (credits_used_cents = credits_used_cents + cost) rather than a
-    read-modify-write on a loaded ORM object, so two concurrent calls for the same user
-    (genuinely possible -- e.g. two chat tabs) can't lose an increment to a race. Opens
-    and commits its own short-lived session. Returns the cost added, in cents."""
+    """Adds one frontier-model call's real cost to this user's credit ledger(s). Returns
+    the cost added, in cents.
+
+    PRODUCT DECISION -- which pool pays for a call, when a user has both a Pro monthly
+    allowance and a purchased top-up balance (see ROADMAP.md Phase 7): the Pro monthly
+    allowance is spent FIRST, up to its per-period cap (Settings.pro_monthly_credit_cents),
+    and only the remainder spills onto the user's non-expiring topup_credits_cents
+    balance. Reasoning: the monthly allowance is use-it-or-lose-it -- whatever's unspent
+    at period end is simply gone -- while a top-up balance carries over indefinitely, so
+    burning the expiring allowance first is the only ordering that never leaves value on
+    the table for a Pro+top-up user. A free (non-Pro) user has no monthly allowance at
+    all, so their usage is funded entirely from topup_credits_cents.
+
+    The split is decided HERE, at charge time, from a fresh read of the row -- not by
+    trusting whatever frontier_access_available saw when the call started -- because the
+    real cost of a (possibly long, multi-tool-call) conversation turn is only known once
+    every round of it has actually run.
+
+    Same unclamped-overage behavior this ledger already had before top-up balances
+    existed (see the original raw-UPDATE version of this function): a single call's real
+    cost can end up a little past whatever authorized it, since that authorization
+    necessarily happened before the cost was known. Before, that meant
+    credits_used_cents could end up past pro_monthly_credit_cents; now it can also mean
+    topup_credits_cents goes slightly negative. Either way it's the *next* call that
+    actually gets blocked (frontier_access_available then reads false), not this one --
+    same tradeoff as before, just extended to the second pool.
+
+    Uses atomic column-delta UPDATE expressions (`X = X + delta`) for the actual writes,
+    same as before, so two concurrent calls for the same user (e.g. two chat tabs) can't
+    lose an increment to a race -- only the *split* between the two pools (computed from
+    a prior read) can be marginally imprecise under real concurrency, never the totals.
+    """
     cost_cents = await compute_cost_cents(model_id, prompt_tokens, completion_tokens)
-    if cost_cents > 0:
-        async with SessionLocal() as db:
-            await db.execute(
-                sa_update(User)
-                .where(User.id == user_id)
-                .values(credits_used_cents=User.credits_used_cents + cost_cents)
+    if cost_cents <= 0:
+        return cost_cents
+
+    async with SessionLocal() as db:
+        user = await db.get(User, user_id)
+        if user is None:
+            return cost_cents
+
+        pro_budget_left = 0
+        if is_pro(user):
+            settings = get_settings()
+            pro_budget_left = max(0, settings.pro_monthly_credit_cents - user.credits_used_cents)
+
+        from_pro = min(cost_cents, pro_budget_left)
+        from_topup = cost_cents - from_pro
+
+        await db.execute(
+            sa_update(User)
+            .where(User.id == user_id)
+            .values(
+                credits_used_cents=User.credits_used_cents + from_pro,
+                topup_credits_cents=User.topup_credits_cents - from_topup,
             )
-            await db.commit()
+        )
+        await db.commit()
     return cost_cents
+
+
+# ---------------------------------------------------------------------------
+# Top-up balance: a real, purchased, non-expiring credit balance -- separate from the
+# Pro monthly subscription allowance above. See ROADMAP.md Phase 7 and User.
+# topup_credits_cents's own comment (app/db/models.py) for the full framing.
+# ---------------------------------------------------------------------------
+
+# Newton's cut of a top-up purchase -- the rest becomes real spendable credit, tracked
+# against actual per-token OpenRouter cost via compute_cost_cents, same as everything
+# else this ledger already charges for. "~8%, exact number TBD" per ROADMAP.md Phase 7
+# -- a plain module constant (not a Settings field) since, unlike the Stripe keys/price
+# id, this is a product number the codebase itself should own, not something a deployer
+# tunes per-environment.
+TOPUP_MARGIN = 0.08
+
+# Fixed purchase tiers ($5 / $10 / $25), in cents -- kept simple for a first pass rather
+# than an open-amount field (easier to validate server-side, easier for the Settings UI
+# to render as a few buttons, and avoids having to think about a sane min/max on an
+# arbitrary amount). Revisit if product wants an open amount later.
+TOPUP_TIERS_CENTS: list[int] = [500, 1000, 2500]
+
+
+def compute_topup_credit_cents(amount_paid_cents: int) -> int:
+    """Real spendable credit added to a user's top-up balance from a one-time Stripe
+    payment of `amount_paid_cents` (Stripe's own `amount_total`, already real integer
+    cents -- no unit conversion needed), after Newton's TOPUP_MARGIN cut.
+
+    Integer-only math throughout (basis points, floor-divided) -- no float dollars
+    anywhere in this calculation, so there's no float rounding drift on real money, same
+    care compute_cost_cents takes on the spend side of this ledger. Floors the result,
+    so a sub-cent remainder always rounds in NEWTON's favor (the user is credited
+    slightly less, never slightly more) -- the credit-side mirror of compute_cost_cents
+    always rounding a fractional cent UP (never under-charging): both directions bias
+    toward Newton, never against it.
+    """
+    margin_basis_points = round(TOPUP_MARGIN * 10_000)  # e.g. 800 for 8%
+    return amount_paid_cents * (10_000 - margin_basis_points) // 10_000
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +378,39 @@ async def create_checkout_session(customer_id: str, user_id: uuid.UUID, base_url
     return session["url"]
 
 
+async def create_topup_checkout_session(
+    customer_id: str, user_id: uuid.UUID, amount_cents: int, base_url: str
+) -> str:
+    """A one-time (mode="payment", NOT "subscription") Stripe Checkout session for a
+    top-up purchase of `amount_cents` (must be one of TOPUP_TIERS_CENTS -- validated by
+    the caller, app/routers/billing.py's topup_checkout_session). Unlike the Pro
+    subscription flow's create_checkout_session (which references a pre-created Stripe
+    Price object, stripe_price_id_pro), there's no fixed Price object per tier here --
+    price_data builds the line item inline from the chosen amount, since tiers are a
+    plain Python list this app owns, not something requiring Dashboard setup."""
+    _set_stripe_api_key()
+    complete_url = f"{base_url}/billing/checkout-complete"
+    session = await asyncio.to_thread(
+        stripe.checkout.Session.create,
+        mode="payment",
+        customer=customer_id,
+        line_items=[
+            {
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {"name": "Newton credit top-up"},
+                    "unit_amount": amount_cents,
+                },
+                "quantity": 1,
+            }
+        ],
+        client_reference_id=str(user_id),
+        success_url=complete_url,
+        cancel_url=complete_url,
+    )
+    return session["url"]
+
+
 async def create_portal_session(customer_id: str, base_url: str) -> str:
     _set_stripe_api_key()
     session = await asyncio.to_thread(
@@ -273,9 +422,15 @@ async def create_portal_session(customer_id: str, base_url: str) -> str:
 
 
 async def apply_checkout_completed(db: AsyncSession, event_object: dict) -> None:
-    """checkout.session.completed: the student just finished paying. Look them up by
+    """checkout.session.completed for the Pro SUBSCRIPTION flow (mode="subscription",
+    see create_checkout_session) -- the student just finished paying. Look them up by
     the client_reference_id we set when creating the session, flip them to Pro, and
-    start a fresh credit-tracking period."""
+    start a fresh credit-tracking period.
+
+    NOT called for a top-up purchase (mode="payment") -- see
+    apply_topup_checkout_completed below, and app/routers/billing.py's webhook handler,
+    which dispatches checkout.session.completed to one or the other based on
+    event_object["mode"]."""
     user_id_str = event_object.get("client_reference_id")
     if not user_id_str:
         return
@@ -296,6 +451,43 @@ async def apply_checkout_completed(db: AsyncSession, event_object: dict) -> None
         user.stripe_customer_id = customer_id
     user.credits_used_cents = 0
     user.credits_period_start = datetime.now(timezone.utc)
+    await db.commit()
+
+
+async def apply_topup_checkout_completed(db: AsyncSession, event_object: dict) -> None:
+    """checkout.session.completed for a TOP-UP purchase (mode="payment", see
+    create_topup_checkout_session) -- distinct from apply_checkout_completed's
+    subscription flow above, routed here by app/routers/billing.py's webhook handler on
+    event_object["mode"]. Credits the user's non-expiring topup_credits_cents balance
+    with the post-margin amount (compute_topup_credit_cents), computed from
+    `amount_total` -- Stripe's own record of what was actually collected, already real
+    integer cents, never something this code invents or re-derives from the line item.
+
+    Uses an atomic column-delta UPDATE (same shape as record_frontier_usage's writes),
+    not a read-modify-write on a loaded ORM object -- a real payment webhook must never
+    lose an increment to a race against, say, a concurrent frontier-usage debit for the
+    same user."""
+    user_id_str = event_object.get("client_reference_id")
+    if not user_id_str:
+        return
+    try:
+        user_id = uuid.UUID(user_id_str)
+    except ValueError:
+        return
+
+    amount_total = event_object.get("amount_total")
+    if not amount_total or amount_total <= 0:
+        return
+
+    credit_cents = compute_topup_credit_cents(amount_total)
+    if credit_cents <= 0:
+        return
+
+    await db.execute(
+        sa_update(User)
+        .where(User.id == user_id)
+        .values(topup_credits_cents=User.topup_credits_cents + credit_cents)
+    )
     await db.commit()
 
 

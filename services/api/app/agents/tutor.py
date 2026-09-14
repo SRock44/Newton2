@@ -98,21 +98,21 @@ async def _load_user(user_id: str | None) -> User | None:
 def _select_provider(user: User | None, byok_anthropic_key: str | None) -> tuple[ChatProvider, str, bool]:
     """Decide which provider+model answers this turn, and whether that's a Pro-tier
     frontier model (in which case the caller must track its token usage against the
-    user's credit ledger). Routes to a frontier model only when ALL of: the user is Pro
-    (billing_service.is_pro — the single shared plan check, see that module's docstring),
-    they still have credit budget left this period (pro_credits_remaining), and
-    OpenRouter is actually configured on this server (frontier routing always goes via
-    OpenRouter, regardless of which provider the free tier happens to be using) — any one
-    of those failing means "quietly use the normal free-tier get_provider() behavior",
-    never an error, exactly like a free user would get.
+    user's credit ledger). Routes to a frontier model when
+    billing_service.frontier_access_available says so — OpenRouter is actually
+    configured on this server (frontier routing always goes via OpenRouter, regardless
+    of which provider the free tier happens to be using), AND EITHER the user is Pro
+    with monthly credit budget left this period, OR (regardless of plan — a free user
+    can fund this too, see ROADMAP.md Phase 7) they have a nonzero purchased top-up
+    balance. That's the single shared decision (see its own docstring in
+    app/services/billing.py); this function never re-derives it. Any of those failing
+    means "quietly use the normal free-tier get_provider() behavior", never an error,
+    exactly like a free user would get. Which POOL actually pays for a routed call
+    (Pro monthly credit vs. top-up balance) is decided separately, at charge time, by
+    billing_service.record_frontier_usage — not here.
     """
     settings = get_settings()
-    if (
-        user is not None
-        and billing_service.is_pro(user)
-        and billing_service.pro_credits_remaining(user)
-        and settings.openrouter_api_key
-    ):
+    if billing_service.frontier_access_available(user, bool(settings.openrouter_api_key)):
         model = billing_service.resolve_pro_model(user)
         provider = OpenAICompatibleProvider(
             base_url="https://openrouter.ai/api/v1",

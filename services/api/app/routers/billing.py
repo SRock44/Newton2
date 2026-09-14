@@ -31,6 +31,10 @@ class FocusModeUpdate(BaseModel):
     enabled: bool
 
 
+class TopupCheckoutRequest(BaseModel):
+    amount_cents: int
+
+
 def _serialize_status(user: User) -> dict:
     settings = get_settings()
     return {
@@ -52,6 +56,15 @@ def _serialize_status(user: User) -> dict:
         # preferred_pro_model, this is available to every plan, so it's just echoed back
         # as-is, no plan-aware resolution needed.
         "focus_mode_enabled": user.focus_mode_enabled,
+        # Real, purchased, non-expiring credit balance -- see User.topup_credits_cents's
+        # own comment and billing_service's TOPUP_MARGIN/TOPUP_TIERS_CENTS. Available (and
+        # shown) regardless of plan, same reasoning as focus_mode_enabled above -- a free
+        # user can hold a top-up balance too (see billing_service.frontier_access_available).
+        "topup_credits_cents": user.topup_credits_cents,
+        # Static purchase-tier constants (not user-specific), so the Settings UI's "Add
+        # credits" buttons never hardcode a copy of billing_service.TOPUP_TIERS_CENTS
+        # that could drift from what topup-checkout-session actually accepts.
+        "topup_tiers_cents": billing_service.TOPUP_TIERS_CENTS,
     }
 
 
@@ -143,6 +156,45 @@ async def checkout_session(
     return {"checkout_url": checkout_url}
 
 
+@router.post("/topup-checkout-session")
+async def topup_checkout_session(
+    body: TopupCheckoutRequest,
+    request: Request,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Starts a one-time (mode="payment") Stripe Checkout session for a top-up
+    purchase -- distinct from /checkout-session above, which is the recurring Pro
+    subscription. Same dormant-until-configured gate (billing_service.stripe_configured())
+    as every other Stripe-backed endpoint here: a 503 with no real keys set, exactly like
+    /checkout-session's own graceful-degradation path, not a new/different failure mode
+    to special-case. Available to ANY signed-in user regardless of plan -- see
+    billing_service.frontier_access_available's docstring for why a top-up must work
+    standalone, without requiring a Pro subscription at all.
+    """
+    if not billing_service.stripe_configured():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Billing isn't configured on this server yet.",
+        )
+
+    if body.amount_cents not in billing_service.TOPUP_TIERS_CENTS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"amount_cents must be one of {billing_service.TOPUP_TIERS_CENTS}.",
+        )
+
+    user = await get_or_create_user(db, claims)
+    customer_id = await billing_service.get_or_create_stripe_customer(db, user)
+    await db.commit()
+
+    base_url = str(request.base_url).rstrip("/")
+    checkout_url = await billing_service.create_topup_checkout_session(
+        customer_id, user.id, body.amount_cents, base_url
+    )
+    return {"checkout_url": checkout_url}
+
+
 @router.post("/portal-session")
 async def portal_session(
     request: Request,
@@ -188,7 +240,15 @@ async def webhook(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
     event_object = event["data"]["object"]
 
     if event_type == "checkout.session.completed":
-        await billing_service.apply_checkout_completed(db, event_object)
+        # Two different Checkout flows both fire this same event type -- dispatch on
+        # Stripe's own `mode` field (set at session-creation time by whichever flow
+        # created it: create_checkout_session uses "subscription", create_topup_
+        # checkout_session uses "payment") rather than guessing from which fields happen
+        # to be present on the object.
+        if event_object.get("mode") == "payment":
+            await billing_service.apply_topup_checkout_completed(db, event_object)
+        else:
+            await billing_service.apply_checkout_completed(db, event_object)
     elif event_type == "customer.subscription.updated":
         await billing_service.apply_subscription_updated(db, event_object)
     elif event_type == "customer.subscription.deleted":

@@ -146,6 +146,16 @@ export interface BillingStatus {
   // no full write_research_paper drafts. Available on every plan, free or Pro -- not a
   // paid perk being gated, unlike preferred_pro_model above.
   focus_mode_enabled: boolean;
+  // Real, purchased, NON-expiring credit balance (see app/db/models.py's
+  // User.topup_credits_cents, app/services/billing.py's TOPUP_MARGIN). Separate from
+  // credits_used_cents/credits_limit_cents above, which track a Pro subscriber's
+  // monthly allowance -- this balance is bought via a one-time Stripe Checkout purchase
+  // and available on every plan, free or Pro (see SettingsPanel.tsx's "Add credits").
+  topup_credits_cents: number;
+  // The fixed purchase-tier amounts (in cents) topup-checkout-session accepts -- always
+  // the real app/services/billing.py's TOPUP_TIERS_CENTS, never a hardcoded copy here
+  // that could drift.
+  topup_tiers_cents: number[];
 }
 
 export interface ProModel {

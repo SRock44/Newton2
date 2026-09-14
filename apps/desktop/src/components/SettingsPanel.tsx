@@ -4,6 +4,7 @@ import {
   ApiError,
   createCheckoutSession,
   createPortalSession,
+  createTopupCheckoutSession,
   getBillingStatus,
   getProModels,
   setFocusMode,
@@ -63,6 +64,16 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
   const [savingFocusMode, setSavingFocusMode] = useState(false);
   const [focusModeError, setFocusModeError] = useState<string | null>(null);
 
+  // Top-up credit purchase -- same "open a Stripe Checkout URL in the system browser,
+  // then poll getBillingStatus() until it reflects the purchase" pattern as the Pro
+  // upgrade flow above (handleUpgrade/pollRef), just tracking a balance INCREASE rather
+  // than a plan flip. `startingTopup` holds the specific tier (in cents) currently
+  // starting checkout, so only that one button shows a "Starting…" state.
+  const [startingTopup, setStartingTopup] = useState<number | null>(null);
+  const [topupError, setTopupError] = useState<string | null>(null);
+  const [waitingForTopup, setWaitingForTopup] = useState(false);
+  const topupPollRef = useRef<{ interval: number; timeout: number } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     getBillingStatus(token)
@@ -105,6 +116,10 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
         window.clearInterval(pollRef.current.interval);
         window.clearTimeout(pollRef.current.timeout);
       }
+      if (topupPollRef.current) {
+        window.clearInterval(topupPollRef.current.interval);
+        window.clearTimeout(topupPollRef.current.timeout);
+      }
     };
   }, []);
 
@@ -115,6 +130,15 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
       pollRef.current = null;
     }
     setWaitingForCheckout(false);
+  }
+
+  function stopTopupPoll() {
+    if (topupPollRef.current) {
+      window.clearInterval(topupPollRef.current.interval);
+      window.clearTimeout(topupPollRef.current.timeout);
+      topupPollRef.current = null;
+    }
+    setWaitingForTopup(false);
   }
 
   async function handleUpgrade() {
@@ -156,6 +180,41 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
       setPortalError(err instanceof ApiError ? err.message : "Couldn't open the billing portal.");
     } finally {
       setOpeningPortal(false);
+    }
+  }
+
+  /** Starts a one-time Checkout purchase for one of billing.topup_tiers_cents. Available
+   * on every plan, free or Pro -- a top-up balance is real spendable credit, not tied to
+   * a Pro subscription (see app/services/billing.py's frontier_access_available). Same
+   * "open in system browser, then poll until the backend reflects it" shape as
+   * handleUpgrade, but watching for the balance to actually go up rather than a plan
+   * flip -- the webhook that credits it can land a moment after the browser tab closes. */
+  async function handleAddCredits(amountCents: number) {
+    if (startingTopup !== null || waitingForTopup || !billing) return;
+    const balanceBeforePurchase = billing.topup_credits_cents;
+    setStartingTopup(amountCents);
+    setTopupError(null);
+    try {
+      const checkoutUrl = await createTopupCheckoutSession(token, amountCents);
+      await openUrl(checkoutUrl);
+      setWaitingForTopup(true);
+
+      const interval = window.setInterval(async () => {
+        try {
+          const status = await getBillingStatus(token);
+          setBilling(status);
+          if (status.topup_credits_cents > balanceBeforePurchase) stopTopupPoll();
+        } catch {
+          // A single failed check shouldn't abort the wait — keep polling.
+        }
+      }, CHECKOUT_POLL_INTERVAL_MS);
+
+      const timeout = window.setTimeout(stopTopupPoll, CHECKOUT_POLL_TIMEOUT_MS);
+      topupPollRef.current = { interval, timeout };
+    } catch (err) {
+      setTopupError(err instanceof ApiError ? err.message : "Couldn't start checkout.");
+    } finally {
+      setStartingTopup(null);
     }
   }
 
@@ -314,6 +373,36 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
                     free default.
                   </p>
                 )
+              )}
+            </div>
+          )}
+
+          {/* Real, purchased, non-expiring credit balance -- separate from the Pro
+              monthly allowance shown above. Visible and usable on every plan, free or
+              Pro (see app/services/billing.py's frontier_access_available). */}
+          {billing && (
+            <div className="settings-topup">
+              <div className="settings-models-title">Add credits</div>
+              <p className="settings-plan-line">
+                Top-up balance: {formatCents(billing.topup_credits_cents)}
+              </p>
+              {topupError && <div className="banner banner--error">{topupError}</div>}
+              {waitingForTopup ? (
+                <p className="settings-waiting">Waiting for payment to complete…</p>
+              ) : (
+                <div className="settings-topup-tiers">
+                  {billing.topup_tiers_cents.map((amountCents) => (
+                    <button
+                      key={amountCents}
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => handleAddCredits(amountCents)}
+                      disabled={startingTopup !== null}
+                    >
+                      {startingTopup === amountCents ? "Starting…" : `+ ${formatCents(amountCents)}`}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           )}

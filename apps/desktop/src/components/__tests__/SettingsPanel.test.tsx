@@ -15,6 +15,8 @@ const freeStatus: BillingStatus = {
   free_generation_target: 5,
   pro_generation_target: 15,
   focus_mode_enabled: false,
+  topup_credits_cents: 0,
+  topup_tiers_cents: [500, 1000, 2500],
 };
 
 const proStatus: BillingStatus = {
@@ -28,6 +30,8 @@ const proStatus: BillingStatus = {
   free_generation_target: 5,
   pro_generation_target: 15,
   focus_mode_enabled: false,
+  topup_credits_cents: 460,
+  topup_tiers_cents: [500, 1000, 2500],
 };
 
 const proModels: ProModel[] = [
@@ -43,6 +47,7 @@ vi.mock("../../api", async () => {
     getProModels: vi.fn(async () => proModels),
     createCheckoutSession: vi.fn(async () => "https://checkout.stripe.com/session123"),
     createPortalSession: vi.fn(async () => "https://billing.stripe.com/portal123"),
+    createTopupCheckoutSession: vi.fn(async () => "https://checkout.stripe.com/topup123"),
     setPreferredProModel: vi.fn(async () => ({ ...proStatus, preferred_pro_model: "model-b" })),
     setFocusMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, focus_mode_enabled: enabled })),
   };
@@ -57,6 +62,7 @@ import {
   ApiError,
   createCheckoutSession,
   createPortalSession,
+  createTopupCheckoutSession,
   getBillingStatus,
   getProModels,
   setFocusMode,
@@ -69,6 +75,7 @@ describe("SettingsPanel", () => {
     vi.mocked(getProModels).mockReset().mockResolvedValue(proModels);
     vi.mocked(createCheckoutSession).mockReset().mockResolvedValue("https://checkout.stripe.com/session123");
     vi.mocked(createPortalSession).mockReset().mockResolvedValue("https://billing.stripe.com/portal123");
+    vi.mocked(createTopupCheckoutSession).mockReset().mockResolvedValue("https://checkout.stripe.com/topup123");
     vi.mocked(setPreferredProModel)
       .mockReset()
       .mockResolvedValue({ ...proStatus, preferred_pro_model: "model-b" });
@@ -287,5 +294,75 @@ describe("SettingsPanel", () => {
 
     expect(await screen.findByText("Couldn't save your Focus Mode setting.")).toBeInTheDocument();
     await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it("top-up: shows the current balance and a button per tier", async () => {
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    expect(await screen.findByText(/top-up balance: \$0\.00/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ $5.00" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ $10.00" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ $25.00" })).toBeInTheDocument();
+  });
+
+  it("top-up: available on the free plan (no Pro subscription required)", async () => {
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const button = screen.getByRole("button", { name: "+ $10.00" });
+    expect(button).toBeEnabled();
+  });
+
+  it("top-up: clicking a tier starts checkout for that amount and opens the URL", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    await user.click(screen.getByRole("button", { name: "+ $10.00" }));
+
+    await waitFor(() => expect(vi.mocked(createTopupCheckoutSession)).toHaveBeenCalledWith("tok", 1000));
+    await waitFor(() => expect(openUrl).toHaveBeenCalledWith("https://checkout.stripe.com/topup123"));
+    expect(await screen.findByText(/waiting for payment to complete/i)).toBeInTheDocument();
+  });
+
+  it("top-up: polling picks up a balance increase and stops waiting", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ delay: null });
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    await user.click(screen.getByRole("button", { name: "+ $5.00" }));
+    await screen.findByText(/waiting for payment to complete/i);
+
+    vi.mocked(getBillingStatus).mockResolvedValue({ ...freeStatus, topup_credits_cents: 460 });
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(await screen.findByText(/top-up balance: \$4\.60/i)).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for payment to complete/i)).not.toBeInTheDocument();
+  });
+
+  it("top-up: shows a graceful message when checkout isn't configured (503) instead of crashing", async () => {
+    vi.mocked(createTopupCheckoutSession).mockRejectedValue(
+      new ApiError("Adding credits isn't available on this server yet."),
+    );
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    await user.click(screen.getByRole("button", { name: "+ $5.00" }));
+
+    expect(await screen.findByText("Adding credits isn't available on this server yet.")).toBeInTheDocument();
+    expect(openUrl).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "+ $5.00" })).toBeEnabled();
+  });
+
+  it("top-up: pro plan also shows the balance and tier buttons", async () => {
+    vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+
+    expect(await screen.findByText(/top-up balance: \$4\.60/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ $25.00" })).toBeInTheDocument();
   });
 });
