@@ -31,30 +31,31 @@ from app.db.models import User
 
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 
-# Curated Pro-tier frontier model roster. Each id is one of OpenRouter's own "~...-latest"
-# aliases -- the same staleness-resistant pattern already used for openrouter_vision_model
-# in core/config.py: the alias tracks whatever each vendor's current flagship-tier model
-# actually is, so this roster doesn't need a code change every time a vendor ships a new
-# version (a pinned slug like "google/gemini-2.0-flash-001" has already bitten this repo
-# once -- see that setting's own comment). Verified live against OPENROUTER_MODELS_URL on
-# 2026-09-13: all three resolved and returned real per-token pricing.
-# `_fallback_pricing` is that observed USD-per-token pricing, used only if a live pricing
+# Curated Pro-tier model roster.
+#
+# DELIBERATE, INFORMED DECISION (2026-09-13, product owner) -- do not add back the
+# previous frontier roster (Claude Sonnet / GPT Sol / Gemini Pro, all via OpenRouter's
+# "~...-latest" staleness-resistant aliases) without asking first. All three resolved to
+# real per-token pricing around $2/M input, $10-12/M output -- confirmed live, not
+# assumed -- which the product owner decided was not worth paying for this project right
+# now given DeepSeek's price/performance at a fraction of the cost. Restricted to exactly
+# two options until that changes: DeepSeek (already the free-tier default, real 1M+
+# context, real quality at this price point) and Muse Spark Contributor (see its own
+# entry's comment for the training-data-consent tradeoff already decided on separately).
+# `_fallback_pricing` is real observed USD-per-token pricing, used only if a live pricing
 # lookup can't reach OpenRouter at call time.
 PRO_MODELS: list[dict[str, Any]] = [
     {
-        "id": "~anthropic/claude-sonnet-latest",
-        "label": "Claude Sonnet (Anthropic)",
-        "_fallback_pricing": {"prompt": 0.000002, "completion": 0.00001},
-    },
-    {
-        "id": "~openai/gpt-sol-latest",
-        "label": "GPT Sol (OpenAI)",
-        "_fallback_pricing": {"prompt": 0.000002, "completion": 0.00001},
-    },
-    {
-        "id": "~google/gemini-pro-latest",
-        "label": "Gemini Pro (Google)",
-        "_fallback_pricing": {"prompt": 0.000002, "completion": 0.000012},
+        # Same model id as the free-tier default (see app/agents/tutor.py's
+        # _select_provider / get_provider) -- offered explicitly here too so a Pro user
+        # who wants it can pin it as their preferred_pro_model rather than relying on
+        # whatever the free-tier default happens to be. Pinned to the literal versioned
+        # slug (no "~deepseek/deepseek-v4-flash-...-latest" alias exists on OpenRouter),
+        # matching this app's already-established practice of tracking DeepSeek's model
+        # ids by hand (see infra/README.md).
+        "id": "deepseek/deepseek-v4-flash-0731",
+        "label": "DeepSeek V4 Flash (default)",
+        "_fallback_pricing": {"prompt": 0.000000065, "completion": 0.00000018},
     },
     {
         # No "~meta/muse-spark-...-latest" alias exists on OpenRouter yet (checked
