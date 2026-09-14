@@ -71,6 +71,18 @@ jobs:
       # layer directly for anything that needs specific model behavior).
       API_BASE_URL: http://127.0.0.1:8000
       HERMETIC_TESTS: "1"
+      # Settings.embed_cache_dir defaults to "/data/fastembed_cache" -- fine inside the
+      # real Docker image (writable, owned by the container), but "/" isn't writable by
+      # the Actions runner user. fastembed (profile-fact/document-chunk embeddings) is
+      # exercised for real here (no reason to mock a self-hosted, keyless, CPU-only
+      # model), it just needs a cache dir this process can actually create.
+      EMBED_CACHE_DIR: ${{ github.workspace }}/services/api/.fastembed_cache
+      # google_classroom.build_authorization_url only ever builds a URL string from
+      # these -- never contacts Google -- so dummy values are enough to exercise the
+      # "configured" path the same way the real dev box (which has real values) does,
+      # rather than falling into the also-real "not configured yet" 503 path.
+      GOOGLE_CLASSROOM_CLIENT_ID: ci-test-client-id
+      GOOGLE_CLASSROOM_CLIENT_SECRET: ci-test-client-secret
 
     steps:
       - uses: actions/checkout@v4
