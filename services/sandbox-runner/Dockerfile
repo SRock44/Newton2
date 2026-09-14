@@ -6,6 +6,35 @@ RUN useradd --system --create-home --home-dir /home/sandbox --shell /usr/sbin/no
 
 WORKDIR /app
 
+# TeX Live for the /compile-latex endpoint, via Debian's own apt packaging rather than
+# TeX Live's net-installer (much faster, and easy to keep to a deliberately hand-picked
+# package set instead of the multi-GB `scheme-full`). Covers:
+#   - texlive-latex-base/-recommended/-extra, texlive-fonts-recommended: core LaTeX,
+#     amsmath, amssymb, graphicx, hyperref, geometry, cite, natbib
+#   - texlive-publishers: IEEEtran and acmart document classes
+#   - texlive-humanities: the apa7 document class (CTAN "apa7", TeX Live
+#     collection-humanities)
+#   - texlive-bibtex-extra: biblatex citation styles beyond the base set
+#   - biber: the biblatex backend (biblatex is what apa7/IEEEtran-with-biblatex use)
+#   - lmodern: Latin Modern fonts (lmodern.sty) — apa7 requires this directly, and it is
+#     NOT pulled in by any Depends: of the packages above (only ever a Recommends: of
+#     other packages elsewhere in Debian's tex stack), so --no-install-recommends means
+#     it has to be listed explicitly or apa7 compiles fail with "File `lmodern.sty' not
+#     found" (confirmed live against a real compile before this line was added).
+# --no-install-recommends keeps this to what's actually needed rather than every
+# language/doc extra Debian would otherwise pull in.
+RUN apt-get update && apt-get install --no-install-recommends -y \
+        texlive-latex-base \
+        texlive-latex-recommended \
+        texlive-latex-extra \
+        texlive-fonts-recommended \
+        texlive-publishers \
+        texlive-humanities \
+        texlive-bibtex-extra \
+        biber \
+        lmodern \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

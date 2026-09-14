@@ -12,6 +12,7 @@ from app.tools.get_weak_areas import GetWeakAreasTool
 from app.tools.grammar_check import GrammarCheckTool
 from app.tools.math_hint import GetMathHintTool
 from app.tools.practice_exam_generation import PracticeExamGenerationTool
+from app.tools.research_fetch import ResearchFetchTool
 from app.tools.study_plan_generation import StudyPlanGenerationTool
 from app.tools.study_session import StudySessionTool
 from app.tools.symbolic_math import SymbolicMathTool
@@ -33,6 +34,7 @@ _TOOLS: dict[str, Tool] = {
         VisualizerTool(),
         CodeInterpreterTool(),
         WebSearchTool(),
+        ResearchFetchTool(),
         TextbookLookupTool(),
         VisionTool(),
         StudySessionTool(),

@@ -6,6 +6,10 @@ Executes untrusted, LLM-generated Python code on request, for the Code Interpret
 `{"stdout": "...", "stderr": "...", "exit_code": N, "timed_out": bool}`. `GET /health`
 is a plain liveness check.
 
+`POST /compile-latex` compiles a LaTeX document (for the research-paper-writer feature's
+LaTeX assembly step, called via `services/api/app/services/latex_compile.py`) under the
+same isolation pattern as `/execute` -- see "LaTeX compilation" below.
+
 ## What this service does, and does not, isolate
 
 This is **subprocess isolation inside a locked-down container**, not a hardware-virtualized
@@ -33,6 +37,61 @@ LLM-generated Python doing ordinary LLM-generated-Python things, but they are no
 security boundary as a VM. If/when arbitrary or adversarial code execution needs a harder
 guarantee than that, the next step up is a gVisor/Firecracker-class sandbox per execution,
 not more rlimits on top of this one.
+
+## LaTeX compilation (`POST /compile-latex`)
+
+Compiles a LaTeX document for the research-paper-writer feature's LaTeX-assembly step.
+Request:
+
+```json
+{"tex": "<main.tex content>", "bib": "<optional .bib content>", "engine": "pdflatex"}
+```
+
+Response:
+
+```json
+{"pdf_base64": "..." | null, "log": "<compiler output, truncated like /execute's stdout/stderr>", "success": bool, "timed_out": bool}
+```
+
+This extends the SAME isolation pattern described above rather than building a second
+sandboxing mechanism: non-root, dropped capabilities, read-only root fs, a fresh
+per-request scratch directory (`main.tex` + `refs.bib` if given, cleaned up after), real
+`preexec_fn` rlimits, and a process-group wall-clock watchdog. It differs in exactly the
+ways a LaTeX compile legitimately has to:
+
+- **Independent, more generous limits.** A real multi-pass pdflatex+biber compile needs
+  more wall-clock time, CPU time, open files (TeX Live searches several TEXMF trees for
+  fonts/formats), and memory than a short Python script. Reusing `/execute`'s `SANDBOX_*`
+  numbers would make every real compile fail, so `/compile-latex` has its own `LATEX_*`
+  tunables (see table below), applied via the same `preexec_fn`/watchdog pattern, not a
+  different mechanism.
+- **`-no-shell-escape -interaction=nonstopmode -halt-on-error`, always, explicitly.**
+  Shell-escape is off by default in a stock modern TeX Live, but LaTeX's `\write18` is
+  arbitrary shell execution the moment shell-escape is ever enabled (a distro default
+  change, a texmf.cnf edit, anything) — so this is never left to the default; it's on the
+  command line of every single pdflatex invocation.
+- **Standard multi-pass build.** `pdflatex` → (if a `.bib` was supplied) `biber` →
+  `pdflatex` → `pdflatex` again, to resolve citations and cross-references, all sharing
+  ONE wall-clock budget (`LATEX_WALL_CLOCK_TIMEOUT_S`) across every pass rather than
+  restarting the clock per pass. `biber` (not classic `bibtex`) is used because that's
+  what `biblatex` — what apa7 and IEEEtran-with-biblatex both actually use — expects.
+  If the first pdflatex pass fails outright, later passes are skipped and its real error
+  log is returned rather than continuing to run passes that can't succeed.
+- **Engine allowlist.** The request's `engine` field is looked up in a small in-code
+  dict (`LATEX_ENGINES`, currently just `{"pdflatex": "pdflatex"}`) rather than ever being
+  interpolated into a subprocess command line directly — an unrecognized value is refused
+  with a clear error, never passed through as a binary name to execute.
+- **PDF size cap.** A compiled PDF over `LATEX_MAX_PDF_BYTES` (default 15MB) is treated
+  as a failure (`success: false`) with a log line explaining why, rather than returned.
+- **No network needed or granted.** All TeX packages are baked into the image at build
+  time and the `.bib` is supplied directly in the request, so compilation needs no
+  network access — the existing internal-only, no-internet-route network topology (see
+  "Required deployment shape" below) is correct as-is for this endpoint too.
+- **TeX Live via apt**, not the official net-installer, and a hand-picked package set
+  (`texlive-latex-base`, `-recommended`, `-extra`, `texlive-fonts-recommended`,
+  `texlive-publishers` for IEEEtran/acmart, `texlive-humanities` for apa7,
+  `texlive-bibtex-extra`, and `biber`) — not `scheme-full`, which is multi-gigabyte and
+  mostly unused here. See the Dockerfile for the exact package list.
 
 ## Required deployment shape (for whoever wires this into `infra/docker-compose.yml`)
 
@@ -93,6 +152,15 @@ is read-only — there's nowhere for `.pyc` files to go), and a `HEALTHCHECK` hi
 | `SANDBOX_MAX_OUTPUT_BYTES` | `1048576` (1MB) | stdout/stderr are truncated past this, so a chatty script can't blow up the response or this service's own memory |
 | `SANDBOX_MAX_CONCURRENCY` | `4` | In-process semaphore capping concurrent executions |
 | `SANDBOX_SCRATCH_BASE` | `/tmp/sandbox-scratch` | Base dir for per-request scratch directories — must be on a writable (tmpfs) mount |
+| `LATEX_WALL_CLOCK_TIMEOUT_S` | `45` | Hard wall-clock kill for the WHOLE `/compile-latex` request (all passes combined), independent of `SANDBOX_WALL_CLOCK_TIMEOUT_S` |
+| `LATEX_CPU_TIME_LIMIT_S` | `40` | `RLIMIT_CPU` per compiler step (pdflatex/biber) |
+| `LATEX_AS_LIMIT_BYTES` | `1073741824` (1GB) | `RLIMIT_AS` for a compiler step |
+| `LATEX_FSIZE_LIMIT_BYTES` | `31457280` (30MB) | `RLIMIT_FSIZE` for a compiler step (aux/log/pdf files) |
+| `LATEX_NOFILE_LIMIT` | `512` | `RLIMIT_NOFILE` for a compiler step — TeX Live's font/format search opens far more files than a Python script ever would |
+| `LATEX_NPROC_LIMIT` | `16` | `RLIMIT_NPROC` best-effort cap for a compiler step |
+| `LATEX_MAX_LOG_BYTES` | `1048576` (1MB) | Combined compiler log is truncated past this, same reasoning as `SANDBOX_MAX_OUTPUT_BYTES` |
+| `LATEX_MAX_PDF_BYTES` | `15728640` (15MB) | A compiled PDF over this size is reported as a failure rather than returned |
+| `LATEX_MAX_CONCURRENCY` | `2` | Separate in-process semaphore for `/compile-latex`, independent of `SANDBOX_MAX_CONCURRENCY` so a burst of `/execute` calls can't starve compiles or vice versa |
 
 ## How this was tested
 
@@ -109,3 +177,11 @@ out, on the same `--internal` network the production deployment requires), a mul
 allocation attempt (rejected via `RLIMIT_AS`, no host OOM), and back-to-back requests
 proving no file-state leaks between them. All cases confirmed the service itself stayed
 up and immediately served the next request — it never hung or crashed.
+
+`/compile-latex` was verified the same way, against the real deployed image (not a
+mocked compiler) — see `tests/test_latex_compile_integration.py` for exact scenarios:
+a real successful compile in each of the IEEEtran and apa7 document classes, a compile
+error from genuinely invalid LaTeX confirming the real compiler log comes back (not just
+`success: false`), a `.bib`-driven citation actually resolving through the full
+pdflatex→biber→pdflatex→pdflatex pass sequence, and back-to-back requests proving no
+scratch-directory state leaks between them.
