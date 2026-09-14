@@ -1,7 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
 import { ApiError, listDocuments, uploadChatImage, uploadDocument } from "../api";
 import type { UploadedDocument } from "../types";
+
+/** Imperative handle exposed via ref — currently just `focus()`, used by
+ * PaperPlanCard's "Request Changes" action (see App.tsx's handleFocusComposer) to put
+ * the cursor in the composer so the student can type their own tweaks, without sending
+ * anything on their behalf. Kept as a tiny imperative escape hatch rather than more
+ * prop-drilled state, since "focus this input" has no other meaningful representation
+ * as data. */
+export interface ComposerHandle {
+  focus: () => void;
+}
 
 interface ComposerProps {
   onSend: (text: string) => void;
@@ -31,17 +41,20 @@ function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 }
 
-function Composer({
-  onSend,
-  onStop,
-  disabled,
-  streaming,
-  placeholder,
-  token,
-  sessionId,
-  pendingAttachment,
-  onPendingAttachmentConsumed,
-}: ComposerProps) {
+const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
+  {
+    onSend,
+    onStop,
+    disabled,
+    streaming,
+    placeholder,
+    token,
+    sessionId,
+    pendingAttachment,
+    onPendingAttachmentConsumed,
+  },
+  ref,
+) {
   const [draft, setDraft] = useState("");
   const [attachedImage, setAttachedImage] = useState<{ id: string; name: string } | null>(null);
   const [attachedDocument, setAttachedDocument] = useState<{ id: string; name: string } | null>(null);
@@ -61,6 +74,10 @@ function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachWrapRef = useRef<HTMLDivElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }));
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -327,6 +344,6 @@ function Composer({
       <div className="composer-hint">Enter to send · Shift+Enter for a new line</div>
     </div>
   );
-}
+});
 
 export default Composer;

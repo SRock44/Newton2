@@ -26,6 +26,7 @@ import NewtonMark from "./components/NewtonMark";
 import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
+import type { ComposerHandle } from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import FlashcardsPanel from "./components/FlashcardsPanel";
@@ -112,6 +113,10 @@ function App() {
   >(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  // For a "paper-plan" card's "Request Changes" action (see ChatPane/PaperPlanCard) —
+  // puts the cursor in the composer so the student can type their own tweaks, without
+  // anything being sent on their behalf.
+  const composerRef = useRef<ComposerHandle>(null);
   const lastSyncedNotepadJson = useRef<string | null>(null);
   const remindersCheckedRef = useRef(false);
   // A session id we just created client-side (see createNewSession) — its history is
@@ -526,6 +531,10 @@ function App() {
     setIsStreaming(true);
   }
 
+  function handleFocusComposer() {
+    composerRef.current?.focus();
+  }
+
   function handleStop() {
     const socket = wsRef.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -721,8 +730,11 @@ function App() {
                     sessionId={activeSessionId}
                     onOpenSuggestedPanel={handleOpenSuggestedPanel}
                     onOpenDocument={handleOpenDocument}
+                    onSend={handleSend}
+                    onFocusComposer={handleFocusComposer}
                   />
                   <Composer
+                    ref={composerRef}
                     onSend={handleSend}
                     onStop={handleStop}
                     disabled={isStreaming || !activeSessionId}

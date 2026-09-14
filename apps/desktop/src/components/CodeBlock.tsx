@@ -3,6 +3,8 @@ import type { ComponentPropsWithoutRef, ReactElement, ReactNode } from "react";
 import { isValidElement } from "react";
 import MathSteps from "./MathSteps";
 import PlotlyFigure from "./PlotlyFigure";
+import OptionsPicker from "./OptionsPicker";
+import PaperPlanCard from "./PaperPlanCard";
 import { hashString } from "../lib/hashString";
 
 type PreProps = ComponentPropsWithoutRef<"pre"> & {
@@ -11,6 +13,22 @@ type PreProps = ComponentPropsWithoutRef<"pre"> & {
    * to build a math-steps block's reveal-progress storage key. Undefined when the
    * containing message has no stable identity yet (still streaming in). */
   mathStepsPersistKeyPrefix?: string;
+  /** From MessageContent — sends a plain-text chat message on the student's behalf, for
+   * an "options" pick or a "paper-plan" approval. Undefined in a context with nowhere
+   * for such a message to go (falls back to a no-op so those blocks never throw). */
+  onSend?: (text: string) => void;
+  /** From MessageContent — focuses the composer, for "paper-plan"'s "Request Changes". */
+  onFocusComposer?: () => void;
+  /** From MessageContent (ultimately ChatPane, which has the full message list) — the
+   * plain text of the chat message immediately following this one, if any. Used by an
+   * "options" block to render read-only once it's been answered. See OptionsPicker.tsx. */
+  nextMessageContent?: string;
+  /** From MessageContent (ultimately ChatPane) — whether this message holds the most
+   * recent ```paper-plan block in the whole visible conversation. Defaults to true when
+   * not threaded through (e.g. a paper-plan block rendered in isolation), since with no
+   * other messages to compare against it's trivially the latest one. See
+   * PaperPlanCard.tsx / lib/paperPlanIndex.ts. */
+  isLatestPaperPlanMessage?: boolean;
 };
 
 function extractLanguage(children: PreProps["children"]): string {
@@ -38,9 +56,20 @@ function extractText(node: ReactNode): string {
 }
 
 /** Renders fenced code blocks with a language label and a copy-to-clipboard button —
- * except a "plotly-figure" block, which renders as an actual interactive chart, or a
- * "math-steps" block, which renders as a progressive-reveal derivation. */
-function CodeBlock({ children, node: _node, mathStepsPersistKeyPrefix, ...rest }: PreProps) {
+ * except a "plotly-figure" block, which renders as an actual interactive chart, a
+ * "math-steps" block, which renders as a progressive-reveal derivation, an "options"
+ * block, which renders as a "pick 1 of up to 4" question, or a "paper-plan" block,
+ * which renders as a plan-review card with Approve/Request Changes actions. */
+function CodeBlock({
+  children,
+  node: _node,
+  mathStepsPersistKeyPrefix,
+  onSend,
+  onFocusComposer,
+  nextMessageContent,
+  isLatestPaperPlanMessage,
+  ...rest
+}: PreProps) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
   const language = extractLanguage(children);
@@ -56,6 +85,21 @@ function CodeBlock({ children, node: _node, mathStepsPersistKeyPrefix, ...rest }
       ? `newton:mathsteps:${mathStepsPersistKeyPrefix}:${hashString(text)}`
       : undefined;
     return <MathSteps json={text} storageKey={storageKey} />;
+  }
+  if (language === "options") {
+    return (
+      <OptionsPicker json={extractText(children)} onSend={onSend ?? (() => {})} answeredWith={nextMessageContent} />
+    );
+  }
+  if (language === "paper-plan") {
+    return (
+      <PaperPlanCard
+        json={extractText(children)}
+        onApprove={onSend ?? (() => {})}
+        onRequestChanges={onFocusComposer ?? (() => {})}
+        interactive={isLatestPaperPlanMessage ?? true}
+      />
+    );
   }
 
   async function handleCopy() {

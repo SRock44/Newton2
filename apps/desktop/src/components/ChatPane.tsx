@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ChatMessage } from "../types";
 import MessageBubble from "./MessageBubble";
 import NewtonMark from "./NewtonMark";
+import { latestPaperPlanMessageIndex } from "../lib/paperPlanIndex";
 
 interface ChatPaneProps {
   messages: ChatMessage[];
@@ -11,10 +12,32 @@ interface ChatPaneProps {
   sessionId: string | null;
   onOpenSuggestedPanel: (panel: string) => void;
   onOpenDocument: (documentId: string) => void;
+  /** Sends a plain-text chat message on the student's behalf — for an "options" pick or
+   * a "paper-plan" approval (see MessageBubble/MessageContent/CodeBlock). Optional so
+   * existing call sites/tests that never render one of those blocks don't need it. */
+  onSend?: (text: string) => void;
+  /** Focuses the composer — for "paper-plan"'s "Request Changes" action. */
+  onFocusComposer?: () => void;
 }
 
-function ChatPane({ messages, loading, loadError, token, sessionId, onOpenSuggestedPanel, onOpenDocument }: ChatPaneProps) {
+function ChatPane({
+  messages,
+  loading,
+  loadError,
+  token,
+  sessionId,
+  onOpenSuggestedPanel,
+  onOpenDocument,
+  onSend,
+  onFocusComposer,
+}: ChatPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Which single message (if any) holds the most recent ```paper-plan block across the
+  // whole visible history — only its card gets to show live Approve/Request Changes
+  // buttons; any earlier plan renders read-only. Recomputed each render (cheap: a plain
+  // string scan over messages already in memory), not memoized, since it must always
+  // reflect the exact `messages` this render is showing.
+  const latestPaperPlanIndex = latestPaperPlanMessageIndex(messages);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -54,6 +77,10 @@ function ChatPane({ messages, loading, loadError, token, sessionId, onOpenSugges
             sessionId={sessionId}
             onOpenSuggestedPanel={onOpenSuggestedPanel}
             onOpenDocument={onOpenDocument}
+            onSend={onSend}
+            onFocusComposer={onFocusComposer}
+            nextMessageContent={messages[index + 1]?.content}
+            isLatestPaperPlanMessage={index === latestPaperPlanIndex}
           />
         ))}
       </div>

@@ -12,6 +12,18 @@ interface MessageBubbleProps {
    * handleOpenDocument / mainView) — threaded down the same way onOpenSuggestedPanel
    * is, for an attached-document chip's click. */
   onOpenDocument: (documentId: string) => void;
+  /** Sends a plain-text chat message on the student's behalf — for an "options" pick or
+   * a "paper-plan" approval (see MessageContent/CodeBlock). Optional so existing call
+   * sites/tests that never render one of those blocks don't need to pass it. */
+  onSend?: (text: string) => void;
+  /** Focuses the composer — for "paper-plan"'s "Request Changes" action. */
+  onFocusComposer?: () => void;
+  /** The plain text of the chat message immediately following this one in the full
+   * session history, if any — see OptionsPicker.tsx for what this is used for. */
+  nextMessageContent?: string;
+  /** Whether this message holds the most recent ```paper-plan block in the whole
+   * visible conversation — see PaperPlanCard.tsx / lib/paperPlanIndex.ts. */
+  isLatestPaperPlanMessage?: boolean;
 }
 
 // The composer/snip-modal tag an uploaded image onto the outgoing message as
@@ -72,7 +84,17 @@ function formatTime(iso?: string): string | null {
 // the way a printed dialogue or annotated notebook page marks who's speaking) and a
 // full-measure body. Role is read from the gutter label and a hairline rule, never
 // from left/right alignment — see App.css's ".transcript-entry" rules for the rest.
-function MessageBubble({ message, token, sessionId, onOpenSuggestedPanel, onOpenDocument }: MessageBubbleProps) {
+function MessageBubble({
+  message,
+  token,
+  sessionId,
+  onOpenSuggestedPanel,
+  onOpenDocument,
+  onSend,
+  onFocusComposer,
+  nextMessageContent,
+  isLatestPaperPlanMessage,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
   const roleLabel = isUser ? "You" : message.role === "assistant" ? "Newton" : message.role;
   const time = formatTime(message.created_at);
@@ -126,7 +148,14 @@ function MessageBubble({ message, token, sessionId, onOpenSuggestedPanel, onOpen
             ))}
           </div>
         )}
-        <MessageContent content={displayContent || " "} persistKey={persistKey} />
+        <MessageContent
+          content={displayContent || " "}
+          persistKey={persistKey}
+          onSend={onSend}
+          onFocusComposer={onFocusComposer}
+          nextMessageContent={nextMessageContent}
+          isLatestPaperPlanMessage={isLatestPaperPlanMessage}
+        />
         {message.suggestedActions && message.suggestedActions.length > 0 && (
           <div className="suggested-actions">
             {message.suggestedActions.map((action, i) => (

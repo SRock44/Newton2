@@ -1982,6 +1982,204 @@ textarea:focus-visible,
   align-self: flex-start;
 }
 
+/* ---------- Options picker ("pick 1 of up to 4") ---------- */
+
+.options-picker {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: var(--space-3) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.options-picker--error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.options-picker__question {
+  font-weight: var(--font-weight-semibold);
+}
+
+.options-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.options-picker__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: var(--space-3);
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.options-picker__option:hover:not([aria-disabled="true"]) {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+}
+
+.options-picker__option[aria-disabled="true"] {
+  cursor: default;
+}
+
+.options-picker__option--recommended {
+  border-color: var(--color-accent);
+}
+
+.options-picker__option--picked {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+}
+
+.options-picker__option-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.options-picker__option-label {
+  font-weight: var(--font-weight-medium);
+}
+
+.options-picker__option-description {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.options-picker__badge {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+  border-radius: var(--radius-full);
+  padding: 2px var(--space-2);
+}
+
+.options-picker__picked-mark {
+  margin-left: auto;
+  color: var(--color-accent);
+  font-weight: var(--font-weight-bold);
+}
+
+.options-picker__checkbox {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background-color: var(--color-surface);
+}
+
+.options-picker__checkbox--checked {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.options-picker__confirm {
+  align-self: flex-start;
+}
+
+/* ---------- Paper plan card (plan review + approve/revise) ---------- */
+
+.paper-plan-card {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.paper-plan-card--error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.paper-plan-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.paper-plan-card__style-badge {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  color: var(--color-accent-contrast);
+  background-color: var(--color-accent);
+  border-radius: var(--radius-full);
+  padding: 3px var(--space-3);
+}
+
+.paper-plan-card__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-lg);
+}
+
+.paper-plan-card__abstract {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: var(--line-height-relaxed);
+}
+
+.paper-plan-card__sections {
+  margin: 0;
+  padding-left: 1.3em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.paper-plan-card__section-heading {
+  font-weight: var(--font-weight-semibold);
+}
+
+.paper-plan-card__section-summary {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.paper-plan-card__sources ul {
+  margin: var(--space-1) 0 0;
+  padding-left: 1.2em;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.paper-plan-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.paper-plan-card__stale-note {
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  color: var(--color-text-faint);
+}
+
 /* ---------- Composer ---------- */
 
 .composer {
