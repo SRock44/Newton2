@@ -90,3 +90,37 @@ describe("ChatPane — options/paper-plan wiring across the full message list", 
     expect(screen.getByRole("button", { name: /approve.*write/i })).toBeInTheDocument();
   });
 });
+
+describe("ChatPane — first-run onboarding welcome", () => {
+  it("shows the welcome card instead of the plain empty state when firstRun and the chat is empty", () => {
+    renderPane([], { firstRun: true, onSend: vi.fn(), onDismissFirstRun: vi.fn() });
+
+    expect(screen.getByRole("heading", { name: /welcome to newton/i })).toBeInTheDocument();
+    expect(screen.queryByText("Ask Newton anything")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the plain empty state once the chat has messages, even if firstRun is still true", () => {
+    renderPane([{ role: "user", content: "hi" }], { firstRun: true, onSend: vi.fn(), onDismissFirstRun: vi.fn() });
+
+    expect(screen.queryByRole("heading", { name: /welcome to newton/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the plain empty state, not the welcome card, when firstRun is false", () => {
+    renderPane([], { firstRun: false, onSend: vi.fn(), onDismissFirstRun: vi.fn() });
+
+    expect(screen.getByText("Ask Newton anything")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /welcome to newton/i })).not.toBeInTheDocument();
+  });
+
+  it("clicking an example prompt in the welcome card sends it through the normal onSend path and dismisses", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onDismissFirstRun = vi.fn();
+    renderPane([], { firstRun: true, onSend, onDismissFirstRun });
+
+    await user.click(screen.getByRole("button", { name: /solve an equation step by step/i }));
+
+    expect(onSend).toHaveBeenCalledWith("Solve this step by step: 2x + 5 = 15");
+    expect(onDismissFirstRun).toHaveBeenCalledTimes(1);
+  });
+});

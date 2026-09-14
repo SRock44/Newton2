@@ -93,6 +93,7 @@ import {
   getDocumentContent,
   listDocuments,
   listFlashcards,
+  listSessions,
   listStudyPlan,
   openChatSocket,
 } from "./api";
@@ -117,6 +118,7 @@ describe("App", () => {
     vi.mocked(deleteSession).mockClear();
     vi.mocked(listFlashcards).mockClear();
     vi.mocked(listStudyPlan).mockClear();
+    vi.mocked(listSessions).mockClear();
     vi.mocked(listDocuments).mockClear();
     vi.mocked(getDocumentContent).mockClear();
     vi.mocked(notifyStudyReminders).mockClear();
@@ -524,5 +526,70 @@ describe("App", () => {
     expect(list.queryByText(/Let's talk about/i)).not.toBeInTheDocument();
     const sentSocket = vi.mocked(openChatSocket).mock.results.slice(-1)[0]!.value as { send: (d: string) => void };
     expect(sentSocket.send).not.toHaveBeenCalled();
+  });
+
+  // Phase 7 first-run onboarding: a brand-new account (no sessions yet, so App.tsx
+  // auto-creates one — see the mount effect) should see the welcome card instead of
+  // the generic empty-chat placeholder, exactly once.
+  describe("first-run onboarding welcome", () => {
+    function mockBrandNewAccount() {
+      // The mount effect calls listSessions once, and — finding none — createSession
+      // then listSessions again to refetch; both calls must come back empty for the
+      // "no existing chats at all" path to run.
+      vi.mocked(listSessions).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    }
+
+    it("shows the welcome card for a brand-new account's first empty chat", async () => {
+      mockBrandNewAccount();
+      await signIn();
+
+      expect(await screen.findByRole("heading", { name: /welcome to newton/i })).toBeInTheDocument();
+      expect(screen.queryByText("Ask Newton anything")).not.toBeInTheDocument();
+    });
+
+    it("never shows for a returning account that already dismissed it", async () => {
+      window.localStorage.setItem("newton:onboarding-seen:unknown-user", "1");
+      mockBrandNewAccount();
+      await signIn();
+
+      await (await messageList());
+      expect(screen.queryByRole("heading", { name: /welcome to newton/i })).not.toBeInTheDocument();
+      expect(await screen.findByText("Ask Newton anything")).toBeInTheDocument();
+    });
+
+    it("dismissing the welcome card persists so it never comes back, even in a later new chat", async () => {
+      mockBrandNewAccount();
+      const user = await signIn();
+      expect(await screen.findByRole("heading", { name: /welcome to newton/i })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /dismiss welcome/i }));
+      expect(screen.queryByRole("heading", { name: /welcome to newton/i })).not.toBeInTheDocument();
+      expect(window.localStorage.getItem("newton:onboarding-seen:unknown-user")).toBe("1");
+
+      // Starting a second brand-new (empty) chat in the same running app must not
+      // replay it either.
+      await user.click(screen.getByRole("button", { name: "New chat" }));
+      expect(await screen.findByText("Ask Newton anything")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /welcome to newton/i })).not.toBeInTheDocument();
+    });
+
+    it("clicking an example prompt sends it through the normal onSend path and dismisses the card", async () => {
+      mockBrandNewAccount();
+      const user = await signIn();
+      await screen.findByRole("heading", { name: /welcome to newton/i });
+
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+      const socket = vi.mocked(openChatSocket).mock.results.slice(-1)[0]!.value as { send: (d: string) => void };
+
+      await user.click(screen.getByRole("button", { name: /solve an equation step by step/i }));
+
+      expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "user_message", content: "Solve this step by step: 2x + 5 = 15" }),
+      );
+      expect(await (await messageList()).findByText("Solve this step by step: 2x + 5 = 15")).toBeInTheDocument();
+      // Acted on, so it's gone for good — same as an explicit dismiss.
+      expect(window.localStorage.getItem("newton:onboarding-seen:unknown-user")).toBe("1");
+      expect(screen.queryByRole("heading", { name: /welcome to newton/i })).not.toBeInTheDocument();
+    });
   });
 });

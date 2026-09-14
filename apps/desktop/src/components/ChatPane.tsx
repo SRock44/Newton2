@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ChatMessage } from "../types";
 import MessageBubble from "./MessageBubble";
 import NewtonMark from "./NewtonMark";
+import OnboardingWelcome from "./OnboardingWelcome";
 import { latestPaperPlanMessageIndex } from "../lib/paperPlanIndex";
 
 interface ChatPaneProps {
@@ -18,6 +19,13 @@ interface ChatPaneProps {
   onSend?: (text: string) => void;
   /** Focuses the composer — for "paper-plan"'s "Request Changes" action. */
   onFocusComposer?: () => void;
+  /** True only for a brand-new account that hasn't dismissed (or acted on) the
+   * first-run welcome card yet — see App.tsx/lib/onboarding.ts. Only takes effect on an
+   * actually-empty chat (see the render below): a returning student who happens to open
+   * a fresh empty session never sees this replayed. */
+  firstRun?: boolean;
+  /** Marks the welcome card seen and hides it for good — see OnboardingWelcome.tsx. */
+  onDismissFirstRun?: () => void;
 }
 
 function ChatPane({
@@ -30,6 +38,8 @@ function ChatPane({
   onOpenDocument,
   onSend,
   onFocusComposer,
+  firstRun,
+  onDismissFirstRun,
 }: ChatPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Which single message (if any) holds the most recent ```paper-plan block across the
@@ -55,7 +65,11 @@ function ChatPane({
         </div>
       )}
 
-      {!loading && messages.length === 0 && !loadError && (
+      {!loading && messages.length === 0 && !loadError && firstRun && onSend && onDismissFirstRun && (
+        <OnboardingWelcome onSend={onSend} onDismiss={onDismissFirstRun} />
+      )}
+
+      {!loading && messages.length === 0 && !loadError && !(firstRun && onSend && onDismissFirstRun) && (
         <div className="chat-empty-state">
           <div className="chat-empty-state-mark">
             <NewtonMark size={26} />

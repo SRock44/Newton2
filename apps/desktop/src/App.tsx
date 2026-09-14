@@ -17,6 +17,7 @@ import { TokenManager, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import { getStudyRemindersEnabled } from "./lib/preferences";
+import { hasSeenOnboarding, markOnboardingSeen } from "./lib/onboarding";
 import type { ChatMessage, ChatSession, ConnectionStatus, MainView, UploadedDocument } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { latestMathStepsJson } from "./lib/notepadContent";
@@ -52,19 +53,48 @@ function usernameFromAccessToken(accessToken: string): string {
   return (claims.preferred_username as string) || (claims.email as string) || (claims.name as string) || "";
 }
 
+// A stable per-account key for the first-run welcome card (see lib/onboarding.ts) —
+// prefers the JWT's own subject claim (a stable UUID that survives every token
+// refresh), falling back to other stable identity claims, and finally to a fixed
+// sentinel so a token with no recognizable claims at all still gets a single
+// consistent identity rather than "seen" state that resets on every refresh.
+function userIdFromAccessToken(accessToken: string): string {
+  const claims = decodeJwtPayload(accessToken);
+  return (
+    (claims.sub as string) || (claims.preferred_username as string) || (claims.email as string) || "unknown-user"
+  );
+}
+
 function App() {
   const [token, setToken] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
   // One handler for every path that lands a token — a fresh sign-in, a launch-time
-  // session restore, or an ordinary background refresh — so username is always derived
-  // consistently instead of each caller re-deriving it (or, worse, forgetting to).
+  // session restore, or an ordinary background refresh — so username/userId are always
+  // derived consistently instead of each caller re-deriving them (or, worse, forgetting
+  // to).
   const [tokenManager] = useState(
     () =>
       new TokenManager((accessToken) => {
         setToken(accessToken);
         setUsername(accessToken ? usernameFromAccessToken(accessToken) : "");
+        setUserId(accessToken ? userIdFromAccessToken(accessToken) : "");
       }),
   );
+  // Whether this account has already dismissed (or acted on) the first-run welcome
+  // card — see lib/onboarding.ts and OnboardingWelcome.tsx. Starts `true` (hidden) so
+  // it never flashes on screen before userId is known; the effect below corrects it
+  // for a genuinely new account the moment sign-in resolves.
+  const [onboardingSeen, setOnboardingSeen] = useState(true);
+
+  useEffect(() => {
+    setOnboardingSeen(userId ? hasSeenOnboarding(userId) : true);
+  }, [userId]);
+
+  const handleDismissOnboarding = useCallback(() => {
+    if (userId) markOnboardingSeen(userId);
+    setOnboardingSeen(true);
+  }, [userId]);
   // True only for the brief moment on launch where we're checking whether a
   // previously signed-in session can be silently resumed (see auth.ts's
   // tryRestoreSession) — avoids flashing the login screen for someone who's actually
@@ -733,6 +763,8 @@ function App() {
                     onOpenDocument={handleOpenDocument}
                     onSend={handleSend}
                     onFocusComposer={handleFocusComposer}
+                    firstRun={!onboardingSeen}
+                    onDismissFirstRun={handleDismissOnboarding}
                   />
                   <Composer
                     ref={composerRef}
