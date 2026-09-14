@@ -412,6 +412,7 @@ async def test_billing_status_returns_the_expected_shape(http_client, auth_heade
         "preferred_pro_model",
         "free_generation_target",
         "pro_generation_target",
+        "focus_mode_enabled",
     }
     assert body["plan"] in ("free", "pro")
     assert isinstance(body["credits_used_cents"], int)
@@ -507,6 +508,76 @@ async def test_preferred_model_does_not_persist_for_a_free_user(
 
     await db_session.refresh(student1_status_snapshot)
     assert student1_status_snapshot.preferred_pro_model is None
+
+
+# ---------------------------------------------------------------------------
+# Self-service Focus Mode (User.focus_mode_enabled) -- see app/routers/billing.py's
+# PATCH /billing/focus-mode. Unlike preferred-model, this is never plan-gated: every
+# signed-in user, free or Pro, can flip it for themselves.
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def student1_focus_mode_snapshot(db_session, keycloak_token):
+    """Snapshots+restores the shared dev student1 user's focus_mode_enabled around a
+    test that flips it -- same rationale as student1_status_snapshot above: this is a
+    shared dev DB row other tests/runs also rely on."""
+    sub = jose_jwt.get_unverified_claims(keycloak_token)["sub"]
+    user = (await db_session.execute(select(User).where(User.keycloak_sub == sub))).scalar_one_or_none()
+    if user is None:
+        user = User(keycloak_sub=sub)
+        db_session.add(user)
+        await db_session.commit()
+
+    original = user.focus_mode_enabled
+    yield user
+    user.focus_mode_enabled = original
+    await db_session.commit()
+
+
+async def test_focus_mode_requires_auth(http_client):
+    resp = await http_client.patch("/billing/focus-mode", json={"enabled": True})
+    assert resp.status_code in (401, 403)
+
+
+async def test_focus_mode_persists_enabling(http_client, auth_headers, student1_focus_mode_snapshot, db_session):
+    student1_focus_mode_snapshot.focus_mode_enabled = False
+    await db_session.commit()
+
+    resp = await http_client.patch("/billing/focus-mode", json={"enabled": True}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["focus_mode_enabled"] is True
+
+    await db_session.refresh(student1_focus_mode_snapshot)
+    assert student1_focus_mode_snapshot.focus_mode_enabled is True
+
+
+async def test_focus_mode_persists_disabling(http_client, auth_headers, student1_focus_mode_snapshot, db_session):
+    student1_focus_mode_snapshot.focus_mode_enabled = True
+    await db_session.commit()
+
+    resp = await http_client.patch("/billing/focus-mode", json={"enabled": False}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["focus_mode_enabled"] is False
+
+    await db_session.refresh(student1_focus_mode_snapshot)
+    assert student1_focus_mode_snapshot.focus_mode_enabled is False
+
+
+async def test_focus_mode_is_never_plan_gated(http_client, auth_headers, student1_focus_mode_snapshot, db_session):
+    """Free-plan users can turn Focus Mode on just as easily as Pro users -- it's not a
+    paid perk, so there's no 402 path here at all (unlike preferred-model)."""
+    original_plan = student1_focus_mode_snapshot.plan
+    student1_focus_mode_snapshot.plan = "free"
+    student1_focus_mode_snapshot.focus_mode_enabled = False
+    await db_session.commit()
+    try:
+        resp = await http_client.patch("/billing/focus-mode", json={"enabled": True}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["focus_mode_enabled"] is True
+    finally:
+        student1_focus_mode_snapshot.plan = original_plan
+        await db_session.commit()
 
 
 async def test_checkout_session_returns_503_when_stripe_not_configured(http_client, auth_headers):

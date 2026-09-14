@@ -6,6 +6,7 @@ import {
   createPortalSession,
   getBillingStatus,
   getProModels,
+  setFocusMode,
   setPreferredProModel,
 } from "../api";
 import type { BillingStatus, ProModel } from "../types";
@@ -58,6 +59,9 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
   const [showFreeModelNotice, setShowFreeModelNotice] = useState(false);
 
   const [remindersEnabled, setRemindersEnabled] = useState(getStudyRemindersEnabled);
+
+  const [savingFocusMode, setSavingFocusMode] = useState(false);
+  const [focusModeError, setFocusModeError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +187,30 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
     setStudyRemindersEnabled(enabled);
   }
 
+  /** Focus Mode (see types.ts's BillingStatus.focus_mode_enabled) is real, persisted,
+   * server-side state -- not a local-only preference like study reminders -- since the
+   * Tutor's own backend behavior (Socratic-only prompting, blocking write_research_paper)
+   * depends on it. Optimistically flips the checkbox, then reconciles with the backend's
+   * response; on failure, reverts to the last known-good server value rather than
+   * leaving the UI showing a state that never actually saved. Available to every
+   * signed-in user regardless of plan -- see setFocusMode's own doc comment. */
+  async function handleToggleFocusMode(enabled: boolean) {
+    if (savingFocusMode || !billing) return;
+    const previous = billing;
+    setBilling({ ...billing, focus_mode_enabled: enabled });
+    setSavingFocusMode(true);
+    setFocusModeError(null);
+    try {
+      const status = await setFocusMode(token, enabled);
+      setBilling(status);
+    } catch (err) {
+      setBilling(previous);
+      setFocusModeError(err instanceof ApiError ? err.message : "Couldn't save your Focus Mode setting.");
+    } finally {
+      setSavingFocusMode(false);
+    }
+  }
+
   const isPro = billing?.plan === "pro";
   const defaultModelLabel = (
     proModels.find((m) => m.id === billing?.preferred_pro_model)?.label ?? "DeepSeek V4 Flash"
@@ -306,6 +334,30 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
               </span>
             </span>
           </label>
+
+          {/* Self-service Focus Mode -- a student opting THEMSELVES into a stricter
+              standard, never a teacher/guardian-administered control (this app has no
+              such account concept). Unlike Study reminders above, this is real,
+              persisted, server-side state (see handleToggleFocusMode) because it
+              actually changes how the Tutor behaves and blocks write_research_paper --
+              not just a client-side notification preference. */}
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={billing?.focus_mode_enabled ?? false}
+              disabled={!billing || savingFocusMode}
+              onChange={(e) => handleToggleFocusMode(e.target.checked)}
+            />
+            <span>
+              <span className="settings-toggle-label">Focus Mode</span>
+              <span className="settings-toggle-desc">
+                Socratic-only tutoring, no full paper drafts — guiding questions instead of direct answers until
+                you've made a real attempt.
+              </span>
+            </span>
+          </label>
+          {savingFocusMode && <p className="settings-waiting">Saving…</p>}
+          {focusModeError && <div className="banner banner--error">{focusModeError}</div>}
         </section>
       </div>
     </div>

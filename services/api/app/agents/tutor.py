@@ -181,6 +181,33 @@ SYSTEM_PROMPT = (
     "supported by what was found, say so rather than inventing support."
 )
 
+# Appended to SYSTEM_PROMPT only for a user with User.focus_mode_enabled=True -- a
+# self-service setting a student opts THEMSELVES into (see app/routers/billing.py's
+# PATCH /billing/focus-mode, SettingsPanel.tsx), never a teacher/guardian-administered
+# control (this codebase has no such account concept -- see ROADMAP.md Phase 7's
+# deferred "teacher-configurable academic-integrity mode" item for the larger, separate
+# vision this is a deliberately scoped-down piece of). Genuinely Socratic, not
+# adversarial: it withholds a direct final answer only until the student has actually
+# tried, and explicitly allows confirming/correcting a real attempt on request rather
+# than stonewalling forever -- an uselessly evasive tutor would just get bypassed or
+# abandoned, which helps no one.
+FOCUS_MODE_SYSTEM_ADDENDUM = (
+    "\n\nFocus Mode is ON for this student -- a setting they turned on for themselves "
+    "to hold their own work to a stricter standard, not something imposed on them. "
+    "While it's on: when the student brings you a problem to solve (math, an essay "
+    "question, anything with a real answer to work out), do not open with the direct "
+    "final answer -- ask guiding questions and give hints instead, genuine Socratic "
+    "method, so they do the actual thinking. Once they've made a real attempt of their "
+    "own and still want the direct answer -- they ask explicitly, or their attempt is "
+    "done and they want it checked -- go ahead and confirm or correct it rather than "
+    "continuing to withhold; the goal is teaching good habits, not being an obstacle. "
+    "Focus Mode also means write_research_paper is unavailable to this student for as "
+    "long as it's on (see that tool's own FOCUS_MODE_MESSAGE) -- if they ask for a full "
+    "paper, offer to help them plan it, research individual sections, or draft it "
+    "themselves in chat instead, exactly as you would for a free-plan student; don't "
+    "call the tool, it will just decline."
+)
+
 # A confused/looping model shouldn't be able to hold the WS connection open forever
 # calling tools back-to-back with no final answer.
 MAX_TOOL_ROUNDS = 4
@@ -193,8 +220,13 @@ async def run_tutor(
     user_id: str | None = None,
 ) -> AsyncIterator[TutorEvent]:
     bundle = await get_bundle(session_id)
+    user = await _load_user(user_id)
 
-    turns = [ChatTurn(role="system", content=SYSTEM_PROMPT)]
+    system_prompt = SYSTEM_PROMPT
+    if user is not None and user.focus_mode_enabled:
+        system_prompt += FOCUS_MODE_SYSTEM_ADDENDUM
+
+    turns = [ChatTurn(role="system", content=system_prompt)]
     if bundle["profile_facts"]:
         facts_text = "\n".join(bundle["profile_facts"])
         turns.append(ChatTurn(role="system", content=f"What you know about this student:\n{facts_text}"))
@@ -210,7 +242,6 @@ async def run_tutor(
         turns.append(ChatTurn(role=turn["role"], content=turn["content"]))
     turns.append(ChatTurn(role="user", content=user_message))
 
-    user = await _load_user(user_id)
     provider, model, is_frontier = _select_provider(user, byok_anthropic_key)
     tools = get_tool_specs()
 

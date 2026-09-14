@@ -27,6 +27,10 @@ class PreferredModelUpdate(BaseModel):
     model_id: str
 
 
+class FocusModeUpdate(BaseModel):
+    enabled: bool
+
+
 def _serialize_status(user: User) -> dict:
     settings = get_settings()
     return {
@@ -44,6 +48,10 @@ def _serialize_status(user: User) -> dict:
         # plan buttons.
         "free_generation_target": billing_service.FREE_GENERATION_TARGET,
         "pro_generation_target": billing_service.PRO_GENERATION_TARGET,
+        # Self-service Focus Mode (see FocusModeUpdate/set_focus_mode below) -- unlike
+        # preferred_pro_model, this is available to every plan, so it's just echoed back
+        # as-is, no plan-aware resolution needed.
+        "focus_mode_enabled": user.focus_mode_enabled,
     }
 
 
@@ -90,6 +98,26 @@ async def set_preferred_model(
         raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, PREFERRED_MODEL_PRO_ONLY_MESSAGE)
 
     user.preferred_pro_model = body.model_id
+    await db.commit()
+    return _serialize_status(user)
+
+
+@router.patch("/focus-mode")
+async def set_focus_mode(
+    body: FocusModeUpdate,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Persists a student's own Focus Mode preference (app/db/models.py's
+    User.focus_mode_enabled). Deliberately available to every plan, free or Pro --
+    unlike preferred_pro_model, this isn't a paid perk being gated, it's a student
+    opting themselves into a STRICTER standard, so there's no reason to ever refuse it.
+    See app/agents/tutor.py's FOCUS_MODE_SYSTEM_ADDENDUM (the Socratic-only prompt
+    effect) and app/tools/write_research_paper.py's FOCUS_MODE_MESSAGE (the tool block)
+    for what actually changes once this is on -- this endpoint only flips the flag.
+    """
+    user = await get_or_create_user(db, claims)
+    user.focus_mode_enabled = body.enabled
     await db.commit()
     return _serialize_status(user)
 

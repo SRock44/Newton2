@@ -349,6 +349,20 @@ export async function setPreferredProModel(token: string, modelId: string): Prom
   return (await res.json()) as BillingStatus;
 }
 
+/** Persists a student's own Focus Mode preference and returns the refreshed billing
+ * status (including the now-saved focus_mode_enabled). Unlike setPreferredProModel,
+ * this is never plan-gated -- the backend accepts it for free and Pro users alike (see
+ * app/routers/billing.py's set_focus_mode). */
+export async function setFocusMode(token: string, enabled: boolean): Promise<BillingStatus> {
+  const res = await fetch(`${API_URL}/billing/focus-mode`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save your Focus Mode setting."));
+  return (await res.json()) as BillingStatus;
+}
+
 /** Returns a Stripe Checkout URL to open in the system browser — there's no clean
  * redirect-back to a desktop app, so the caller polls getBillingStatus() afterward
  * (see SettingsPanel) until the plan flips to "pro". 503s when billing isn't configured

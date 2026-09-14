@@ -275,6 +275,64 @@ async def test_run_tutor_uses_free_tier_for_an_explicit_free_plan_user(tutor_use
     assert text_of(events) == "free tier answer"
 
 
+# ---------------------------------------------------------------------------
+# Self-service Focus Mode (User.focus_mode_enabled) -- see app/agents/tutor.py's
+# FOCUS_MODE_SYSTEM_ADDENDUM. A direct string-content assertion is enough to prove the
+# prompt text itself is correct; no live-model call needed for that.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_tutor_appends_focus_mode_addendum_for_an_enabled_user(tutor_user, monkeypatch):
+    user = await tutor_user(focus_mode_enabled=True)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    assert text_of(events) == "ok"
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == tutor.SYSTEM_PROMPT + tutor.FOCUS_MODE_SYSTEM_ADDENDUM
+
+
+async def test_run_tutor_does_not_append_focus_mode_addendum_when_disabled(tutor_user, monkeypatch):
+    user = await tutor_user(focus_mode_enabled=False)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    assert text_of(events) == "ok"
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == tutor.SYSTEM_PROMPT
+    assert tutor.FOCUS_MODE_SYSTEM_ADDENDUM not in system_content
+
+
+async def test_run_tutor_does_not_append_focus_mode_addendum_for_an_anonymous_caller(monkeypatch):
+    """No user_id at all (e.g. a keyless/dev path) must never crash looking up a flag
+    that doesn't exist -- same "no user" shape as every other user_id=None test above."""
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert text_of(events) == "ok"
+    assert fake.calls_seen[0]["messages"][0].content == tutor.SYSTEM_PROMPT
+
+
+def test_focus_mode_addendum_genuinely_describes_socratic_behavior_and_the_tool_block():
+    """Pure string-content assertions on the addendum text itself: it must describe real
+    Socratic guiding-question behavior (not just refuse to help), explicitly allow
+    confirming/correcting after a real attempt (not be uselessly evasive), and mention
+    write_research_paper being unavailable while Focus Mode is on."""
+    addendum = tutor.FOCUS_MODE_SYSTEM_ADDENDUM
+    lowered = addendum.lower()
+    assert "socratic" in lowered
+    assert "guiding questions" in lowered
+    assert "write_research_paper" in addendum
+    # Explicitly not adversarial/evasive -- a real attempt should get a real answer.
+    assert "confirm" in lowered or "correct" in lowered
+
+
 def test_system_prompt_honestly_describes_the_free_vs_pro_generation_target():
     """The Tutor's own system prompt should be able to set expectations conversationally
     if a free-plan student asks for a large flashcard/exam/study-plan set -- see

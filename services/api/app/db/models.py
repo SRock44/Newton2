@@ -43,6 +43,15 @@ class User(Base):
     # the roster's default" (see billing.resolve_pro_model), not "no access".
     preferred_pro_model: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Self-service "Focus Mode" (see app/routers/billing.py's PATCH /billing/focus-mode,
+    # SettingsPanel.tsx) -- a student opting THEMSELVES into a stricter, Socratic-only
+    # standard. Deliberately not a teacher/guardian-administered control: this codebase
+    # has no such account concept at all (see ROADMAP.md Phase 7's deferred
+    # "teacher-configurable academic-integrity mode" item). Available regardless of plan
+    # (free or Pro) -- see app/agents/tutor.py's FOCUS_MODE_SYSTEM_ADDENDUM and
+    # app/tools/write_research_paper.py's FOCUS_MODE_MESSAGE for the real effects.
+    focus_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"

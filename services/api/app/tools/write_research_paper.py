@@ -108,6 +108,28 @@ PRO_ONLY_MESSAGE = (
     "yourself in chat."
 )
 
+# Focus Mode (User.focus_mode_enabled, see app/routers/billing.py's PATCH
+# /billing/focus-mode and app/agents/tutor.py's FOCUS_MODE_SYSTEM_ADDENDUM) blocks this
+# tool the same way a free plan does, for a deliberate reason: Focus Mode is a student
+# opting themselves OUT of getting a full paper handed to them, specifically so they do
+# the writing -- a Pro user who's also turned Focus Mode on is still asking for exactly
+# that "write it for me" outcome this tool exists to produce, so their Pro plan doesn't
+# override their own stricter self-imposed setting. The interaction with the Pro gate
+# above is deliberately simple and one-directional: a free user is already blocked
+# before this check is ever reached (Focus Mode changes nothing for them -- they were
+# never getting this tool either way), while a Pro user is blocked ONLY when they
+# themselves turned Focus Mode on, and stays fully able to use this tool the moment they
+# turn it back off. Checked after the Pro gate rather than before purely because the Pro
+# gate is the cheaper, more fundamental "can this student even reach this tool at all"
+# question -- the order has no other behavioral consequence since the two checks never
+# overlap in who they reject.
+FOCUS_MODE_MESSAGE = (
+    "Focus Mode is on, so I won't generate a full paper for you — it's meant to keep "
+    "you doing the writing yourself. I can still help you plan it, research individual "
+    "sections, or give feedback on a draft you write. Turn Focus Mode off in Settings "
+    "if you'd like me to write the full paper for you instead."
+)
+
 # Bounded like every other "read a document into a prompt" call site in this codebase
 # (study_planner.MAX_SYLLABUS_CHARS, flashcards.MAX_MATERIAL_CHARS use the same figure).
 MAX_DOCUMENT_EXCERPT_CHARS = 6000
@@ -526,6 +548,8 @@ class WriteResearchPaperTool(Tool):
             user = await db.get(User, uid)
             if user is None or not billing_service.is_pro(user):
                 return PRO_ONLY_MESSAGE
+            if user.focus_mode_enabled:
+                return FOCUS_MODE_MESSAGE
 
         style_key = (style or "").strip().lower()
         if style_key not in RENDERERS:

@@ -222,6 +222,40 @@ async def test_run_rejects_a_free_plan_user(db_session):
         await db_session.commit()
 
 
+async def test_run_blocks_a_focus_mode_pro_user_with_a_clear_message(paper_user, db_session):
+    """Focus Mode (User.focus_mode_enabled) blocks this tool for a Pro user too -- see
+    wrp.FOCUS_MODE_MESSAGE's own comment for the reasoning: Focus Mode is the student
+    opting themselves OUT of a full generated paper regardless of what their plan would
+    otherwise allow. A clear, student-facing message, never a raw error."""
+    paper_user.focus_mode_enabled = True
+    await db_session.commit()
+
+    result = await WriteResearchPaperTool().run(
+        title="T", style="ieee", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+    assert result == wrp.FOCUS_MODE_MESSAGE
+    assert not result.startswith("Error:")
+
+
+async def test_run_still_works_for_a_focus_mode_disabled_pro_user(paper_user, db_session, monkeypatch):
+    """The same Pro user, with Focus Mode explicitly off, is unaffected -- proves the
+    gate is genuinely conditional on the flag, not blocking Pro users unconditionally."""
+    paper_user.focus_mode_enabled = False
+    await db_session.commit()
+
+    fake_provider = _FakeSectionProvider({"Introduction": '{"prose": "text", "sources": []}'})
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+    _success_compile(monkeypatch)
+
+    result = await WriteResearchPaperTool().run(
+        title="Focus Off Paper", style="ieee", abstract_sketch="A",
+        sections=[{"heading": "Introduction", "summary": "s"}], user_id=str(paper_user.id),
+    )
+    assert result.startswith("Done —")
+
+
 async def test_run_rejects_unsupported_style(paper_user):
     result = await WriteResearchPaperTool().run(
         title="T", style="mla", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}],

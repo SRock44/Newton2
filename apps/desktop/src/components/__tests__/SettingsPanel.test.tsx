@@ -14,6 +14,7 @@ const freeStatus: BillingStatus = {
   preferred_pro_model: "model-a",
   free_generation_target: 5,
   pro_generation_target: 15,
+  focus_mode_enabled: false,
 };
 
 const proStatus: BillingStatus = {
@@ -26,6 +27,7 @@ const proStatus: BillingStatus = {
   preferred_pro_model: "model-a",
   free_generation_target: 5,
   pro_generation_target: 15,
+  focus_mode_enabled: false,
 };
 
 const proModels: ProModel[] = [
@@ -42,6 +44,7 @@ vi.mock("../../api", async () => {
     createCheckoutSession: vi.fn(async () => "https://checkout.stripe.com/session123"),
     createPortalSession: vi.fn(async () => "https://billing.stripe.com/portal123"),
     setPreferredProModel: vi.fn(async () => ({ ...proStatus, preferred_pro_model: "model-b" })),
+    setFocusMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, focus_mode_enabled: enabled })),
   };
 });
 
@@ -56,6 +59,7 @@ import {
   createPortalSession,
   getBillingStatus,
   getProModels,
+  setFocusMode,
   setPreferredProModel,
 } from "../../api";
 
@@ -68,6 +72,9 @@ describe("SettingsPanel", () => {
     vi.mocked(setPreferredProModel)
       .mockReset()
       .mockResolvedValue({ ...proStatus, preferred_pro_model: "model-b" });
+    vi.mocked(setFocusMode)
+      .mockReset()
+      .mockImplementation(async (_token, enabled) => ({ ...freeStatus, focus_mode_enabled: enabled }));
     openUrl.mockClear();
   });
 
@@ -231,5 +238,54 @@ describe("SettingsPanel", () => {
 
     await user.click(toggle);
     expect(toggle).not.toBeChecked();
+  });
+
+  it("focus mode: unchecked by default and persists turning it on via the backend", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const toggle = screen.getByRole("checkbox", { name: /focus mode/i });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+
+    await waitFor(() => expect(vi.mocked(setFocusMode)).toHaveBeenCalledWith("tok", true));
+    await waitFor(() => expect(toggle).toBeChecked());
+  });
+
+  it("focus mode: persists turning it off via the backend", async () => {
+    vi.mocked(getBillingStatus).mockResolvedValue({ ...freeStatus, focus_mode_enabled: true });
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const toggle = screen.getByRole("checkbox", { name: /focus mode/i });
+    expect(toggle).toBeChecked();
+
+    await user.click(toggle);
+
+    await waitFor(() => expect(vi.mocked(setFocusMode)).toHaveBeenCalledWith("tok", false));
+    await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it("focus mode: available (not gated) on the free plan, same as Pro", async () => {
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    expect(screen.getByRole("checkbox", { name: /focus mode/i })).toBeEnabled();
+  });
+
+  it("focus mode: reverts the toggle and shows an error when saving fails", async () => {
+    vi.mocked(setFocusMode).mockRejectedValue(new ApiError("Couldn't save your Focus Mode setting."));
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const toggle = screen.getByRole("checkbox", { name: /focus mode/i });
+    await user.click(toggle);
+
+    expect(await screen.findByText("Couldn't save your Focus Mode setting.")).toBeInTheDocument();
+    await waitFor(() => expect(toggle).not.toBeChecked());
   });
 });

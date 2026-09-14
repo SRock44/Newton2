@@ -141,6 +141,11 @@ export interface BillingStatus {
   // always mirror, and DocumentsPanel.tsx's generation note.
   free_generation_target: number;
   pro_generation_target: number;
+  // Self-service "Focus Mode" (see SettingsPanel.tsx, app/routers/billing.py's PATCH
+  // /billing/focus-mode) -- a student opting THEMSELVES into Socratic-only tutoring and
+  // no full write_research_paper drafts. Available on every plan, free or Pro -- not a
+  // paid perk being gated, unlike preferred_pro_model above.
+  focus_mode_enabled: boolean;
 }
 
 export interface ProModel {
