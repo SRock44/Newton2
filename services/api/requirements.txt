@@ -14,7 +14,7 @@ anthropic==0.40.0
 fastembed==0.5.1
 minio==7.2.9
 pypdf==6.16.1
-python-multipart==0.0.20
+python-multipart==0.0.31
 sympy==1.13.3
 fsrs==6.3.2
 stripe==15.6.1
