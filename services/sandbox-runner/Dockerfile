@@ -23,16 +23,32 @@ WORKDIR /app
 #     found" (confirmed live against a real compile before this line was added).
 # --no-install-recommends keeps this to what's actually needed rather than every
 # language/doc extra Debian would otherwise pull in.
+#
+# Versions below are pinned via Debian apt's `package=version` syntax to the exact
+# versions verified installed in the real deployed sandbox-runner image as of
+# 2026-09-13 (`dpkg-query -W` inside the live container). TeX Live is a large,
+# historically-CVE'd, C-heavy toolchain (compilers, font/image parsers, etc.) sitting
+# behind the same rlimit/namespace boundary as the untrusted-code sandbox, so an
+# unpinned `apt-get install` here would mean a routine, unrelated rebuild (e.g. a
+# Python dependency bump) could silently pull in a different TeX Live build next time
+# Debian's apt repo rotates it in place — with zero diff, review, or changelog to show
+# a security-relevant (or just compile-behavior-changing) version bump happened.
+# Pinning makes every such bump an explicit, reviewed line change in this file instead.
+#
+# To deliberately move to a newer TeX Live release: re-run `dpkg-query -W` inside a
+# freshly-rebuilt (unpinned or bumped) container, update the pins below to match, and
+# call that out in the commit message — it's a reviewed action, never an automatic
+# side effect of touching this Dockerfile for something else.
 RUN apt-get update && apt-get install --no-install-recommends -y \
-        texlive-latex-base \
-        texlive-latex-recommended \
-        texlive-latex-extra \
-        texlive-fonts-recommended \
-        texlive-publishers \
-        texlive-humanities \
-        texlive-bibtex-extra \
-        biber \
-        lmodern \
+        texlive-latex-base=2024.20250309-1 \
+        texlive-latex-recommended=2024.20250309-1 \
+        texlive-latex-extra=2024.20250309-2 \
+        texlive-fonts-recommended=2024.20250309-1 \
+        texlive-publishers=2024.20250309-2 \
+        texlive-humanities=2024.20250309-2 \
+        texlive-bibtex-extra=2024.20250309-2 \
+        biber=2.20-2 \
+        lmodern=2.005-1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

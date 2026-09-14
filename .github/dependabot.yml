@@ -1,0 +1,55 @@
+# Dependabot version-update configuration.
+#
+# Scope: this only opens PRs for outdated dependencies (version-update checks).
+# It is not a security-scanning workflow — see ROADMAP.md's Phase 7 "Dependency/CVE
+# scanning" item for why a CI-integrated pip-audit/npm audit step is a separate,
+# not-yet-scoped follow-up (this repo has no CI at all yet).
+#
+# One `pip` entry per service because Dependabot scopes a package ecosystem by the
+# directory containing its manifest (requirements.txt here), not the whole repo.
+version: 2
+updates:
+  # --- Python services (pip / requirements.txt) ---
+  - package-ecosystem: "pip"
+    directory: "/services/api"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "pip"
+    directory: "/services/sandbox-runner"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "pip"
+    directory: "/services/piper-tts"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # --- Desktop app (npm) ---
+  - package-ecosystem: "npm"
+    directory: "/apps/desktop"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # --- Docker base images, one entry per service Dockerfile ---
+  - package-ecosystem: "docker"
+    directory: "/services/api"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "docker"
+    directory: "/services/sandbox-runner"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "docker"
+    directory: "/services/piper-tts"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
