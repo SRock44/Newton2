@@ -295,3 +295,141 @@ this feature's own verification — a real `pg_dumpall` restored into a scratch 
 with row counts matching the live DB exactly, and a real uploaded PDF's bytes verified
 identical (md5sum) after being mirrored out of a live-data backup archive and back into a
 scratch MinIO bucket.
+
+## Deploy and rollback
+
+ROADMAP.md's Phase 7 named the actual gap: the shared dev box above is the only
+environment that exists, and until this, a bad deploy had no path back except manually
+re-syncing an older commit over SSH by hand. `infra/deploy/` is a tested rollback (and
+forward-deploy) mechanism for that one box, built the same way `infra/backup/` was: small,
+focused, heavily-commented shell scripts, not a new platform.
+
+- `infra/deploy/deploy.sh <git-ref>` — sync that exact commit/tag's `infra/` and
+  `services/api/` trees to the box, rebuild + restart `api` and `worker`, run whatever DB
+  migration that implies, and gate success on a real health check.
+- `infra/deploy/rollback.sh <git-ref>` — a thin wrapper around `deploy.sh` (same script,
+  `--rollback` just changes banner wording). **Deploy and rollback are the same operation
+  pointed at a different ref**, deliberately: two scripts that each reimplemented
+  "sync, build, migrate, health-check" would drift out of sync with each other the same way
+  the app they manage would.
+- `infra/deploy/common.sh` — shared config/helpers both scripts source (ref resolution,
+  the sync/build/health-check functions, the migration-direction check). Not meant to be
+  run directly.
+
+```bash
+infra/deploy/deploy.sh main                    # deploy the tip of main
+infra/deploy/deploy.sh v1.4.0                   # deploy a tag
+infra/deploy/rollback.sh a1b2c3d                 # roll back to an earlier commit
+infra/deploy/rollback.sh a1b2c3d --auto-downgrade  # ...and allow an automatic DB downgrade
+```
+
+Both read `REMOTE_HOST`/`REMOTE_USER`/`SSH_KEY`/`REMOTE_DIR` from the environment if you
+need to override the defaults (`sr@100.117.101.98` over Tailscale, `~/.ssh/id_claude`,
+`~/dev/newton2`) — see `infra/deploy/common.sh`.
+
+### What the sync actually does
+
+`git archive <ref> -- infra services/api`, piped straight over SSH into a scratch staging
+directory on the box, then `rsync -a --delete` from staging into place — the same tar/ssh
+pattern this file's "Remote dev box" section already documents, just sourced from a git ref
+instead of the live working tree, and with `--delete` so a rollback across a commit that
+*removed* a file actually removes it on the box (instead of leaving a stale module for
+`COPY app ./app` to bake into the next image). `--delete` is explicitly scoped to never
+touch `infra/.env` (real secrets, generated on the box, never committed) or `infra/ovh/`
+(box-local, not part of this repo) — both are excluded from the delete pass by name.
+
+### The health-check gate
+
+Neither script reports success without this passing. It runs entirely on the box (the
+API's ports are `127.0.0.1`-only, so this can't be checked from off-box without the SSH
+tunnel this file already documents):
+
+1. `GET /health`, retried for ~30s to give a freshly-rebuilt container time to finish
+   uvicorn startup / DB pool init.
+2. A real Keycloak token for the dev user (`student1` / `newton-dev`, the same dev-only
+   login this file's "Remote dev box" section already uses) fetched and sent as a Bearer
+   token to `GET /health/secure` — proves auth actually works end-to-end, not just that the
+   process is listening.
+
+A failure at either step is a loud, explicit `HEALTH CHECK FAILED` message and a non-zero
+exit — it never silently reports "done" on a container that didn't actually come up healthy.
+
+### The migration-direction check, and why downgrade isn't automatic by default
+
+Before touching anything, both scripts compare the **target ref's migration head** (the
+highest-numbered file under `services/api/migrations/versions/` at that ref — this repo's
+migrations are a single linear chain, so that's a reliable proxy for "what `alembic upgrade
+head` would produce" without needing that ref checked out) against the **live DB's current
+migration** (`alembic current`, read before anything is touched).
+
+- Target ahead of the DB → normal forward migration: sync, rebuild, then
+  `alembic upgrade head` against the freshly-rebuilt container (it needs the new migration
+  files, which only exist post-sync).
+- Target equal to the DB → sync and rebuild only, no migration needed.
+- **Target behind the DB** (a rollback crossing a real migration boundary) → this is the
+  case ROADMAP.md's Phase 7 called out by name: deploying old application code against a
+  newer DB schema is a real way to make an incident worse. The script never proceeds
+  silently here. It prints exactly which migration files' `downgrade()` would need to run
+  (read from the *current* checkout, since those files are newer than the target ref and
+  won't exist in its own tree) and:
+  - **By default, it does NOT run `alembic downgrade`.** It warns loudly, and requires
+    typed confirmation (or `--yes` for non-interactive use) before even deploying the old
+    code as-is with the DB left at its current, newer migration state. Several real
+    `downgrade()` functions in this repo's migration history (`0006`, `0007`, `0008`, ...)
+    are genuinely destructive — `op.drop_table` / `op.drop_column` — and running one
+    automatically against a live database with real rows is a permanent, real data-loss
+    action. Detect-and-warn was chosen over auto-downgrade as the default specifically
+    because the downside of a wrong guess here (silently deleted user data) is categorically
+    worse than the downside of the safer default (a human has to make one more decision).
+  - Pass `--auto-downgrade` to allow it anyway. Even then, it still prints the exact list of
+    downgrade migrations about to run and requires typing `DOWNGRADE` (or `--yes`) before
+    executing — the downgrade runs against the **current, pre-sync** container (it's the
+    only one that still has those newer migration files loaded), *then* the code sync and
+    rebuild happen.
+
+### Known limitation: this assumes it has the box to itself
+
+Like the rest of this repo's remote-dev-box tooling, `infra/deploy/` assumes nothing else
+is syncing code to `~/dev/newton2` at the same time. It has no lock file and no way to
+detect a concurrent manual `tar | ssh` sync (the pattern this file's "Remote dev box"
+section documents, still valid for a one-off change). If two things sync to the box at
+once, last-write-wins, same as it would with two people SSHed in running commands by hand
+— this doesn't make that meaningfully safer, only the box's own steady-state deploy/rollback
+path faster and gated on a real health check.
+
+### Verification
+
+This was run for real against the real live dev box, not just read for plausibility: a
+forward deploy of the then-current `main`, a rollback to a real earlier commit (several
+commits back, chosen to change something real and independently verifiable —
+`requirements.txt`'s pinned `uvicorn` version — without crossing a migration boundary, so
+the first round-trip exercised the sync/build/health-check path in isolation from the
+migration-direction logic), confirmed via `docker exec`ing the live container and reading
+the installed `uvicorn.__version__` directly (not just trusting the script's own report)
+that the rollback had genuinely taken effect, then a forward deploy back — each of the
+three runs gated on and passing the real `/health` + `/health/secure` check against the
+live Keycloak. The bundled backend test suite (`docker exec newton2-api-1 python -m pytest
+tests/ -q`) was run to confirm the box was left in a working state; two categories of
+failure surfaced that are pre-existing characteristics of this shared box and this repo's
+own test suite, unrelated to this tooling, and are worth knowing about before treating a
+future run's output at face value:
+- The `api` service's `mem_limit: 640m` (`docker-compose.yml`) is tight enough that running
+  the full test suite via `docker exec` inside the same container as the live server can
+  trip the kernel's cgroup OOM killer under this shared box's real memory pressure (confirmed
+  via `journalctl -k` showing an actual `oom-kill` of the `uvicorn`/`pytest` processes) —
+  running the suite in smaller batches (a handful of files per `pytest` invocation) instead
+  of one single ~640-test run avoids this. Worth a follow-up if the suite is going to be run
+  against this container routinely: either a higher `mem_limit`, or running tests in an
+  ephemeral container instead of `docker exec` into the live one (see the `live_smoke`
+  marker note in `services/api/pytest.ini` — ROADMAP.md's Phase 7 already names decoupling
+  the test suite from the shared live box as a follow-up).
+- A handful of tests intermittently got a real `401` from Keycloak's own token endpoint
+  while fetching a fresh dev-user login — transient, and gone on an immediate retry; almost
+  certainly Keycloak's own brute-force/rate-limiting kicking in under many rapid successive
+  password-grant logins (each test using the `keycloak_token` fixture does its own). Not
+  something this tooling caused or can fix from the outside.
+- One test (`test_run_against_real_open_library`) is marked `live_smoke` — it hits the real
+  Open Library API and is already excluded from this repo's own CI
+  (`.github/workflows/test.yml` runs `-m "not live_smoke"`); this tooling's verification
+  used the same exclusion for its final pass, matching the repo's own definition of
+  "the suite passes."
