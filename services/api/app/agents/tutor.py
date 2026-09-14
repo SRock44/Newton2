@@ -215,6 +215,53 @@ FOCUS_MODE_SYSTEM_ADDENDUM = (
     "call the tool, it will just decline."
 )
 
+# Appended to SYSTEM_PROMPT only for a user with User.learn_mode_enabled=True -- a
+# self-service setting a student opts THEMSELVES into (see app/routers/billing.py's
+# PATCH /billing/learn-mode, Composer.tsx's chat-interface toggle, SettingsPanel.tsx's
+# mirrored toggle), completely independent of and stackable with FOCUS_MODE_SYSTEM_
+# ADDENDUM above -- a student can have either, both, or neither; run_tutor() appends
+# each independently, never coupling the two. Turns the existing passive-reveal
+# behaviors (math-steps' full derivation, plotly-figure's static curve) into an
+# interactive checking layer instead, using two new fenced-block types the frontend
+# renders (see StepCheck.tsx / Checkpoint.tsx / CodeBlock.tsx's dispatch) plus a
+# slider-enabled variant of plot_function (see app/tools/visualizer.py's `vary`
+# argument). Everything this addendum describes is explicitly scoped to "while Learn
+# Mode is on" -- SYSTEM_PROMPT's own math-steps/plot_function instructions above stay
+# the unconditional, always-on default for every student who never touches this toggle.
+LEARN_MODE_SYSTEM_ADDENDUM = (
+    "\n\nLearn Mode is ON for this student -- a setting they turned on for themselves "
+    "for a more interactive, checked style of teaching. These behaviors apply ONLY "
+    "while Learn Mode is on; they are not how you behave by default.\n\n"
+    "Step-by-step math derivations: instead of narrating the whole derivation across "
+    "math-steps in one go, present only the CURRENT step as normal text, then stop and "
+    'emit a fenced ```step-check block containing JSON in this exact shape: {"prompt": '
+    '"short instruction for what to attempt, e.g. \'Try expanding (x+3)^2 yourself\'"} '
+    "asking the student to attempt the NEXT step themselves before you reveal it -- "
+    "never hand over the next step unprompted while Learn Mode is on. The student's "
+    "attempt comes back as their next chat message, prefixed with \"My attempt: \" -- "
+    "when you see that prefix, evaluate the attempt (use check_student_work, "
+    "symbolic_math, or direct reasoning, whichever is appropriate) rather than assuming "
+    "it's correct. If it's right, confirm it and reveal the actual next step (as text, "
+    "then another ```step-check block for the step after that, if more remain). If it's "
+    "wrong, give a hint in the spirit of get_math_hint's levels -- a conceptual nudge "
+    "first, not the answer -- and ask them to try again with a fresh ```step-check "
+    "block; do not just move on or reveal the step regardless of what they wrote.\n\n"
+    "Plotting with a natural free parameter: when a function has a parameter worth "
+    "exploring pedagogically (e.g. \"graph y = ax^2 and show how a affects it\", a "
+    "line's slope/intercept, an amplitude/period), call plot_function with its `vary` "
+    "argument (naming the parameter symbol and a min/max/steps range) instead of a "
+    "single fixed expression, producing a slider-enabled chart, and narrate what the "
+    "student should notice as they drag the slider across positions.\n\n"
+    "Substantive conceptual explanations: after a genuinely new concept (not a simple "
+    "factual lookup, and not stacked back-to-back -- roughly once per new concept, "
+    "don't nag), pause before moving on and emit a fenced ```checkpoint block "
+    'containing JSON in this exact shape: {"question": "the comprehension-check '
+    'question"} -- a real question checking understanding, genuine Socratic spirit '
+    "like Focus Mode's guiding-question style but for explanations generally, not just "
+    "problem-solving. Wait for their answer before continuing; evaluate it honestly "
+    "rather than just accepting anything and moving on."
+)
+
 # A confused/looping model shouldn't be able to hold the WS connection open forever
 # calling tools back-to-back with no final answer.
 MAX_TOOL_ROUNDS = 4
@@ -232,6 +279,8 @@ async def run_tutor(
     system_prompt = SYSTEM_PROMPT
     if user is not None and user.focus_mode_enabled:
         system_prompt += FOCUS_MODE_SYSTEM_ADDENDUM
+    if user is not None and user.learn_mode_enabled:
+        system_prompt += LEARN_MODE_SYSTEM_ADDENDUM
 
     turns = [ChatTurn(role="system", content=system_prompt)]
     if bundle["profile_facts"]:

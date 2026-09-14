@@ -600,6 +600,7 @@ async def test_billing_status_returns_the_expected_shape(http_client, auth_heade
         "focus_mode_enabled",
         "topup_credits_cents",
         "topup_tiers_cents",
+        "learn_mode_enabled",
     }
     assert body["plan"] in ("free", "pro")
     assert isinstance(body["credits_used_cents"], int)
@@ -770,6 +771,93 @@ async def test_focus_mode_is_never_plan_gated(http_client, auth_headers, student
     finally:
         student1_focus_mode_snapshot.plan = original_plan
         await db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Self-service Learn Mode (User.learn_mode_enabled) -- see app/routers/billing.py's
+# PATCH /billing/learn-mode. Same never-plan-gated shape as Focus Mode above, and
+# deliberately independent of it (no test here touches focus_mode_enabled at all).
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def student1_learn_mode_snapshot(db_session, keycloak_token):
+    """Snapshots+restores the shared dev student1 user's learn_mode_enabled around a
+    test that flips it -- same rationale as student1_focus_mode_snapshot above: this is
+    a shared dev DB row other tests/runs also rely on."""
+    sub = jose_jwt.get_unverified_claims(keycloak_token)["sub"]
+    user = (await db_session.execute(select(User).where(User.keycloak_sub == sub))).scalar_one_or_none()
+    if user is None:
+        user = User(keycloak_sub=sub)
+        db_session.add(user)
+        await db_session.commit()
+
+    original = user.learn_mode_enabled
+    yield user
+    user.learn_mode_enabled = original
+    await db_session.commit()
+
+
+async def test_learn_mode_requires_auth(http_client):
+    resp = await http_client.patch("/billing/learn-mode", json={"enabled": True})
+    assert resp.status_code in (401, 403)
+
+
+async def test_learn_mode_persists_enabling(http_client, auth_headers, student1_learn_mode_snapshot, db_session):
+    student1_learn_mode_snapshot.learn_mode_enabled = False
+    await db_session.commit()
+
+    resp = await http_client.patch("/billing/learn-mode", json={"enabled": True}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["learn_mode_enabled"] is True
+
+    await db_session.refresh(student1_learn_mode_snapshot)
+    assert student1_learn_mode_snapshot.learn_mode_enabled is True
+
+
+async def test_learn_mode_persists_disabling(http_client, auth_headers, student1_learn_mode_snapshot, db_session):
+    student1_learn_mode_snapshot.learn_mode_enabled = True
+    await db_session.commit()
+
+    resp = await http_client.patch("/billing/learn-mode", json={"enabled": False}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["learn_mode_enabled"] is False
+
+    await db_session.refresh(student1_learn_mode_snapshot)
+    assert student1_learn_mode_snapshot.learn_mode_enabled is False
+
+
+async def test_learn_mode_is_never_plan_gated(http_client, auth_headers, student1_learn_mode_snapshot, db_session):
+    """Free-plan users can turn Learn Mode on just as easily as Pro users -- it's a
+    pedagogy toggle, not a paid perk, so there's no 402 path here at all."""
+    original_plan = student1_learn_mode_snapshot.plan
+    student1_learn_mode_snapshot.plan = "free"
+    student1_learn_mode_snapshot.learn_mode_enabled = False
+    await db_session.commit()
+    try:
+        resp = await http_client.patch("/billing/learn-mode", json={"enabled": True}, headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["learn_mode_enabled"] is True
+    finally:
+        student1_learn_mode_snapshot.plan = original_plan
+        await db_session.commit()
+
+
+async def test_learn_mode_is_independent_of_focus_mode(
+    http_client, auth_headers, student1_learn_mode_snapshot, student1_focus_mode_snapshot, db_session
+):
+    """Flipping Learn Mode on must never touch focus_mode_enabled, and vice versa."""
+    student1_learn_mode_snapshot.learn_mode_enabled = False
+    student1_focus_mode_snapshot.focus_mode_enabled = True
+    await db_session.commit()
+
+    resp = await http_client.patch("/billing/learn-mode", json={"enabled": True}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["learn_mode_enabled"] is True
+    assert resp.json()["focus_mode_enabled"] is True
+
+    await db_session.refresh(student1_focus_mode_snapshot)
+    assert student1_focus_mode_snapshot.focus_mode_enabled is True
 
 
 async def test_checkout_session_returns_503_when_stripe_not_configured(http_client, auth_headers):

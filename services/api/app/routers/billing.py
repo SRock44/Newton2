@@ -31,6 +31,10 @@ class FocusModeUpdate(BaseModel):
     enabled: bool
 
 
+class LearnModeUpdate(BaseModel):
+    enabled: bool
+
+
 class TopupCheckoutRequest(BaseModel):
     amount_cents: int
 
@@ -65,6 +69,10 @@ def _serialize_status(user: User) -> dict:
         # credits" buttons never hardcode a copy of billing_service.TOPUP_TIERS_CENTS
         # that could drift from what topup-checkout-session actually accepts.
         "topup_tiers_cents": billing_service.TOPUP_TIERS_CENTS,
+        # Self-service Learn Mode (see LearnModeUpdate/set_learn_mode below) -- same
+        # "available to every plan, just echoed back as-is" reasoning as
+        # focus_mode_enabled above, and deliberately independent of it.
+        "learn_mode_enabled": user.learn_mode_enabled,
     }
 
 
@@ -131,6 +139,25 @@ async def set_focus_mode(
     """
     user = await get_or_create_user(db, claims)
     user.focus_mode_enabled = body.enabled
+    await db.commit()
+    return _serialize_status(user)
+
+
+@router.patch("/learn-mode")
+async def set_learn_mode(
+    body: LearnModeUpdate,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Persists a student's own Learn Mode preference (app/db/models.py's
+    User.learn_mode_enabled). Deliberately available to every plan, free or Pro, and
+    deliberately independent of focus_mode_enabled -- this is a pedagogy toggle, not a
+    paywall, and not coupled to Focus Mode's stricter-standard framing. See
+    app/agents/tutor.py's LEARN_MODE_SYSTEM_ADDENDUM for what actually changes once this
+    is on -- this endpoint only flips the flag.
+    """
+    user = await get_or_create_user(db, claims)
+    user.learn_mode_enabled = body.enabled
     await db.commit()
     return _serialize_status(user)
 

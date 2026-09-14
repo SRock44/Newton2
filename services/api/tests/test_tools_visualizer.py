@@ -74,3 +74,97 @@ async def test_tool_run_returns_error_string_not_exception():
     tool = VisualizerTool()
     result = await tool.run(expression="x + y", x_min=0, x_max=1)
     assert result.startswith("Error:")
+
+
+# ---------------------------------------------------------------------------
+# Learn Mode's manipulable visualization -- plot_function_spec's optional `vary`
+# argument (see app/agents/tutor.py's LEARN_MODE_SYSTEM_ADDENDUM). The single-curve
+# path above is completely unchanged (every test above calls it with no `vary` at all,
+# and still passes unmodified).
+# ---------------------------------------------------------------------------
+
+
+def test_vary_produces_one_trace_per_discrete_position():
+    spec = plot_function_spec(
+        "a*x^2", x_min=-2, x_max=2, num_points=5, vary={"symbol": "a", "min": 1, "max": 3, "steps": 3}
+    )
+    assert len(spec["data"]) == 3
+    assert spec["sliders"] == [{"label": "a", "values": [1.0, 2.0, 3.0], "active": 1}]
+
+
+def test_vary_each_trace_has_the_mathematically_correct_curve():
+    spec = plot_function_spec(
+        "a*x^2", x_min=-2, x_max=2, num_points=5, vary={"symbol": "a", "min": 1, "max": 3, "steps": 3}
+    )
+    for trace, a in zip(spec["data"], [1.0, 2.0, 3.0]):
+        for x, y in zip(trace["x"], trace["y"]):
+            assert y == pytest.approx(a * x**2)
+
+
+def test_vary_only_the_middle_position_is_initially_visible():
+    spec = plot_function_spec(
+        "a*x", x_min=-1, x_max=1, num_points=3, vary={"symbol": "a", "min": 0, "max": 4, "steps": 5}
+    )
+    visibility = [trace["visible"] for trace in spec["data"]]
+    assert visibility == [False, False, True, False, False]
+    assert spec["sliders"][0]["active"] == 2
+
+
+def test_vary_defaults_to_5_steps_when_steps_omitted():
+    spec = plot_function_spec("a*x", x_min=-1, x_max=1, num_points=3, vary={"symbol": "a", "min": 0, "max": 4})
+    assert len(spec["data"]) == 5
+
+
+def test_vary_rejects_steps_outside_2_to_11():
+    with pytest.raises(ValueError, match="vary.steps"):
+        plot_function_spec("a*x", vary={"symbol": "a", "min": 0, "max": 1, "steps": 1})
+    with pytest.raises(ValueError, match="vary.steps"):
+        plot_function_spec("a*x", vary={"symbol": "a", "min": 0, "max": 1, "steps": 12})
+
+
+def test_vary_rejects_max_not_greater_than_min():
+    with pytest.raises(ValueError, match="vary.max"):
+        plot_function_spec("a*x", vary={"symbol": "a", "min": 5, "max": 5, "steps": 3})
+
+
+def test_vary_rejects_symbol_matching_the_plot_variable():
+    with pytest.raises(ValueError, match="must differ"):
+        plot_function_spec("x*x", vary={"symbol": "x", "min": 0, "max": 1, "steps": 3})
+
+
+def test_vary_rejects_a_third_unexpected_symbol():
+    with pytest.raises(ValueError, match="unexpected variable"):
+        plot_function_spec("a*x + b", vary={"symbol": "a", "min": 0, "max": 1, "steps": 3})
+
+
+def test_vary_expression_may_omit_the_vary_symbol_and_still_work():
+    # Every position produces the same (parameter-free) curve -- degenerate but valid.
+    spec = plot_function_spec("x^2", x_min=-1, x_max=1, num_points=3, vary={"symbol": "a", "min": 0, "max": 1, "steps": 2})
+    assert len(spec["data"]) == 2
+    assert spec["data"][0]["y"] == spec["data"][1]["y"]
+
+
+def test_vary_layout_and_type_match_the_single_curve_shape():
+    spec = plot_function_spec("a*x", vary={"symbol": "a", "min": 0, "max": 1, "steps": 2})
+    assert spec["type"] == "plotly_figure"
+    assert spec["layout"]["xaxis"]["title"] == "x"
+
+
+async def test_tool_run_passes_vary_through_to_a_slider_enabled_spec():
+    tool = VisualizerTool()
+    result = await tool.run(expression="a*x^2", x_min=-2, x_max=2, vary={"symbol": "a", "min": 1, "max": 3, "steps": 3})
+    payload = result.removeprefix("```plotly-figure\n").removesuffix("\n```")
+    parsed = json.loads(payload)
+    assert len(parsed["data"]) == 3
+    assert parsed["sliders"][0]["label"] == "a"
+
+
+async def test_tool_run_with_no_vary_matches_pre_existing_single_curve_shape():
+    """Backward compatibility: calling the tool exactly as before (no `vary` at all)
+    must produce the same single-trace, no-`sliders` shape it always has."""
+    tool = VisualizerTool()
+    result = await tool.run(expression="x^2", x_min=-1, x_max=1)
+    payload = result.removeprefix("```plotly-figure\n").removesuffix("\n```")
+    parsed = json.loads(payload)
+    assert len(parsed["data"]) == 1
+    assert "sliders" not in parsed

@@ -78,6 +78,18 @@ class User(Base):
     # app/tools/write_research_paper.py's FOCUS_MODE_MESSAGE for the real effects.
     focus_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
+    # Self-service "Learn Mode" (see app/routers/billing.py's PATCH /billing/learn-mode,
+    # Composer.tsx's chat-interface toggle, SettingsPanel.tsx's mirrored toggle) -- a
+    # student opting THEMSELVES into an interactive teaching layer (step-by-step math
+    # requires a real attempt before the next step is revealed, plots of a function with
+    # a natural free parameter offer a slider, substantive explanations pause for a
+    # comprehension checkpoint) instead of today's passive-reveal behavior. Independent
+    # of focus_mode_enabled above -- a student can have either, both, or neither; the two
+    # are deliberately not coupled. Available regardless of plan (free or Pro), same
+    # reasoning as focus_mode_enabled: this is a pedagogy toggle, not a paywall. See
+    # app/agents/tutor.py's LEARN_MODE_SYSTEM_ADDENDUM for the real effects.
+    learn_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"

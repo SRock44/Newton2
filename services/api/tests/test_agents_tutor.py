@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import delete
 
@@ -414,6 +415,94 @@ def test_focus_mode_addendum_genuinely_describes_socratic_behavior_and_the_tool_
     assert "write_research_paper" in addendum
     # Explicitly not adversarial/evasive -- a real attempt should get a real answer.
     assert "confirm" in lowered or "correct" in lowered
+
+
+# ---------------------------------------------------------------------------
+# Self-service Learn Mode (User.learn_mode_enabled) -- see app/agents/tutor.py's
+# LEARN_MODE_SYSTEM_ADDENDUM. Deliberately independent of Focus Mode: mirrors the Focus
+# Mode test shapes above, plus explicit coverage of all 4 on/off combinations.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_tutor_appends_learn_mode_addendum_for_an_enabled_user(tutor_user, monkeypatch):
+    user = await tutor_user(learn_mode_enabled=True)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    assert text_of(events) == "ok"
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == tutor.SYSTEM_PROMPT + tutor.LEARN_MODE_SYSTEM_ADDENDUM
+
+
+async def test_run_tutor_does_not_append_learn_mode_addendum_when_disabled(tutor_user, monkeypatch):
+    user = await tutor_user(learn_mode_enabled=False)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    assert text_of(events) == "ok"
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == tutor.SYSTEM_PROMPT
+    assert tutor.LEARN_MODE_SYSTEM_ADDENDUM not in system_content
+
+
+async def test_run_tutor_does_not_append_learn_mode_addendum_for_an_anonymous_caller(monkeypatch):
+    """No user_id at all (e.g. a keyless/dev path) must never crash looking up a flag
+    that doesn't exist -- same "no user" shape as every other user_id=None test above."""
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert text_of(events) == "ok"
+    assert fake.calls_seen[0]["messages"][0].content == tutor.SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize(
+    "focus_enabled,learn_enabled",
+    [(False, False), (True, False), (False, True), (True, True)],
+)
+async def test_run_tutor_focus_and_learn_mode_addenda_are_independent_and_stackable(
+    tutor_user, monkeypatch, focus_enabled, learn_enabled
+):
+    """All 4 on/off combinations produce the exact expected prompt -- proves neither
+    addendum is coupled to (or accidentally gated by) the other."""
+    user = await tutor_user(focus_mode_enabled=focus_enabled, learn_mode_enabled=learn_enabled)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    assert text_of(events) == "ok"
+    expected = tutor.SYSTEM_PROMPT
+    if focus_enabled:
+        expected += tutor.FOCUS_MODE_SYSTEM_ADDENDUM
+    if learn_enabled:
+        expected += tutor.LEARN_MODE_SYSTEM_ADDENDUM
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == expected
+
+
+def test_learn_mode_addendum_genuinely_describes_step_check_and_checkpoint_blocks():
+    """Pure string-content assertions on the addendum text itself: it must name both new
+    block schemas by their exact fence language, describe evaluating a real attempt
+    rather than just handing over the answer, and scope every behavior to "while Learn
+    Mode is on" rather than describing it as an always-on default."""
+    addendum = tutor.LEARN_MODE_SYSTEM_ADDENDUM
+    lowered = addendum.lower()
+
+    assert "```step-check" in addendum
+    assert "```checkpoint" in addendum
+    assert '"prompt"' in addendum
+    assert '"question"' in addendum
+    assert "my attempt:" in lowered
+    assert "never hand over the next step unprompted" in lowered
+    assert "evaluate" in lowered
+    assert "vary" in lowered and "plot_function" in addendum
+    assert "while learn mode is on" in lowered or "while it's on" in lowered or "learn mode is on" in lowered
 
 
 def test_system_prompt_honestly_describes_the_free_vs_pro_generation_target():
