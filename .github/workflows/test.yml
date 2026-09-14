@@ -11,8 +11,15 @@ name: API tests
 # those only ever run against the real deployed stack, by hand (see infra/README.md).
 
 on:
-  push:
-    branches-ignore: [main]
+  # Deliberately triggers on push to EVERY branch, main included -- this repo pushes
+  # directly to main (no PR-based workflow), so a `branches-ignore: [main]` filter (the
+  # original version of this line) meant CI would never once run against main in actual
+  # practice. Confirmed live: all of this workflow's real runs before this fix happened
+  # on a since-deleted verification branch, zero ever fired for main. `pull_request`
+  # stays too, for the case a PR does get used later; a PR push briefly double-runs CI
+  # (once for the push, once for the PR), a minor inefficiency preferred over the
+  # previous silent gap.
+  push: {}
   pull_request:
     branches: [main]
   workflow_dispatch: {}
