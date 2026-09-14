@@ -130,6 +130,10 @@ export interface BillingStatus {
   credits_used_cents: number;
   credits_limit_cents: number;
   credits_reset_at: string | null;
+  // The frontier model that will actually be used — the user's own saved pick if
+  // they're Pro and it's still a curated option, else the roster's default (see
+  // app/services/billing.py's resolve_pro_model, which this field always mirrors).
+  preferred_pro_model: string;
 }
 
 export interface ProModel {

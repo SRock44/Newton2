@@ -326,12 +326,27 @@ export async function getBillingStatus(token: string): Promise<BillingStatus> {
   return (await res.json()) as BillingStatus;
 }
 
-/** A curated list of frontier models available to Pro subscribers — informational only
- * today (see SettingsPanel), there's no endpoint yet to persist a chosen preference. */
+/** A curated list of frontier models. Shown to every signed-in user (see
+ * SettingsPanel) — only a Pro plan can actually persist a choice via
+ * setPreferredProModel below, but free users still get to see and explore the list. */
 export async function getProModels(token: string): Promise<ProModel[]> {
   const res = await fetch(`${API_URL}/billing/pro-models`, { headers: authHeaders(token) });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load the available models."));
   return (await res.json()) as ProModel[];
+}
+
+/** Persists a Pro user's chosen frontier model and returns the refreshed billing status
+ * (including the now-saved preferred_pro_model). The backend only ever actually persists
+ * this for a Pro user — see SettingsPanel, which never calls this for a free user in the
+ * first place since it already knows the request would be rejected (402). */
+export async function setPreferredProModel(token: string, modelId: string): Promise<BillingStatus> {
+  const res = await fetch(`${API_URL}/billing/preferred-model`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ model_id: modelId }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save your model preference."));
+  return (await res.json()) as BillingStatus;
 }
 
 /** Returns a Stripe Checkout URL to open in the system browser — there's no clean

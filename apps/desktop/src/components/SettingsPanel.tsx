@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ApiError, createCheckoutSession, createPortalSession, getBillingStatus, getProModels } from "../api";
+import {
+  ApiError,
+  createCheckoutSession,
+  createPortalSession,
+  getBillingStatus,
+  getProModels,
+  setPreferredProModel,
+} from "../api";
 import type { BillingStatus, ProModel } from "../types";
 import { getStudyRemindersEnabled, setStudyRemindersEnabled } from "../lib/preferences";
 
@@ -46,6 +53,10 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
   const [openingPortal, setOpeningPortal] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
 
+  const [savingModel, setSavingModel] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [showFreeModelNotice, setShowFreeModelNotice] = useState(false);
+
   const [remindersEnabled, setRemindersEnabled] = useState(getStudyRemindersEnabled);
 
   useEffect(() => {
@@ -72,7 +83,8 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
         if (!cancelled) setProModels(models);
       })
       .catch(() => {
-        // Non-fatal — this list is informational only; Pro users just won't see it.
+        // Non-fatal — if this fails, the picker section just doesn't render (guarded by
+        // proModels.length > 0 below) rather than breaking the rest of Settings.
       });
     return () => {
       cancelled = true;
@@ -143,12 +155,38 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
     }
   }
 
+  /** Free users can see and click the model picker (product requirement — it must not
+   * be hidden), but a free plan can never actually persist a choice (the backend rejects
+   * it with a 402 regardless), so this deliberately never calls the save endpoint for
+   * them — no point making a request known to be rejected. Instead it surfaces a local,
+   * factual upsell note next to the picker. Pro users actually save their pick. */
+  async function handleSelectModel(modelId: string) {
+    if (!isPro) {
+      setShowFreeModelNotice(true);
+      return;
+    }
+    if (savingModel) return;
+    setSavingModel(modelId);
+    setModelError(null);
+    try {
+      const status = await setPreferredProModel(token, modelId);
+      setBilling(status);
+    } catch (err) {
+      setModelError(err instanceof ApiError ? err.message : "Couldn't save your model preference.");
+    } finally {
+      setSavingModel(null);
+    }
+  }
+
   function handleToggleReminders(enabled: boolean) {
     setRemindersEnabled(enabled);
     setStudyRemindersEnabled(enabled);
   }
 
   const isPro = billing?.plan === "pro";
+  const defaultModelLabel = (
+    proModels.find((m) => m.id === billing?.preferred_pro_model)?.label ?? "DeepSeek V4 Flash"
+  ).replace(/\s*\(default\)\s*$/i, "");
   const creditsPct =
     billing && billing.credits_limit_cents > 0
       ? Math.min(100, (billing.credits_used_cents / billing.credits_limit_cents) * 100)
@@ -212,20 +250,42 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
               <button type="button" className="btn-secondary" onClick={handleManageBilling} disabled={openingPortal}>
                 {openingPortal ? "Opening…" : "Manage billing"}
               </button>
+            </div>
+          )}
 
-              {proModels.length > 0 && (
-                <div className="settings-models">
-                  <div className="settings-models-title">Preferred frontier model</div>
-                  <div className="settings-model-list">
-                    {proModels.map((model) => (
-                      <label key={model.id} className="settings-model-option">
-                        <input type="radio" name="pro-model" value={model.id} disabled />
-                        {model.label}
-                      </label>
-                    ))}
-                  </div>
-                  <p className="settings-note">Model selection is coming soon — this doesn't save yet.</p>
-                </div>
+          {/* Visible to every signed-in user, Pro or free — a free user can see and
+              click these options (product requirement: never hide it), but only a Pro
+              plan actually saves a selection. See handleSelectModel. */}
+          {billing && proModels.length > 0 && (
+            <div className="settings-models">
+              <div className="settings-models-title">Preferred frontier model</div>
+              <div className="settings-model-list">
+                {proModels.map((model) => (
+                  <label key={model.id} className="settings-model-option">
+                    <input
+                      type="radio"
+                      name="pro-model"
+                      value={model.id}
+                      checked={billing.preferred_pro_model === model.id}
+                      disabled={isPro && savingModel !== null}
+                      onChange={() => handleSelectModel(model.id)}
+                    />
+                    {model.label}
+                  </label>
+                ))}
+              </div>
+              {isPro ? (
+                <>
+                  {savingModel && <p className="settings-waiting">Saving…</p>}
+                  {modelError && <div className="banner banner--error">{modelError}</div>}
+                </>
+              ) : (
+                showFreeModelNotice && (
+                  <p className="settings-note">
+                    Choosing a model is a Pro feature. You're automatically using {defaultModelLabel} — a great
+                    free default.
+                  </p>
+                )
               )}
             </div>
           )}

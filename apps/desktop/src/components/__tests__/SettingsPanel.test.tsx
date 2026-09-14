@@ -11,6 +11,7 @@ const freeStatus: BillingStatus = {
   credits_used_cents: 0,
   credits_limit_cents: 500,
   credits_reset_at: null,
+  preferred_pro_model: "model-a",
 };
 
 const proStatus: BillingStatus = {
@@ -20,10 +21,11 @@ const proStatus: BillingStatus = {
   credits_used_cents: 750,
   credits_limit_cents: 1500,
   credits_reset_at: "2026-10-13T12:00:00Z",
+  preferred_pro_model: "model-a",
 };
 
 const proModels: ProModel[] = [
-  { id: "model-a", label: "Model A" },
+  { id: "model-a", label: "Model A (default)" },
   { id: "model-b", label: "Model B" },
 ];
 
@@ -35,6 +37,7 @@ vi.mock("../../api", async () => {
     getProModels: vi.fn(async () => proModels),
     createCheckoutSession: vi.fn(async () => "https://checkout.stripe.com/session123"),
     createPortalSession: vi.fn(async () => "https://billing.stripe.com/portal123"),
+    setPreferredProModel: vi.fn(async () => ({ ...proStatus, preferred_pro_model: "model-b" })),
   };
 });
 
@@ -49,6 +52,7 @@ import {
   createPortalSession,
   getBillingStatus,
   getProModels,
+  setPreferredProModel,
 } from "../../api";
 
 describe("SettingsPanel", () => {
@@ -57,6 +61,9 @@ describe("SettingsPanel", () => {
     vi.mocked(getProModels).mockReset().mockResolvedValue(proModels);
     vi.mocked(createCheckoutSession).mockReset().mockResolvedValue("https://checkout.stripe.com/session123");
     vi.mocked(createPortalSession).mockReset().mockResolvedValue("https://billing.stripe.com/portal123");
+    vi.mocked(setPreferredProModel)
+      .mockReset()
+      .mockResolvedValue({ ...proStatus, preferred_pro_model: "model-b" });
     openUrl.mockClear();
   });
 
@@ -144,17 +151,70 @@ describe("SettingsPanel", () => {
     await waitFor(() => expect(openUrl).toHaveBeenCalledWith("https://billing.stripe.com/portal123"));
   });
 
-  it("pro plan: lists pro models as a disabled preference with a coming-soon note", async () => {
+  it("free plan: the model picker is visible and its options are enabled", async () => {
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+
+    await screen.findByText("You're on the Free plan.");
+    expect(await screen.findByText("Model A (default)")).toBeInTheDocument();
+    expect(screen.getByText("Model B")).toBeInTheDocument();
+    for (const radio of screen.getAllByRole("radio", { name: /model/i })) {
+      expect(radio).toBeEnabled();
+    }
+  });
+
+  it("free plan: clicking a model option shows the Pro upsell message and saves nothing", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+
+    await screen.findByText("You're on the Free plan.");
+    await user.click(screen.getByRole("radio", { name: "Model B" }));
+
+    expect(await screen.findByText(/pro feature/i)).toBeInTheDocument();
+    expect(screen.getByText(/automatically using model a/i)).toBeInTheDocument();
+    expect(setPreferredProModel).not.toHaveBeenCalled();
+    // The click never actually changes the selection — a free plan always reflects the
+    // resolved default, never an unpersisted pick.
+    expect(screen.getByRole("radio", { name: "Model A (default)" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Model B" })).not.toBeChecked();
+  });
+
+  it("pro plan: lists pro models with the current selection checked", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
 
     await screen.findByText(/pro plan/i);
-    expect(await screen.findByText("Model A")).toBeInTheDocument();
+    expect(await screen.findByText("Model A (default)")).toBeInTheDocument();
     expect(screen.getByText("Model B")).toBeInTheDocument();
-    expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
-    for (const radio of screen.getAllByRole("radio")) {
-      expect(radio).toBeDisabled();
-    }
+    expect(screen.getByRole("radio", { name: "Model A (default)" })).toBeChecked();
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+  });
+
+  it("pro plan: selecting a model saves it and reflects the new selection", async () => {
+    vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+
+    await screen.findByText(/pro plan/i);
+    await user.click(screen.getByRole("radio", { name: "Model B" }));
+
+    await waitFor(() => expect(vi.mocked(setPreferredProModel)).toHaveBeenCalledWith("tok", "model-b"));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Model B" })).toBeChecked());
+    expect(screen.getByRole("radio", { name: "Model A (default)" })).not.toBeChecked();
+    expect(screen.queryByText(/pro feature/i)).not.toBeInTheDocument();
+  });
+
+  it("pro plan: shows an error if saving the model preference fails", async () => {
+    vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
+    vi.mocked(setPreferredProModel).mockRejectedValue(new ApiError("Couldn't save your model preference."));
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+
+    await screen.findByText(/pro plan/i);
+    await user.click(screen.getByRole("radio", { name: "Model B" }));
+
+    expect(await screen.findByText("Couldn't save your model preference.")).toBeInTheDocument();
+    // Selection reverts to whatever billing status last confirmed, since the save failed.
+    expect(screen.getByRole("radio", { name: "Model A (default)" })).toBeChecked();
   });
 
   it("toggles the study reminders preference", async () => {

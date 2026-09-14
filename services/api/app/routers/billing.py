@@ -1,5 +1,6 @@
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import require_user
@@ -11,6 +12,20 @@ from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
+# Same 402 convention as voice.py's PRO_ONLY_MESSAGE / _require_pro -- a free user hitting
+# this endpoint directly (the Settings UI itself never calls it for a free user, see
+# SettingsPanel.tsx) gets a clear, non-punitive reason rather than a raw 402 with no body,
+# and is told what they're on instead so this doubles as the "you're already covered"
+# message.
+PREFERRED_MODEL_PRO_ONLY_MESSAGE = (
+    "Choosing a preferred model is a Pro feature. Free accounts automatically use "
+    f"{billing_service.PRO_MODELS[0]['label'].removesuffix(' (default)')} — a great free default."
+)
+
+
+class PreferredModelUpdate(BaseModel):
+    model_id: str
+
 
 def _serialize_status(user: User) -> dict:
     settings = get_settings()
@@ -21,6 +36,7 @@ def _serialize_status(user: User) -> dict:
         "credits_used_cents": user.credits_used_cents,
         "credits_limit_cents": settings.pro_monthly_credit_cents,
         "credits_reset_at": user.credits_period_start.isoformat() if user.credits_period_start else None,
+        "preferred_pro_model": billing_service.resolve_pro_model(user),
     }
 
 
@@ -37,6 +53,38 @@ async def billing_status(
 @router.get("/pro-models")
 async def pro_models(claims: dict = Depends(require_user)) -> list[dict]:
     return await billing_service.get_pro_model_catalog()
+
+
+@router.patch("/preferred-model")
+async def set_preferred_model(
+    body: PreferredModelUpdate,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Persists a Pro user's chosen frontier model (see billing_service.PRO_MODELS /
+    resolve_pro_model). Validated against the curated roster's current ids -- never
+    accept an arbitrary string here, since resolve_pro_model would then silently fall
+    back to the default anyway and the user's "selection" would be a lie.
+
+    Deliberately checks is_pro() AFTER validating the model id (so a bad id is always a
+    400, regardless of plan) but BEFORE writing anything: a free user's request is never
+    persisted, even transiently -- see PREFERRED_MODEL_PRO_ONLY_MESSAGE's docstring-ish
+    comment above. The desktop Settings UI itself never calls this endpoint for a free
+    user (clicking an option there just shows an inline upsell message locally), so this
+    402 path only matters for direct/API misuse or a stale UI -- but it's still the one
+    place that decides "does this persist", so it has to get it right independent of the
+    frontend's own gating.
+    """
+    if body.model_id not in billing_service._PRO_MODEL_IDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a recognized Pro model id.")
+
+    user = await get_or_create_user(db, claims)
+    if not billing_service.is_pro(user):
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, PREFERRED_MODEL_PRO_ONLY_MESSAGE)
+
+    user.preferred_pro_model = body.model_id
+    await db.commit()
+    return _serialize_status(user)
 
 
 @router.post("/checkout-session")

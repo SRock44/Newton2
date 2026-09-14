@@ -406,10 +406,12 @@ async def test_billing_status_returns_the_expected_shape(http_client, auth_heade
         "credits_used_cents",
         "credits_limit_cents",
         "credits_reset_at",
+        "preferred_pro_model",
     }
     assert body["plan"] in ("free", "pro")
     assert isinstance(body["credits_used_cents"], int)
     assert isinstance(body["credits_limit_cents"], int)
+    assert body["preferred_pro_model"] in billing_service._PRO_MODEL_IDS
 
 
 async def test_billing_status_requires_auth(http_client):
@@ -431,6 +433,71 @@ async def test_pro_models_endpoint_returns_real_curated_models(http_client, auth
 async def test_pro_models_endpoint_requires_auth(http_client):
     resp = await http_client.get("/billing/pro-models")
     assert resp.status_code in (401, 403)
+
+
+@pytest_asyncio.fixture
+async def student1_status_snapshot(db_session, keycloak_token):
+    """Snapshots+restores the shared dev student1 user's plan/preferred_pro_model around
+    a test that flips them -- same rationale as student1_user's stripe_customer_id
+    snapshot below: this is a shared dev DB row other tests/runs also rely on."""
+    sub = jose_jwt.get_unverified_claims(keycloak_token)["sub"]
+    user = (await db_session.execute(select(User).where(User.keycloak_sub == sub))).scalar_one_or_none()
+    if user is None:
+        user = User(keycloak_sub=sub)
+        db_session.add(user)
+        await db_session.commit()
+
+    original_plan = user.plan
+    original_preference = user.preferred_pro_model
+    yield user
+    user.plan = original_plan
+    user.preferred_pro_model = original_preference
+    await db_session.commit()
+
+
+async def test_preferred_model_requires_auth(http_client):
+    resp = await http_client.patch(
+        "/billing/preferred-model", json={"model_id": billing_service.DEFAULT_PRO_MODEL}
+    )
+    assert resp.status_code in (401, 403)
+
+
+async def test_preferred_model_rejects_an_unrecognized_model_id(http_client, auth_headers):
+    resp = await http_client.patch(
+        "/billing/preferred-model", json={"model_id": "not/a-real-model"}, headers=auth_headers
+    )
+    assert resp.status_code == 400
+
+
+async def test_preferred_model_persists_for_a_pro_user(
+    http_client, auth_headers, student1_status_snapshot, db_session
+):
+    student1_status_snapshot.plan = "pro"
+    await db_session.commit()
+
+    chosen = billing_service.PRO_MODELS[-1]["id"]
+    resp = await http_client.patch("/billing/preferred-model", json={"model_id": chosen}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["preferred_pro_model"] == chosen
+
+    await db_session.refresh(student1_status_snapshot)
+    assert student1_status_snapshot.preferred_pro_model == chosen
+
+
+async def test_preferred_model_does_not_persist_for_a_free_user(
+    http_client, auth_headers, student1_status_snapshot, db_session
+):
+    student1_status_snapshot.plan = "free"
+    student1_status_snapshot.preferred_pro_model = None
+    await db_session.commit()
+
+    chosen = billing_service.PRO_MODELS[-1]["id"]
+    resp = await http_client.patch("/billing/preferred-model", json={"model_id": chosen}, headers=auth_headers)
+    assert resp.status_code == 402
+    assert "pro feature" in resp.json()["detail"].lower()
+
+    await db_session.refresh(student1_status_snapshot)
+    assert student1_status_snapshot.preferred_pro_model is None
 
 
 async def test_checkout_session_returns_503_when_stripe_not_configured(http_client, auth_headers):
