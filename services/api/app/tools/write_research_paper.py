@@ -67,8 +67,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.db.base import SessionLocal
+from app.db.models import User
 from app.providers.base import ChatTurn, TextDelta
 from app.providers.registry import get_provider
+from app.services import billing as billing_service
 from app.services.bibliography import assemble_bib, assign_citation_keys
 from app.services.documents import get_document_text, upload_document_bytes
 from app.services.latex_compile import compile_latex
@@ -77,6 +79,18 @@ from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
 from app.tools.research_fetch import ResearchFetchTool, is_allowed_domain
 from app.tools.web_search import WebSearchTool
+
+# Gated like start_study_session (see app/tools/study_session.py): this is easily the
+# most expensive tool in the belt -- per section, a web_search + up to
+# MAX_FETCHES_PER_SECTION research_fetch calls + one direct provider call, run for every
+# section concurrently, plus a real (possibly twice-run) LaTeX compile. Free-tier students
+# can still ask the Tutor to help them write a paper section-by-section in plain chat --
+# this only gates the one-shot "research, draft, and compile the whole thing" tool.
+PRO_ONLY_MESSAGE = (
+    "Writing and compiling a full research paper in one go is a Pro feature — I can "
+    "still help you plan it, research individual sections, or draft the writing "
+    "yourself in chat."
+)
 
 # Bounded like every other "read a document into a prompt" call site in this codebase
 # (study_planner.MAX_SYLLABUS_CHARS, flashcards.MAX_MATERIAL_CHARS use the same figure).
@@ -420,6 +434,11 @@ class WriteResearchPaperTool(Tool):
             uid = uuid.UUID(user_id)
         except ValueError:
             return "Error: invalid user id."
+
+        async with SessionLocal() as db:
+            user = await db.get(User, uid)
+            if user is None or not billing_service.is_pro(user):
+                return PRO_ONLY_MESSAGE
 
         style_key = (style or "").strip().lower()
         if style_key not in RENDERERS:

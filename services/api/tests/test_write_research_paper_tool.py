@@ -78,7 +78,12 @@ async def _no_op_material(*args, **kwargs) -> str:
 
 @pytest_asyncio.fixture
 async def paper_user(db_session):
-    user = User(keycloak_sub=f"test-paper-writer-{uuid.uuid4()}", plan="free")
+    # plan="pro": write_research_paper is gated to Pro (see PRO_ONLY_MESSAGE in
+    # app/tools/write_research_paper.py, same pattern as start_study_session) -- this
+    # fixture is for tests exercising the tool's real orchestration behavior, so it
+    # needs to actually clear the gate. See test_run_rejects_free_plan_user below for
+    # the free-tier rejection path itself.
+    user = User(keycloak_sub=f"test-paper-writer-{uuid.uuid4()}", plan="pro")
     db_session.add(user)
     await db_session.commit()
 
@@ -137,6 +142,28 @@ async def test_run_rejects_missing_user():
         title="T", style="ieee", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}], user_id=None
     )
     assert result.startswith("Error:")
+
+
+async def test_run_rejects_a_free_plan_user(db_session):
+    """write_research_paper is gated to Pro (see PRO_ONLY_MESSAGE) -- it's the most
+    expensive tool in the belt: per section, a web_search + up to
+    MAX_FETCHES_PER_SECTION research_fetch calls + one direct provider call, run
+    concurrently for every section, plus a real (possibly twice-run) LaTeX compile.
+    A free-plan user gets a clear, student-facing message, not a raw error and not the
+    real (costly) generation itself."""
+    user = User(keycloak_sub=f"test-paper-writer-free-{uuid.uuid4()}", plan="free")
+    db_session.add(user)
+    await db_session.commit()
+    try:
+        result = await WriteResearchPaperTool().run(
+            title="T", style="ieee", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}],
+            user_id=str(user.id),
+        )
+        assert result == wrp.PRO_ONLY_MESSAGE
+        assert not result.startswith("Error:")
+    finally:
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.commit()
 
 
 async def test_run_rejects_unsupported_style(paper_user):
