@@ -54,6 +54,22 @@ parse_flashcards) so this contract is independently unit-testable without a real
 A reply that isn't parseable JSON in this shape degrades to "use the whole raw reply as
 plain prose, no citations" rather than crashing the section (and therefore the whole
 paper) outright.
+
+--- Citation-metadata verification (ROADMAP Phase 7) --------------------------------
+Every field in a "sources" entry above is still the model's own self-reported "best
+guess," read off the fetched page's prose -- never cross-checked against anything
+structured. `_gather_section_material` now also calls `ResearchFetchTool.fetch()` (the
+lower-level entry point app/tools/research_fetch.py exposes for exactly this -- see that
+module's own docstring for the full API-shape decision) instead of `.run()`, which
+additionally returns any real `citation_author`/`citation_title`/`citation_date`/
+`citation_journal_title` (or Dublin Core `DC.*`) `<meta>` tags the fetched page's OWN
+publisher actually asserted in its HTML `<head>` -- categorically more trustworthy than
+the model's reading-comprehension guess at the same page. `_prefer_extracted_metadata`
+overlays that real metadata onto the model-reported source dict for the SAME URL
+(matched by normalized URL string) field-by-field, before `assign_citation_keys` ever
+runs -- extracted values win where present; a URL with no extracted metadata (a PDF
+fetch, a page without these tags, or a source that isn't a fetched URL at all, e.g. the
+student's own document) falls back to the model's self-reported guess exactly as before.
 """
 
 from __future__ import annotations
@@ -63,7 +79,7 @@ import json
 import re
 import urllib.parse
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.db.base import SessionLocal
@@ -77,7 +93,7 @@ from app.services.latex_compile import compile_latex
 from app.services.paper_templates import RENDERERS, STYLE_LABELS
 from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
-from app.tools.research_fetch import ResearchFetchTool, is_allowed_domain
+from app.tools.research_fetch import FetchResult, ResearchFetchTool, _wrap_untrusted, is_allowed_domain
 from app.tools.web_search import WebSearchTool
 
 # Gated like start_study_session (see app/tools/study_session.py): this is easily the
@@ -177,6 +193,11 @@ class SectionDraft:
     heading: str
     prose: str
     sources: list[dict[str, Any]]
+    # url -> real extracted citation metadata (see research_fetch.extract_citation_metadata)
+    # for every URL this section fetched that actually had any -- see this module's
+    # docstring's "Citation-metadata verification" section. Empty for a section that
+    # fetched nothing, or fetched only sources with no such metadata.
+    url_metadata: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 def parse_section_response(raw: str) -> tuple[str, list[dict[str, Any]]]:
@@ -243,14 +264,22 @@ async def _gather_section_material(
     *,
     session_id: str | None,
     user_id: str | None,
-) -> str:
+) -> tuple[str, dict[str, dict[str, str]]]:
     """Assembles the "gathered material" block fed into SECTION_DRAFT_PROMPT: an excerpt
     of the student's own document (if any) plus, when a search turns up allowlisted
     sources, 1-2 fetched pages of real external text. Finding nothing fetchable is a
     normal, expected outcome (not an error) -- see research_fetch's own docstring on
     this -- so this never raises for that; it just tells the model plainly that no
-    external material was found, reinforcing the "don't fabricate citations" instruction."""
+    external material was found, reinforcing the "don't fabricate citations" instruction.
+
+    Also returns a url -> extracted-citation-metadata dict (see this module's docstring's
+    "Citation-metadata verification" section) for every fetched URL that actually had
+    real `citation_*`/`DC.*` <meta> tags -- calls `ResearchFetchTool.fetch()` (not
+    `.run()`) specifically to get that structured data, then re-applies `.run()`'s own
+    untrusted-content banner itself via `_wrap_untrusted` so the text handed to the
+    section-drafting prompt is byte-for-byte the same shape it always was."""
     parts: list[str] = []
+    url_metadata: dict[str, dict[str, str]] = {}
     if document_text:
         parts.append("Excerpt from the student's own uploaded document (their own material, no citation needed):\n" + document_text)
 
@@ -261,16 +290,21 @@ async def _gather_section_material(
             urls = _extract_allowed_urls(search_result, limit=MAX_FETCHES_PER_SECTION)
             fetch_tool = ResearchFetchTool()
             for url in urls:
-                fetched = await fetch_tool.run(url=url, session_id=session_id, user_id=user_id)
-                if not fetched.startswith("Error:"):
-                    parts.append(f"Fetched from {url}:\n{fetched[:MAX_FETCH_EXCERPT_CHARS]}")
+                fetched: FetchResult | str = await fetch_tool.fetch(url=url, session_id=session_id, user_id=user_id)
+                if isinstance(fetched, str):
+                    continue  # "Error: ..." -- same skip-on-failure behavior as before
+                if fetched.metadata:
+                    url_metadata[url] = fetched.metadata
+                wrapped = _wrap_untrusted(url, fetched.text, fetched.truncated)
+                parts.append(f"Fetched from {url}:\n{wrapped[:MAX_FETCH_EXCERPT_CHARS]}")
 
     if not parts:
         return (
             "(No external material was gathered for this section -- rely only on "
-            "general knowledge, and do NOT invent any \\cite{} sources.)"
+            "general knowledge, and do NOT invent any \\cite{} sources.)",
+            url_metadata,
         )
-    return "\n\n---\n\n".join(parts)
+    return "\n\n---\n\n".join(parts), url_metadata
 
 
 async def _draft_section(
@@ -293,7 +327,9 @@ async def _draft_section(
     codebase's "a tool should give the caller something useful to react to, not crash"
     convention (see app/tools/base.py's Tool docstring)."""
     try:
-        material = await _gather_section_material(heading, summary, document_text, session_id=session_id, user_id=user_id)
+        material, url_metadata = await _gather_section_material(
+            heading, summary, document_text, session_id=session_id, user_id=user_id
+        )
         prompt = SECTION_DRAFT_PROMPT.format(
             style_label=style_label,
             title=title,
@@ -308,7 +344,7 @@ async def _draft_section(
             if isinstance(event, TextDelta):
                 raw += event.text
         prose, sources = parse_section_response(raw)
-        return SectionDraft(heading=heading, prose=prose, sources=sources)
+        return SectionDraft(heading=heading, prose=prose, sources=sources, url_metadata=url_metadata)
     except Exception as exc:  # noqa: BLE001 - one bad section must not sink the whole paper
         return SectionDraft(
             heading=heading,
@@ -331,6 +367,57 @@ def _rewrite_cite_keys(prose: str, rename_map: dict[str, str]) -> str:
         return "\\cite{" + ",".join(renamed) + "}"
 
     return _CITE_RE.sub(_replace, prose)
+
+
+_METADATA_OVERRIDE_FIELDS = ("author", "title", "year", "venue")
+
+
+def _normalize_url_key(url: str) -> str:
+    """Same normalization app/services/bibliography.py's own `_normalize` applies to a
+    source's "url" field for identity matching (lowercase, collapsed whitespace) -- kept
+    as an independent copy here rather than importing that private helper, since this is
+    matching a fetched URL to a model-reported "url" string for a different purpose
+    (metadata override, not de-duplication)."""
+    return re.sub(r"\s+", " ", str(url or "").strip().lower())
+
+
+def _prefer_extracted_metadata(
+    sources: list[dict[str, Any]], url_metadata: dict[str, dict[str, str]]
+) -> list[dict[str, Any]]:
+    """Overlays a fetched page's own real, structured citation metadata (Google-Scholar-
+    style `citation_author`/`citation_title`/... <meta> tags, or Dublin Core `DC.*` as a
+    fallback -- see app/tools/research_fetch.py's extract_citation_metadata) onto the
+    model's self-reported "best guess" for the SAME URL, matched by normalized URL
+    string. This is the fix for ROADMAP Phase 7's "citation-metadata verification" gap:
+    the domain allowlist already restricts WHERE source text comes from, but until now
+    the author/year/venue that actually ends up in the .bib file was purely the model's
+    own reading-comprehension guess, never checked against anything structured. A real
+    `citation_*`/`DC.*` meta tag is the page's OWN publisher asserting that field --
+    categorically more trustworthy than an LLM's guess at the same page -- so where the
+    fetch produced a value for a field, it wins.
+
+    A field the fetch didn't have, or a URL with no extracted metadata at all (a PDF
+    fetch, a page without these tags, or a source that isn't a fetched URL at all --
+    e.g. the student's own uploaded document), falls back to the model's self-reported
+    value exactly as before. Purely additive/corrective: never removes a field the model
+    had that the extraction didn't also supply, and returns new dicts rather than
+    mutating the input (`assign_citation_keys` further downstream also copies, but this
+    keeps each step independently side-effect-free)."""
+    if not url_metadata:
+        return sources
+    normalized = {_normalize_url_key(url): meta for url, meta in url_metadata.items()}
+    result: list[dict[str, Any]] = []
+    for source in sources:
+        meta = normalized.get(_normalize_url_key(str(source.get("url") or "")))
+        if not meta:
+            result.append(source)
+            continue
+        merged = dict(source)
+        for field_name in _METADATA_OVERRIDE_FIELDS:
+            if meta.get(field_name):
+                merged[field_name] = meta[field_name]
+        result.append(merged)
+    return result
 
 
 _UNSAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9 _.\-]")
@@ -483,7 +570,13 @@ class WriteResearchPaperTool(Tool):
 
         drafts = await asyncio.gather(*[_bounded_draft(s) for s in clean_sections])
 
-        final_sources, rename_maps = assign_citation_keys([d.sources for d in drafts])
+        combined_url_metadata: dict[str, dict[str, str]] = {}
+        for draft in drafts:
+            combined_url_metadata.update(draft.url_metadata)
+        sources_by_section = [
+            _prefer_extracted_metadata(draft.sources, combined_url_metadata) for draft in drafts
+        ]
+        final_sources, rename_maps = assign_citation_keys(sources_by_section)
         rendered_sections = [
             {"heading": draft.heading, "body": _rewrite_cite_keys(draft.prose, rename_map)}
             for draft, rename_map in zip(drafts, rename_maps, strict=True)

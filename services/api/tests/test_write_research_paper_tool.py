@@ -72,8 +72,8 @@ class _FakeSectionProvider(ChatProvider):
         raise AssertionError(f"no scripted response for prompt:\n{prompt}")
 
 
-async def _no_op_material(*args, **kwargs) -> str:
-    return "(stubbed material -- no live web_search/research_fetch in this test tier)"
+async def _no_op_material(*args, **kwargs) -> tuple[str, dict]:
+    return "(stubbed material -- no live web_search/research_fetch in this test tier)", {}
 
 
 @pytest_asyncio.fixture
@@ -130,6 +130,62 @@ def test_parse_section_response_filters_sources_without_a_key():
     raw = '{"prose": "text", "sources": [{"title": "no key"}, {"key": "ok", "title": "fine"}]}'
     _prose, sources = parse_section_response(raw)
     assert sources == [{"key": "ok", "title": "fine"}]
+
+
+# ---------------------------------------------------------------------------
+# _prefer_extracted_metadata -- pure function (ROADMAP Phase 7 citation-metadata
+# verification: real extracted <meta> tag data should win over the model's own guess
+# for the same URL, field by field, falling back cleanly when there's nothing to prefer)
+# ---------------------------------------------------------------------------
+
+
+def test_prefer_extracted_metadata_overrides_matching_url_fields_but_fills_gaps_only():
+    sources = [
+        {
+            "key": "k1",
+            "author": "Guessed Author",
+            "title": "Guessed Title",
+            "year": "1999",
+            "venue": "Guessed Venue",
+            "url": "https://arxiv.org/abs/1",
+        }
+    ]
+    url_metadata = {
+        "https://arxiv.org/abs/1": {"author": "Real Author", "title": "Real Title", "year": "2020"}
+    }
+    result = wrp._prefer_extracted_metadata(sources, url_metadata)
+    assert result[0]["author"] == "Real Author"
+    assert result[0]["title"] == "Real Title"
+    assert result[0]["year"] == "2020"
+    # extraction had no venue -- the model's own guess is kept, not dropped.
+    assert result[0]["venue"] == "Guessed Venue"
+    assert result[0]["key"] == "k1"  # untouched fields survive
+
+
+def test_prefer_extracted_metadata_leaves_non_matching_urls_untouched():
+    sources = [{"key": "k1", "author": "Guess", "url": "https://arxiv.org/abs/999"}]
+    url_metadata = {"https://en.wikipedia.org/wiki/Other": {"author": "Someone Else"}}
+    result = wrp._prefer_extracted_metadata(sources, url_metadata)
+    assert result == sources
+
+
+def test_prefer_extracted_metadata_matches_urls_case_and_whitespace_insensitively():
+    sources = [{"key": "k1", "author": "Guess", "url": "  HTTPS://ARXIV.ORG/abs/1  "}]
+    url_metadata = {"https://arxiv.org/abs/1": {"author": "Real Author"}}
+    result = wrp._prefer_extracted_metadata(sources, url_metadata)
+    assert result[0]["author"] == "Real Author"
+
+
+def test_prefer_extracted_metadata_is_a_noop_when_no_metadata_was_extracted_at_all():
+    sources = [{"key": "k1", "url": "https://arxiv.org/abs/1"}]
+    assert wrp._prefer_extracted_metadata(sources, {}) is sources
+
+
+def test_prefer_extracted_metadata_does_not_mutate_the_input_source_dict():
+    source = {"key": "k1", "author": "Guessed", "url": "https://arxiv.org/abs/1"}
+    sources = [source]
+    wrp._prefer_extracted_metadata(sources, {"https://arxiv.org/abs/1": {"author": "Real"}})
+    assert source["author"] == "Guessed"  # original dict untouched
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +347,99 @@ async def test_run_deduplicates_a_source_cited_by_two_sections(paper_user, monke
 
     cite_keys = set(re.findall(r"\\cite\{([^}]*)\}", tex))
     assert len(cite_keys) == 1
+
+
+# ---------------------------------------------------------------------------
+# Citation-metadata verification, full pipeline (ROADMAP Phase 7): real extracted
+# citation_*/DC.* metadata from a fetched URL should win over the model's own
+# self-reported guess for that same URL in the FINAL assembled .bib, and fall back
+# cleanly when no such metadata was ever extracted for a cited URL.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_prefers_extracted_metadata_over_models_self_reported_guess(paper_user, monkeypatch):
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "A claim \\\\cite{guess2099}.", '
+                '"sources": [{"key": "guess2099", "type": "article", "author": "Model Guessed Author", '
+                '"title": "Model Guessed Title", "year": "1999", "venue": "Model Guessed Venue", '
+                '"url": "https://arxiv.org/abs/9999"}]}'
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+
+    async def _gather_with_real_metadata(*args, **kwargs):
+        return (
+            "(stubbed material)",
+            {
+                "https://arxiv.org/abs/9999": {
+                    "author": "Real Extracted Author",
+                    "title": "Real Extracted Title",
+                    "year": "2021",
+                    "venue": "Real Extracted Venue",
+                }
+            },
+        )
+
+    monkeypatch.setattr(wrp, "_gather_section_material", _gather_with_real_metadata)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="Metadata Preference Test",
+        style="ieee",
+        abstract_sketch="Testing metadata preference.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    bib = capture[0]["bib"]
+    assert "Real Extracted Author" in bib
+    assert "Real Extracted Title" in bib
+    assert "2021" in bib
+    assert "Real Extracted Venue" in bib
+    assert "Model Guessed Author" not in bib
+    assert "Model Guessed Title" not in bib
+    assert "Model Guessed Venue" not in bib
+
+
+async def test_run_falls_back_to_models_guess_when_cited_url_has_no_extracted_metadata(paper_user, monkeypatch):
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "A claim \\\\cite{guess2099}.", '
+                '"sources": [{"key": "guess2099", "type": "misc", "author": "Only Guess Author", '
+                '"title": "Only Guess Title", "url": "https://en.wikipedia.org/wiki/Something"}]}'
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+
+    async def _gather_metadata_for_a_different_url(*args, **kwargs):
+        # Real metadata was extracted, but for a URL the model did NOT cite -- the
+        # actually-cited URL has nothing to prefer, so its guess must survive untouched.
+        return "(stubbed material)", {"https://arxiv.org/abs/1": {"author": "Unrelated Real Author"}}
+
+    monkeypatch.setattr(wrp, "_gather_section_material", _gather_metadata_for_a_different_url)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="Fallback Test",
+        style="ieee",
+        abstract_sketch="Testing metadata fallback.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    bib = capture[0]["bib"]
+    assert "Only Guess Author" in bib
+    assert "Only Guess Title" in bib
+    assert "Unrelated Real Author" not in bib
 
 
 # ---------------------------------------------------------------------------
