@@ -9,7 +9,7 @@ redis==5.2.1
 arq==0.28.0
 httpx==0.28.1
 python-jose[cryptography]==3.4.0
-websockets==14.1
+websockets==17.1
 anthropic==0.40.0
 fastembed==0.5.1
 minio==7.2.20
