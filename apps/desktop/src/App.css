@@ -2281,6 +2281,173 @@ textarea:focus-visible,
   color: var(--color-text-faint);
 }
 
+/* ---------- Step check (Learn Mode — attempt the next math step yourself) ---------- */
+
+.step-check {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent-tint);
+  padding: var(--space-3) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.step-check--error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+  border-color: var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.step-check__label {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+}
+
+.step-check__prompt {
+  font-weight: var(--font-weight-medium);
+}
+
+.step-check__form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.step-check__input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.step-check__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring);
+}
+
+.step-check__answer {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ---------- Checkpoint (Learn Mode — comprehension check on an explanation) ---------- */
+
+.checkpoint {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--color-info);
+  border-radius: var(--radius-md);
+  background-color: var(--color-info-tint);
+  padding: var(--space-3) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checkpoint--error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+  border-color: var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.checkpoint__label {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-info);
+}
+
+.checkpoint__question {
+  font-weight: var(--font-weight-medium);
+}
+
+.checkpoint__form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.checkpoint__input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.checkpoint__input:focus {
+  outline: none;
+  border-color: var(--color-info);
+  box-shadow: var(--focus-ring);
+}
+
+.checkpoint__answer {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ---------- Plot slider (Learn Mode — manipulable parameter on a plotly-figure) ---------- */
+
+.plotly-figure__sliders {
+  margin-top: var(--space-2);
+  padding: var(--space-2) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+}
+
+.plotly-figure__slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.plotly-figure__slider-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.plotly-figure__slider-row input[type="range"] {
+  flex: 1;
+}
+
+.plotly-figure__slider-value {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5em;
+  text-align: right;
+}
+
 /* ---------- Composer ---------- */
 
 .composer {
@@ -2528,6 +2695,41 @@ textarea:focus-visible,
   font-size: var(--font-size-xs);
   color: var(--color-text-faint);
   margin-top: var(--space-2);
+}
+
+/* Learn Mode's chat-interface toggle — always visible while chatting, not buried in
+   Settings (see Composer.tsx's own doc comment and SettingsPanel.tsx's mirrored
+   toggle). A compact single-line variant of .settings-toggle's label+description
+   shape, since this sits in the composer's tight vertical space rather than a full
+   settings section. */
+.composer-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.composer-learn-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.composer-learn-mode-toggle input {
+  margin: 0;
+}
+
+.composer-learn-mode-toggle:has(input:checked) {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+}
+
+.composer-learn-mode-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
 }
 
 /* ---------- Login screen ---------- */

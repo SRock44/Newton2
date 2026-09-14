@@ -17,6 +17,7 @@ const freeStatus: BillingStatus = {
   focus_mode_enabled: false,
   topup_credits_cents: 0,
   topup_tiers_cents: [500, 1000, 2500],
+  learn_mode_enabled: false,
 };
 
 const proStatus: BillingStatus = {
@@ -32,6 +33,7 @@ const proStatus: BillingStatus = {
   focus_mode_enabled: false,
   topup_credits_cents: 460,
   topup_tiers_cents: [500, 1000, 2500],
+  learn_mode_enabled: false,
 };
 
 const proModels: ProModel[] = [
@@ -50,6 +52,7 @@ vi.mock("../../api", async () => {
     createTopupCheckoutSession: vi.fn(async () => "https://checkout.stripe.com/topup123"),
     setPreferredProModel: vi.fn(async () => ({ ...proStatus, preferred_pro_model: "model-b" })),
     setFocusMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, focus_mode_enabled: enabled })),
+    setLearnMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, learn_mode_enabled: enabled })),
   };
 });
 
@@ -66,6 +69,7 @@ import {
   getBillingStatus,
   getProModels,
   setFocusMode,
+  setLearnMode,
   setPreferredProModel,
 } from "../../api";
 
@@ -82,6 +86,9 @@ describe("SettingsPanel", () => {
     vi.mocked(setFocusMode)
       .mockReset()
       .mockImplementation(async (_token, enabled) => ({ ...freeStatus, focus_mode_enabled: enabled }));
+    vi.mocked(setLearnMode)
+      .mockReset()
+      .mockImplementation(async (_token, enabled) => ({ ...freeStatus, learn_mode_enabled: enabled }));
     openUrl.mockClear();
   });
 
@@ -294,6 +301,69 @@ describe("SettingsPanel", () => {
 
     expect(await screen.findByText("Couldn't save your Focus Mode setting.")).toBeInTheDocument();
     await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it("learn mode: unchecked by default and persists turning it on via the backend", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const toggle = screen.getByRole("checkbox", { name: /learn mode/i });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+
+    await waitFor(() => expect(vi.mocked(setLearnMode)).toHaveBeenCalledWith("tok", true));
+    await waitFor(() => expect(toggle).toBeChecked());
+  });
+
+  it("learn mode: persists turning it off via the backend", async () => {
+    vi.mocked(getBillingStatus).mockResolvedValue({ ...freeStatus, learn_mode_enabled: true });
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const toggle = screen.getByRole("checkbox", { name: /learn mode/i });
+    expect(toggle).toBeChecked();
+
+    await user.click(toggle);
+
+    await waitFor(() => expect(vi.mocked(setLearnMode)).toHaveBeenCalledWith("tok", false));
+    await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it("learn mode: available (not gated) on the free plan, same as Pro", async () => {
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    expect(screen.getByRole("checkbox", { name: /learn mode/i })).toBeEnabled();
+  });
+
+  it("learn mode: reverts the toggle and shows an error when saving fails", async () => {
+    vi.mocked(setLearnMode).mockRejectedValue(new ApiError("Couldn't save your Learn Mode setting."));
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const toggle = screen.getByRole("checkbox", { name: /learn mode/i });
+    await user.click(toggle);
+
+    expect(await screen.findByText("Couldn't save your Learn Mode setting.")).toBeInTheDocument();
+    await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it("learn mode and focus mode toggle independently of each other", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    await screen.findByText("You're on the Free plan.");
+
+    const learnToggle = screen.getByRole("checkbox", { name: /learn mode/i });
+    const focusToggle = screen.getByRole("checkbox", { name: /focus mode/i });
+
+    await user.click(learnToggle);
+    await waitFor(() => expect(learnToggle).toBeChecked());
+    expect(focusToggle).not.toBeChecked();
+    expect(vi.mocked(setFocusMode)).not.toHaveBeenCalled();
   });
 
   it("top-up: shows the current balance and a button per tier", async () => {

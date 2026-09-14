@@ -156,6 +156,14 @@ export interface BillingStatus {
   // the real app/services/billing.py's TOPUP_TIERS_CENTS, never a hardcoded copy here
   // that could drift.
   topup_tiers_cents: number[];
+  // Self-service "Learn Mode" (see Composer.tsx's chat-interface toggle,
+  // SettingsPanel.tsx's mirrored toggle, app/routers/billing.py's PATCH
+  // /billing/learn-mode) -- a student opting THEMSELVES into an interactive teaching
+  // layer (step-check/checkpoint blocks, slider-enabled plots) instead of today's
+  // passive-reveal behavior. Available on every plan, free or Pro, and deliberately
+  // independent of focus_mode_enabled above -- a student can have either, both, or
+  // neither.
+  learn_mode_enabled: boolean;
 }
 
 export interface ProModel {

@@ -3,6 +3,22 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Composer from "../Composer";
 
+const FREE_BILLING_STATUS = {
+  plan: "free" as const,
+  subscription_status: null,
+  current_period_end: null,
+  credits_used_cents: 0,
+  credits_limit_cents: 0,
+  credits_reset_at: null,
+  preferred_pro_model: "deepseek/deepseek-v4-flash-0731",
+  free_generation_target: 5,
+  pro_generation_target: 15,
+  focus_mode_enabled: false,
+  topup_credits_cents: 0,
+  topup_tiers_cents: [500, 1000, 2500],
+  learn_mode_enabled: false,
+};
+
 vi.mock("../../api", async () => {
   const actual = await vi.importActual<typeof import("../../api")>("../../api");
   return {
@@ -18,16 +34,22 @@ vi.mock("../../api", async () => {
       { id: "doc-1", filename: "syllabus.pdf", mime_type: "application/pdf", created_at: "2026-01-01T00:00:00Z" },
       { id: "doc-2", filename: "notes.txt", mime_type: "text/plain", created_at: "2026-01-02T00:00:00Z" },
     ]),
+    getBillingStatus: vi.fn(async () => FREE_BILLING_STATUS),
+    setLearnMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...FREE_BILLING_STATUS, learn_mode_enabled: enabled })),
   };
 });
 
-import { listDocuments, uploadChatImage, uploadDocument } from "../../api";
+import { getBillingStatus, listDocuments, setLearnMode, uploadChatImage, uploadDocument } from "../../api";
 
 describe("Composer", () => {
   beforeEach(() => {
     vi.mocked(uploadChatImage).mockClear();
     vi.mocked(uploadDocument).mockClear();
     vi.mocked(listDocuments).mockClear();
+    vi.mocked(getBillingStatus).mockReset().mockResolvedValue(FREE_BILLING_STATUS);
+    vi.mocked(setLearnMode)
+      .mockReset()
+      .mockImplementation(async (_token, enabled) => ({ ...FREE_BILLING_STATUS, learn_mode_enabled: enabled }));
   });
 
   it("sends the trimmed draft on Enter and clears the input", async () => {
@@ -201,6 +223,60 @@ describe("Composer", () => {
       await user.type(screen.getByRole("textbox"), "never mind");
       await user.keyboard("{Enter}");
       expect(onSend).toHaveBeenCalledWith("never mind");
+    });
+  });
+
+  describe("Learn Mode toggle", () => {
+    it("is visible directly in the composer, not just in Settings, and starts unchecked by default", async () => {
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      await waitFor(() => expect(toggle).not.toBeDisabled());
+      expect(toggle).not.toBeChecked();
+    });
+
+    it("reflects an already-enabled server value once billing status loads", async () => {
+      vi.mocked(getBillingStatus).mockResolvedValue({ ...FREE_BILLING_STATUS, learn_mode_enabled: true });
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      await waitFor(() => expect(toggle).toBeChecked());
+    });
+
+    it("clicking it persists the change via setLearnMode and updates optimistically", async () => {
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      await waitFor(() => expect(toggle).not.toBeDisabled());
+      await user.click(toggle);
+
+      expect(toggle).toBeChecked(); // optimistic, before the awaited call resolves
+      await waitFor(() => expect(vi.mocked(setLearnMode)).toHaveBeenCalledWith("test-token", true));
+      await waitFor(() => expect(toggle).toBeChecked());
+    });
+
+    it("reverts the toggle and shows an error when saving fails", async () => {
+      vi.mocked(setLearnMode).mockRejectedValue(new Error("network down"));
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      await waitFor(() => expect(toggle).not.toBeDisabled());
+      await user.click(toggle);
+
+      expect(await screen.findByText(/couldn't save your learn mode setting/i)).toBeInTheDocument();
+      await waitFor(() => expect(toggle).not.toBeChecked());
+    });
+
+    it("does not block sending a message while Learn Mode status is still loading or toggled", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await user.type(screen.getByRole("textbox"), "hello");
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith("hello");
     });
   });
 });

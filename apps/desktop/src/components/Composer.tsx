@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
-import { ApiError, listDocuments, uploadChatImage, uploadDocument } from "../api";
+import { ApiError, getBillingStatus, listDocuments, setLearnMode, uploadChatImage, uploadDocument } from "../api";
 import type { UploadedDocument } from "../types";
 
 /** Imperative handle exposed via ref — currently just `focus()`, used by
@@ -61,6 +61,20 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   const [attaching, setAttaching] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
 
+  // Learn Mode's PRIMARY toggle control -- visible and switchable directly in the chat
+  // interface (not buried in Settings, though SettingsPanel.tsx mirrors it there too
+  // for discoverability), since some students just want Newton as a regular chatbot
+  // and shouldn't have to leave the conversation to turn interactive teaching on or
+  // off. Fetches its own billing status independently on mount, same pattern as
+  // DocumentsPanel.tsx's generation-target note and SettingsPanel.tsx itself -- this
+  // app has no shared billing-status context, each component that needs it loads its
+  // own. `learnModeLoaded` gates the checkbox until the real server value is known, so
+  // it never flashes an incorrect default before the fetch resolves.
+  const [learnModeEnabled, setLearnModeEnabled] = useState(false);
+  const [learnModeLoaded, setLearnModeLoaded] = useState(false);
+  const [savingLearnMode, setSavingLearnMode] = useState(false);
+  const [learnModeError, setLearnModeError] = useState<string | null>(null);
+
   // The "+" button's own small popover menu ("Upload from your computer" / "Attach an
   // existing document" — see the composer-attach-menu/-document-picker CSS) and, once
   // "Attach an existing document" is picked, the quick listDocuments-backed picker
@@ -78,6 +92,26 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
   }));
+
+  useEffect(() => {
+    let cancelled = false;
+    setLearnModeLoaded(false);
+    getBillingStatus(token)
+      .then((status) => {
+        if (!cancelled) setLearnModeEnabled(status.learn_mode_enabled);
+      })
+      .catch(() => {
+        // A failed fetch just leaves the toggle at its last-known (or default-off)
+        // state -- same "quietly degrade, never block chatting" reasoning as every
+        // other optional-preference fetch in this app.
+      })
+      .finally(() => {
+        if (!cancelled) setLearnModeLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -130,6 +164,27 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [menuOpen, pickerOpen]);
+
+  /** Same optimistic-update-then-reconcile-on-failure pattern as SettingsPanel.tsx's
+   * handleToggleFocusMode: flips the checkbox immediately, persists in the background,
+   * and reverts (with an inline error) if the save actually fails, rather than leaving
+   * the UI showing a state that never took. */
+  async function handleToggleLearnMode(enabled: boolean) {
+    if (savingLearnMode) return;
+    const previous = learnModeEnabled;
+    setLearnModeEnabled(enabled);
+    setSavingLearnMode(true);
+    setLearnModeError(null);
+    try {
+      const status = await setLearnMode(token, enabled);
+      setLearnModeEnabled(status.learn_mode_enabled);
+    } catch (err) {
+      setLearnModeEnabled(previous);
+      setLearnModeError(err instanceof ApiError ? err.message : "Couldn't save your Learn Mode setting.");
+    } finally {
+      setSavingLearnMode(false);
+    }
+  }
 
   function handleSend() {
     const trimmed = draft.trim();
@@ -206,6 +261,21 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
 
   return (
     <div className="composer">
+      <div className="composer-controls">
+        <label
+          className="composer-learn-mode-toggle"
+          title="Newton checks your work step by step and asks you to try things yourself"
+        >
+          <input
+            type="checkbox"
+            checked={learnModeEnabled}
+            disabled={!learnModeLoaded || savingLearnMode}
+            onChange={(e) => handleToggleLearnMode(e.target.checked)}
+          />
+          <span>Learn Mode</span>
+        </label>
+        {learnModeError && <span className="composer-learn-mode-error">{learnModeError}</span>}
+      </div>
       {(attachedImage || attachedDocument) && (
         <div className="composer-attachments">
           {attachedImage && (

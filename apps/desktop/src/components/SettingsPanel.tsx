@@ -8,6 +8,7 @@ import {
   getBillingStatus,
   getProModels,
   setFocusMode,
+  setLearnMode,
   setPreferredProModel,
 } from "../api";
 import type { BillingStatus, ProModel } from "../types";
@@ -63,6 +64,12 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
 
   const [savingFocusMode, setSavingFocusMode] = useState(false);
   const [focusModeError, setFocusModeError] = useState<string | null>(null);
+
+  // Mirrored here for discoverability/consistency with Focus Mode -- Composer.tsx's
+  // chat-interface toggle is the PRIMARY control (see its own doc comment for why),
+  // this is a secondary surface, not a replacement for it.
+  const [savingLearnMode, setSavingLearnMode] = useState(false);
+  const [learnModeError, setLearnModeError] = useState<string | null>(null);
 
   // Top-up credit purchase -- same "open a Stripe Checkout URL in the system browser,
   // then poll getBillingStatus() until it reflects the purchase" pattern as the Pro
@@ -270,6 +277,27 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
     }
   }
 
+  /** Mirrors handleToggleFocusMode's exact optimistic-update-then-reconcile-on-failure
+   * shape -- see that function's own doc comment above for the full rationale, which
+   * applies identically here: real, persisted, server-side state (it changes how the
+   * Tutor actually behaves), available to every plan, independent of Focus Mode. */
+  async function handleToggleLearnMode(enabled: boolean) {
+    if (savingLearnMode || !billing) return;
+    const previous = billing;
+    setBilling({ ...billing, learn_mode_enabled: enabled });
+    setSavingLearnMode(true);
+    setLearnModeError(null);
+    try {
+      const status = await setLearnMode(token, enabled);
+      setBilling(status);
+    } catch (err) {
+      setBilling(previous);
+      setLearnModeError(err instanceof ApiError ? err.message : "Couldn't save your Learn Mode setting.");
+    } finally {
+      setSavingLearnMode(false);
+    }
+  }
+
   const isPro = billing?.plan === "pro";
   const defaultModelLabel = (
     proModels.find((m) => m.id === billing?.preferred_pro_model)?.label ?? "DeepSeek V4 Flash"
@@ -447,6 +475,29 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
           </label>
           {savingFocusMode && <p className="settings-waiting">Saving…</p>}
           {focusModeError && <div className="banner banner--error">{focusModeError}</div>}
+
+          {/* Self-service Learn Mode -- mirrored here for discoverability/consistency
+              with Focus Mode above; Composer.tsx's chat-interface toggle is the
+              primary control (always visible while chatting, per explicit product
+              direction), this is the secondary Settings surface. Independent of Focus
+              Mode: a student can have either, both, or neither. */}
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={billing?.learn_mode_enabled ?? false}
+              disabled={!billing || savingLearnMode}
+              onChange={(e) => handleToggleLearnMode(e.target.checked)}
+            />
+            <span>
+              <span className="settings-toggle-label">Learn Mode</span>
+              <span className="settings-toggle-desc">
+                Newton checks your work step by step and asks you to try things yourself, instead of just
+                explaining everything up front.
+              </span>
+            </span>
+          </label>
+          {savingLearnMode && <p className="settings-waiting">Saving…</p>}
+          {learnModeError && <div className="banner banner--error">{learnModeError}</div>}
         </section>
       </div>
     </div>

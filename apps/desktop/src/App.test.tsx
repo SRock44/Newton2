@@ -240,7 +240,7 @@ describe("App", () => {
     const user = await signIn();
     expect(window.localStorage.getItem("newton:auth:tokens")).not.toBeNull();
 
-    await user.click(screen.getByText("Sign out"));
+    await user.click(await screen.findByText("Sign out"));
     expect(window.localStorage.getItem("newton:auth:tokens")).toBeNull();
   });
 

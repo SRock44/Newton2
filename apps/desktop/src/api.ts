@@ -388,6 +388,20 @@ export async function setFocusMode(token: string, enabled: boolean): Promise<Bil
   return (await res.json()) as BillingStatus;
 }
 
+/** Persists a student's own Learn Mode preference and returns the refreshed billing
+ * status (including the now-saved learn_mode_enabled). Same never-plan-gated shape as
+ * setFocusMode above, and deliberately independent of it -- see
+ * app/routers/billing.py's set_learn_mode. */
+export async function setLearnMode(token: string, enabled: boolean): Promise<BillingStatus> {
+  const res = await fetch(`${API_URL}/billing/learn-mode`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save your Learn Mode setting."));
+  return (await res.json()) as BillingStatus;
+}
+
 /** Returns a Stripe Checkout URL to open in the system browser — there's no clean
  * redirect-back to a desktop app, so the caller polls getBillingStatus() afterward
  * (see SettingsPanel) until the plan flips to "pro". 503s when billing isn't configured
