@@ -1,0 +1,11 @@
+# Newton backups -- install with `crontab -e` (on the box's `sr` account, the
+# same one that runs `docker compose` for this stack). Adjust the path if this
+# repo checkout lives somewhere other than ~/dev/newton2.
+#
+# Nightly at 03:15 UTC (low-traffic hours), keeps the last RETENTION_DAYS (see
+# infra/backup/common.sh, default 14) days of local dumps/snapshots and prunes
+# older ones. BACKUP_REMOTE_DEST below is a PLACEHOLDER -- until it's set to a
+# real second host/remote you can actually reach, these backups only protect
+# against operator error, not a disk failure. See infra/README.md's Backups
+# section before relying on this.
+15 3 * * * BACKUP_REMOTE_DEST="sr@your-second-host:/srv/newton-backups/" /home/sr/dev/newton2/infra/backup/run_backups.sh >> /var/backups/newton/log/cron.log 2>&1
