@@ -48,16 +48,17 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
         # server). Either way, a real, non-empty reply must come back and persist.
         assert full_response
 
-        # Same provider-agnostic stance for token usage: a real OpenAI-compatible
-        # provider reports it (both fields present and positive); the keyless
-        # EchoProvider doesn't report usage at all (both None) — either is valid, but
-        # they must be consistent with each other, never one present and one missing.
+        # Same provider-agnostic stance for token usage: app/agents/tutor.py's
+        # run_tutor always yields a UsageInfo on a normal (non-crisis) turn, so both
+        # fields are always present integers here regardless of provider -- a real
+        # OpenAI-compatible provider reports real positive counts; the keyless
+        # EchoProvider (never an OpenAICompatibleProvider instance, so run_tutor's own
+        # usage-accumulation branch never fires for it) reports exactly 0 for both,
+        # never None. Only the crisis-response short-circuit (a different code path
+        # entirely, covered by test_chat_websocket_crisis.py) hardcodes None instead.
         assert ("prompt_tokens" in done_frame) and ("completion_tokens" in done_frame)
-        has_usage = done_frame["prompt_tokens"] is not None
-        assert has_usage == (done_frame["completion_tokens"] is not None)
-        if has_usage:
-            assert done_frame["prompt_tokens"] > 0
-            assert done_frame["completion_tokens"] > 0
+        assert done_frame["prompt_tokens"] >= 0
+        assert done_frame["completion_tokens"] >= 0
 
         messages_resp = await http_client.get(
             f"/chat/sessions/{session_id}/messages", headers=auth_headers
@@ -206,12 +207,18 @@ async def test_websocket_stop_mid_generation_truncates_and_persists_partial(
         await db_session.commit()
 
 
+@pytest.mark.live_smoke
 async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishes(
     http_client, auth_headers, keycloak_token, db_session
 ):
     """The desktop app renders a real, clickable "Open Flashcards"-style button from
     this frame -- deterministic (keyed off which tool actually ran), not dependent on
-    the model reliably mentioning it in its own reply text."""
+    the model reliably mentioning it in its own reply text.
+
+    Needs a real tool-calling-capable model actually deciding to call
+    generate_flashcards -- the keyless EchoProvider (app/providers/echo.py) never calls
+    tools at all by design, so this can only ever pass against a real deployed stack
+    with OPENROUTER_API_KEY/GROQ_API_KEY configured, never the hermetic CI suite."""
     upload_resp = await http_client.post(
         "/documents/upload",
         headers=auth_headers,
