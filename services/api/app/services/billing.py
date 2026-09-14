@@ -56,6 +56,29 @@ PRO_MODELS: list[dict[str, Any]] = [
         "label": "Gemini Pro (Google)",
         "_fallback_pricing": {"prompt": 0.000002, "completion": 0.000012},
     },
+    {
+        # No "~meta/muse-spark-...-latest" alias exists on OpenRouter yet (checked
+        # 2026-09-13) -- this is pinned to a literal versioned slug, the exact staleness
+        # risk the comment above warns about, so this needs a manual bump whenever Meta
+        # ships a 1.4 (or later) Contributor tier.
+        #
+        # DELIBERATE, INFORMED DECISION (2026-09-13, product owner) -- do not "fix" this
+        # by swapping to the Standard (non-Contributor) tier without asking first: the
+        # Contributor tier is the literal same model weights as full-price Muse Spark
+        # 1.3 (confirmed against Meta's own provider docs, not just marketing), priced
+        # ~20x cheaper specifically because using it grants Meta permission to train on
+        # submitted prompts/completions -- unlike Standard Services, which explicitly
+        # exclude user data from training. Meta's own docs warn against sending sensitive
+        # content through this tier. Newton routes real student conversations (homework,
+        # essays, uploaded documents) through whatever Pro model is selected, with no
+        # disclosure to students/parents that this specific option trains on their data.
+        # This was flagged explicitly and the product owner chose to proceed anyway on
+        # the price/performance case, without adding disclosure -- see ROADMAP.md's
+        # "Independent product & engineering review" section for the full record.
+        "id": "meta/muse-spark-1.3-contributor",
+        "label": "Muse Spark Contributor (Meta)",
+        "_fallback_pricing": {"prompt": 0.0000001, "completion": 0.0000002},
+    },
 ]
 DEFAULT_PRO_MODEL = PRO_MODELS[0]["id"]
 _PRO_MODEL_IDS = {m["id"] for m in PRO_MODELS}
