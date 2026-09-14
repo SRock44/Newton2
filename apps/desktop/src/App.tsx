@@ -6,6 +6,7 @@ import {
   ApiError,
   createSession,
   deleteSession,
+  getAccountStatus,
   getMessages,
   listFlashcards,
   listSessions,
@@ -18,9 +19,17 @@ import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import { getStudyRemindersEnabled } from "./lib/preferences";
 import { hasSeenOnboarding, markOnboardingSeen } from "./lib/onboarding";
-import type { ChatMessage, ChatSession, ConnectionStatus, MainView, UploadedDocument } from "./types";
+import type {
+  AccountConsentStatus,
+  ChatMessage,
+  ChatSession,
+  ConnectionStatus,
+  MainView,
+  UploadedDocument,
+} from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { latestMathStepsJson } from "./lib/notepadContent";
+import AgeGateScreen from "./components/AgeGateScreen";
 import LoginScreen from "./components/LoginScreen";
 import TitleBar from "./components/TitleBar";
 import NewtonMark from "./components/NewtonMark";
@@ -100,6 +109,11 @@ function App() {
   // tryRestoreSession) — avoids flashing the login screen for someone who's actually
   // already signed in.
   const [bootstrapping, setBootstrapping] = useState(true);
+  // Minor-consent / age-gate scaffolding (ROADMAP.md Phase 7 -- see
+  // docs/data-retention-and-privacy.md). null while unknown (still loading, or not
+  // signed in) -- distinct from "loaded and consent isn't needed", which is
+  // { needs_consent: false, ... }. See the effect below and AgeGateScreen.tsx.
+  const [accountStatus, setAccountStatus] = useState<AccountConsentStatus | null>(null);
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -177,6 +191,31 @@ function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Loads (or re-checks, on every sign-in) whether this account still needs the
+  // age-gate step -- deliberately server-side (see AccountConsentStatus/GET /account)
+  // rather than a local "seen" flag, so it survives a reinstall/new device and means
+  // something as a compliance record. Fails OPEN (treated as "no consent needed") on a
+  // network/API error rather than locking a signed-in student out of the whole app
+  // over a transient failure -- a real production version of this gate would likely
+  // want to fail closed instead; see docs/data-retention-and-privacy.md's gap list.
+  useEffect(() => {
+    if (!token) {
+      setAccountStatus(null);
+      return;
+    }
+    let cancelled = false;
+    getAccountStatus(token)
+      .then((status) => {
+        if (!cancelled) setAccountStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setAccountStatus({ age_band: null, consented_at: null, needs_consent: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   function handleSignOut() {
     wsRef.current?.close();
@@ -686,6 +725,36 @@ function App() {
       <div className="app-root">
         <TitleBar title="Newton" />
         <LoginScreen onSuccess={handleLoginSuccess} />
+        <ContextMenu onDeleteSession={handleDeleteSession} />
+      </div>
+    );
+  }
+
+  // Signed in, but the age-gate check hasn't resolved yet — same brief spinner as the
+  // bootstrapping state above, just gated on a server round-trip instead of local
+  // storage.
+  if (accountStatus === null) {
+    return (
+      <div className="app-root">
+        <TitleBar title="Newton" />
+        <div className="login-screen">
+          <span className="bootstrap-mark" aria-label="Loading your account…">
+            <NewtonMark size={26} />
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Minor-consent / age-gate scaffolding (ROADMAP.md Phase 7 -- see
+  // docs/data-retention-and-privacy.md). Blocks the entire rest of the app, every
+  // sign-in, until answered -- see AgeGateScreen.tsx for why "under 13" never clears
+  // this.
+  if (accountStatus.needs_consent) {
+    return (
+      <div className="app-root">
+        <TitleBar title="Newton" />
+        <AgeGateScreen token={token} onResolved={setAccountStatus} />
         <ContextMenu onDeleteSession={handleDeleteSession} />
       </div>
     );

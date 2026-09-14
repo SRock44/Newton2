@@ -153,6 +153,19 @@ export interface ProModel {
   label: string;
 }
 
+// Minor-consent / age-gate scaffolding (ROADMAP.md Phase 7 -- see
+// docs/data-retention-and-privacy.md for the real design decision and its honest
+// gaps). "under_13" is a real, valid answer that gets recorded but never clears
+// needs_consent -- see AgeGateScreen.tsx and app/routers/account.py's
+// submit_age_consent for why.
+export type AgeBand = "under_13" | "13_17" | "18_plus";
+
+export interface AccountConsentStatus {
+  age_band: AgeBand | null;
+  consented_at: string | null;
+  needs_consent: boolean;
+}
+
 export interface Flashcard {
   id: string;
   document_id: string | null;

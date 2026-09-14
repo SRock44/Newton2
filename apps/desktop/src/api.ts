@@ -1,4 +1,6 @@
 import type {
+  AccountConsentStatus,
+  AgeBand,
   BillingStatus,
   ChatMessage,
   ChatSession,
@@ -22,6 +24,29 @@ export class ApiError extends Error {}
 
 function authHeaders(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` };
+}
+
+/** Minor-consent / age-gate scaffolding (ROADMAP.md Phase 7 -- see
+ * docs/data-retention-and-privacy.md). Fetched once per sign-in (see App.tsx) to decide
+ * whether to show AgeGateScreen before the rest of the app. */
+export async function getAccountStatus(token: string): Promise<AccountConsentStatus> {
+  const res = await fetch(`${API_URL}/account`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your account."));
+  return (await res.json()) as AccountConsentStatus;
+}
+
+/** Records the age band chosen on AgeGateScreen. See app/routers/account.py's
+ * submit_age_consent -- "under_13" is accepted and recorded but the returned status
+ * still reports needs_consent: true, since self-attestation alone isn't COPPA's
+ * required verifiable parental consent. */
+export async function submitAgeConsent(token: string, ageBand: AgeBand): Promise<AccountConsentStatus> {
+  const res = await fetch(`${API_URL}/account/age-consent`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ age_band: ageBand }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save that."));
+  return (await res.json()) as AccountConsentStatus;
 }
 
 export async function createSession(token: string): Promise<string> {

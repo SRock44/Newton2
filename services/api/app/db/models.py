@@ -43,6 +43,20 @@ class User(Base):
     # the roster's default" (see billing.resolve_pro_model), not "no access".
     preferred_pro_model: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Minor-consent / age-gate scaffolding (ROADMAP.md Phase 7's "explicit FERPA/COPPA/
+    # GDPR data-retention posture" item -- a first-pass DRAFT, not a lawyer-reviewed
+    # compliance flow; see docs/data-retention-and-privacy.md for the real design
+    # decision and its honest gaps). age_band is one of "under_13" / "13_17" / "18_plus"
+    # -- validated in app/routers/account.py, not a DB-level constraint/enum, same style
+    # as this file's other free-text status columns (flashcards.fsrs_state,
+    # practice_exams.difficulty). consented_at is set ONLY when age_band is "13_17" or
+    # "18_plus" -- an "under_13" answer deliberately leaves this null forever, because a
+    # student's own self-attestation is NOT COPPA's required verifiable PARENTAL
+    # consent; see the docs file for why this app doesn't claim to have that yet and
+    # what a real implementation would still need.
+    age_band: Mapped[str | None] = mapped_column(String, nullable=True)
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Self-service "Focus Mode" (see app/routers/billing.py's PATCH /billing/focus-mode,
     # SettingsPanel.tsx) -- a student opting THEMSELVES into a stricter, Socratic-only
     # standard. Deliberately not a teacher/guardian-administered control: this codebase

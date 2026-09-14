@@ -55,6 +55,20 @@ vi.mock("./api", () => ({
     free_generation_target: 5,
     pro_generation_target: 15,
   })),
+  // Age-gate scaffolding (ROADMAP.md Phase 7) — every existing test in this file
+  // simulates an account that already answered the age gate, so the main app renders
+  // immediately rather than every test needing to click through AgeGateScreen first.
+  // See "age gate" tests below for the gate's own behavior.
+  getAccountStatus: vi.fn(async () => ({
+    age_band: "18_plus",
+    consented_at: new Date().toISOString(),
+    needs_consent: false,
+  })),
+  submitAgeConsent: vi.fn(async (_token: string, ageBand: string) => ({
+    age_band: ageBand,
+    consented_at: ageBand === "under_13" ? null : new Date().toISOString(),
+    needs_consent: ageBand === "under_13",
+  })),
 }));
 
 vi.mock("./notifications", () => ({
@@ -90,12 +104,14 @@ vi.mock("./auth", async () => {
 
 import {
   deleteSession,
+  getAccountStatus,
   getDocumentContent,
   listDocuments,
   listFlashcards,
   listSessions,
   listStudyPlan,
   openChatSocket,
+  submitAgeConsent,
 } from "./api";
 import { notifyStudyReminders } from "./notifications";
 import { signInWithBrowser } from "./auth";
@@ -122,6 +138,8 @@ describe("App", () => {
     vi.mocked(listDocuments).mockClear();
     vi.mocked(getDocumentContent).mockClear();
     vi.mocked(notifyStudyReminders).mockClear();
+    vi.mocked(getAccountStatus).mockClear();
+    vi.mocked(submitAgeConsent).mockClear();
     // Every render now calls the real TokenManager.tryRestoreSession() on mount (see
     // App.tsx's bootstrap effect), which reads real localStorage — clear it so one
     // test's sign-in never leaks a stale session into the next, which would otherwise
@@ -590,6 +608,59 @@ describe("App", () => {
       // Acted on, so it's gone for good — same as an explicit dismiss.
       expect(window.localStorage.getItem("newton:onboarding-seen:unknown-user")).toBe("1");
       expect(screen.queryByRole("heading", { name: /welcome to newton/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // Minor-consent / age-gate scaffolding (ROADMAP.md Phase 7 — see
+  // docs/data-retention-and-privacy.md). Every other test in this file mocks
+  // getAccountStatus as already-consented (see the top-level vi.mock("./api", ...)
+  // above) so this is the only place the gate itself is exercised end-to-end.
+  describe("age gate", () => {
+    it("blocks the main app and shows the age question when consent is still needed", async () => {
+      vi.mocked(getAccountStatus).mockResolvedValueOnce({
+        age_band: null,
+        consented_at: null,
+        needs_consent: true,
+      });
+
+      await signIn();
+
+      expect(await screen.findByText(/how old are you/i)).toBeInTheDocument();
+      expect(screen.queryByTestId("message-list")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
+    });
+
+    it("choosing 18 or older unlocks the main app", async () => {
+      vi.mocked(getAccountStatus).mockResolvedValueOnce({
+        age_band: null,
+        consented_at: null,
+        needs_consent: true,
+      });
+
+      const user = await signIn();
+      await screen.findByText(/how old are you/i);
+
+      await user.click(screen.getByRole("button", { name: "18 or older" }));
+
+      expect(vi.mocked(submitAgeConsent)).toHaveBeenCalledWith(expect.any(String), "18_plus");
+      expect(await (await messageList()).findByText("Hello from s1")).toBeInTheDocument();
+    });
+
+    it("choosing under 13 stays blocked with the parent/guardian message, never reaching the main app", async () => {
+      vi.mocked(getAccountStatus).mockResolvedValueOnce({
+        age_band: null,
+        consented_at: null,
+        needs_consent: true,
+      });
+
+      const user = await signIn();
+      await screen.findByText(/how old are you/i);
+
+      await user.click(screen.getByRole("button", { name: "Under 13" }));
+
+      expect(await screen.findByText(/needs to create and manage this account/i)).toBeInTheDocument();
+      expect(screen.queryByTestId("message-list")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
     });
   });
 });
