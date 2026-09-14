@@ -613,6 +613,7 @@ function App() {
     if (panel === "flashcards") setShowFlashcards(true);
     else if (panel === "practice_exams") setShowPracticeExams(true);
     else if (panel === "study_plan") setShowStudyPlan(true);
+    else if (panel === "documents") setMainView("documents");
   }
 
   async function handleDeleteSession(sessionId: string) {

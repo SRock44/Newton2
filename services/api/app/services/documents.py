@@ -45,6 +45,40 @@ def _extract_text(filename: str, mime_type: str | None, raw: bytes) -> str:
     )
 
 
+async def _store_document(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    filename: str,
+    mime_type: str | None,
+    raw: bytes,
+    text: str,
+) -> Document:
+    """Shared tail end of both upload_document() and upload_document_bytes(): store the
+    raw bytes in MinIO under a per-user key, create the Document row, then run the
+    chunk+embed+store pipeline (app.memory.rag) over the already-extracted text."""
+    settings = get_settings()
+    document_id = uuid.uuid4()
+    minio_key = f"{user_id}/{document_id}/{filename}"
+
+    # MinIO's SDK is synchronous; run its blocking network calls off the event loop.
+    await asyncio.to_thread(ensure_bucket_sync, settings.minio_bucket)
+    await asyncio.to_thread(put_object_sync, settings.minio_bucket, minio_key, raw, mime_type)
+
+    document = Document(
+        id=document_id,
+        user_id=user_id,
+        filename=filename,
+        mime_type=mime_type,
+        minio_key=minio_key,
+    )
+    db.add(document)
+    await db.flush()
+
+    await store_document_chunks(db, document.id, text)
+    await db.commit()
+    return document
+
+
 async def upload_document(db: AsyncSession, user_id: uuid.UUID, file: UploadFile) -> Document:
     """Validate the upload, store the raw bytes in MinIO under a per-user key, create the
     Document row, then run the chunk+embed+store pipeline (app.memory.rag) over the
@@ -60,28 +94,28 @@ async def upload_document(db: AsyncSession, user_id: uuid.UUID, file: UploadFile
 
     filename = file.filename or "upload"
     text = await asyncio.to_thread(_extract_text, filename, file.content_type, raw)
+    return await _store_document(db, user_id, filename, file.content_type, raw, text)
 
-    settings = get_settings()
-    document_id = uuid.uuid4()
-    minio_key = f"{user_id}/{document_id}/{filename}"
 
-    # MinIO's SDK is synchronous; run its blocking network calls off the event loop.
-    await asyncio.to_thread(ensure_bucket_sync, settings.minio_bucket)
-    await asyncio.to_thread(put_object_sync, settings.minio_bucket, minio_key, raw, file.content_type)
-
-    document = Document(
-        id=document_id,
-        user_id=user_id,
-        filename=filename,
-        mime_type=file.content_type,
-        minio_key=minio_key,
-    )
-    db.add(document)
-    await db.flush()
-
-    await store_document_chunks(db, document.id, text)
-    await db.commit()
-    return document
+async def upload_document_bytes(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    filename: str,
+    mime_type: str,
+    raw: bytes,
+) -> Document:
+    """Bytes-based sibling of upload_document() for content that never arrived as an
+    HTTP UploadFile -- e.g. app/tools/write_research_paper.py's compiled PDF and
+    generated .tex source, which exist only as in-memory bytes this process produced
+    itself. Runs the exact same _extract_text() dispatch upload_document() uses (by
+    filename/mime_type), so a generated PDF here is pypdf-extracted for RAG exactly like
+    a student-uploaded PDF would be, and a generated .tex file (mime_type="text/plain")
+    is stored as plain decoded text -- which for a .tex source IS the document's own
+    content, no separate extraction step needed. No MAX_UPLOAD_BYTES check here: this
+    content wasn't submitted by an HTTP client and is already bounded well under that
+    ceiling by sandbox-runner's own LATEX_MAX_PDF_BYTES."""
+    text = await asyncio.to_thread(_extract_text, filename, mime_type, raw)
+    return await _store_document(db, user_id, filename, mime_type, raw, text)
 
 
 async def get_document_text(document: Document) -> str:

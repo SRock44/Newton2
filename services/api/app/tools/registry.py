@@ -21,6 +21,7 @@ from app.tools.unit_converter import UnitConverterTool
 from app.tools.vision import VisionTool
 from app.tools.visualizer import VisualizerTool
 from app.tools.web_search import WebSearchTool
+from app.tools.write_research_paper import WriteResearchPaperTool
 
 # Add a new tool by instantiating it here — nothing else in this file should need to
 # change. Kept as an explicit list (not directory auto-discovery) so it's obvious at a
@@ -47,6 +48,7 @@ _TOOLS: dict[str, Tool] = {
         CheckStudentWorkTool(),
         GetWeakAreasTool(),
         GetMathHintTool(),
+        WriteResearchPaperTool(),
     ]
 }
 

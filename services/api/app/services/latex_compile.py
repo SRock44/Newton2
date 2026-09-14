@@ -31,18 +31,27 @@ class LatexCompileResult:
     timed_out: bool
 
 
-async def compile_latex(tex: str, bib: str | None = None, engine: str = "pdflatex") -> LatexCompileResult:
+async def compile_latex(
+    tex: str,
+    bib: str | None = None,
+    engine: str = "pdflatex",
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> LatexCompileResult:
     """Sends a LaTeX document (and optional .bib) to sandbox-runner for compilation.
     Never raises -- a request/network failure comes back as a LatexCompileResult with
     success=False and the error described in `.log`, the same never-raise convention
-    every Tool in this codebase follows, even though this isn't itself a Tool."""
+    every Tool in this codebase follows, even though this isn't itself a Tool.
+
+    `transport` is only ever passed in tests (httpx.MockTransport), the same DI hook
+    app.tools.research_fetch.ResearchFetchTool and app.tools.web_search.WebSearchTool
+    use for the same reason -- production code always goes over the real network."""
     base_url = get_settings().sandbox_runner_url
     payload: dict[str, str] = {"tex": tex, "engine": engine}
     if bib is not None:
         payload["bib"] = bib
 
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S, transport=transport) as client:
             response = await client.post(f"{base_url}/compile-latex", json=payload)
             response.raise_for_status()
             data = response.json()

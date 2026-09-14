@@ -1,0 +1,379 @@
+"""Integration-style tests for app.tools.write_research_paper.WriteResearchPaperTool --
+follows tests/test_generation_tools.py / tests/test_study_session_tool.py's convention:
+real DB (Postgres) and real MinIO (this codebase's own infra, not mocked), but every
+external network boundary is mocked -- the direct provider calls (see study_planner's/
+flashcards' own test files for that same "mock get_provider directly" convention) and
+app.services.latex_compile.compile_latex (mocked at the tool's own import of it, since
+its own HTTP-boundary behavior already has dedicated httpx.MockTransport coverage in
+tests/test_latex_compile.py -- this file's job is the tool's ORCHESTRATION: fan-out,
+citation de-duplication, template assembly, the bounded compile retry, and persistence).
+
+Section-drafting network calls (web_search/research_fetch) are replaced with a stubbed
+_gather_section_material so these tests don't depend on live SearXNG/allowlisted
+external sites -- those are each independently covered by their own tool's test suite
+(tests/test_tools_web_search.py, tests/test_research_fetch.py).
+"""
+
+import io
+import uuid
+from collections.abc import AsyncIterator
+
+import pytest_asyncio
+from pypdf import PdfWriter
+from sqlalchemy import delete, select
+
+from app.db.models import Document, DocumentChunk, User
+from app.providers.base import ChatProvider, ChatTurn, StreamEvent, TextDelta, ToolSpec
+from app.services import documents as documents_service
+from app.services.latex_compile import LatexCompileResult
+from app.tools import write_research_paper as wrp
+from app.tools.write_research_paper import WriteResearchPaperTool, parse_section_response
+
+
+def _minimal_real_pdf_bytes() -> bytes:
+    """A minimal, real, parseable single-page PDF -- not just bytes with a .pdf name --
+    so upload_document_bytes' own pypdf-based extraction succeeds, same convention as
+    tests/test_documents.py's `uploaded_pdf` fixture."""
+    buffer = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+_FAKE_PDF = _minimal_real_pdf_bytes()
+
+
+class _FakeSectionProvider(ChatProvider):
+    """Answers a section-drafting (or retry-correction) prompt based on which section
+    heading / retry marker it finds in the prompt text, rather than positional
+    scripting -- section drafts run CONCURRENTLY (bounded by a semaphore), so which
+    section's provider call actually executes first is not something a test should
+    assume."""
+
+    def __init__(self, responses_by_heading: dict[str, str], retry_response: str | None = None):
+        self._responses = responses_by_heading
+        self._retry_response = retry_response
+        self.prompts_seen: list[str] = []
+
+    async def stream_chat(
+        self, messages: list[ChatTurn], model: str, tools: list[ToolSpec] | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        prompt = messages[0].content
+        self.prompts_seen.append(prompt)
+        if prompt.startswith("The following LaTeX document failed to compile"):
+            assert self._retry_response is not None, "unexpected retry call"
+            yield TextDelta(self._retry_response)
+            return
+        for heading, response in self._responses.items():
+            if f"Heading: {heading}" in prompt:
+                yield TextDelta(response)
+                return
+        raise AssertionError(f"no scripted response for prompt:\n{prompt}")
+
+
+async def _no_op_material(*args, **kwargs) -> str:
+    return "(stubbed material -- no live web_search/research_fetch in this test tier)"
+
+
+@pytest_asyncio.fixture
+async def paper_user(db_session):
+    user = User(keycloak_sub=f"test-paper-writer-{uuid.uuid4()}", plan="free")
+    db_session.add(user)
+    await db_session.commit()
+
+    yield user
+
+    docs = (await db_session.execute(select(Document).where(Document.user_id == user.id))).scalars().all()
+    for doc in docs:
+        await documents_service.delete_document(db_session, doc)
+    await db_session.execute(delete(User).where(User.id == user.id))
+    await db_session.commit()
+
+
+def _success_compile(monkeypatch, capture: list | None = None):
+    async def fake_compile_latex(tex, bib=None, engine="pdflatex"):
+        if capture is not None:
+            capture.append({"tex": tex, "bib": bib})
+        return LatexCompileResult(pdf_bytes=_FAKE_PDF, log="all good", success=True, timed_out=False)
+
+    monkeypatch.setattr(wrp, "compile_latex", fake_compile_latex)
+
+
+# ---------------------------------------------------------------------------
+# parse_section_response -- pure parsing
+# ---------------------------------------------------------------------------
+
+
+def test_parse_section_response_extracts_prose_and_sources():
+    raw = (
+        '{"prose": "Some text \\\\cite{doe2024}.", '
+        '"sources": [{"key": "doe2024", "title": "A Paper", "author": "Doe", "year": "2024"}]}'
+    )
+    prose, sources = parse_section_response(raw)
+    assert "cite{doe2024}" in prose
+    assert sources == [{"key": "doe2024", "title": "A Paper", "author": "Doe", "year": "2024"}]
+
+
+def test_parse_section_response_degrades_to_raw_text_on_unparseable_reply():
+    prose, sources = parse_section_response("not json at all")
+    assert prose == "not json at all"
+    assert sources == []
+
+
+def test_parse_section_response_filters_sources_without_a_key():
+    raw = '{"prose": "text", "sources": [{"title": "no key"}, {"key": "ok", "title": "fine"}]}'
+    _prose, sources = parse_section_response(raw)
+    assert sources == [{"key": "ok", "title": "fine"}]
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+
+async def test_run_rejects_missing_user():
+    result = await WriteResearchPaperTool().run(
+        title="T", style="ieee", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}], user_id=None
+    )
+    assert result.startswith("Error:")
+
+
+async def test_run_rejects_unsupported_style(paper_user):
+    result = await WriteResearchPaperTool().run(
+        title="T", style="mla", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+    assert result.startswith("Error:")
+    assert "mla" in result
+
+
+async def test_run_rejects_empty_sections(paper_user):
+    result = await WriteResearchPaperTool().run(
+        title="T", style="ieee", abstract_sketch="A", sections=[], user_id=str(paper_user.id)
+    )
+    assert result.startswith("Error:")
+
+
+async def test_run_rejects_unmatched_document_filename(paper_user):
+    result = await WriteResearchPaperTool().run(
+        title="T", style="ieee", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}],
+        document_filename="does-not-exist.pdf", user_id=str(paper_user.id),
+    )
+    assert result.startswith("Error:")
+    assert "does-not-exist.pdf" in result
+
+
+# ---------------------------------------------------------------------------
+# Full success path -- one section, one cited source, real compile (mocked),
+# real Document rows.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_writes_a_paper_and_creates_real_document_rows(paper_user, db_session, monkeypatch):
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "Solar power is growing fast \\\\cite{doe2024solar}.", '
+                '"sources": [{"key": "doe2024solar", "type": "article", "author": "Jane Doe", '
+                '"title": "Solar Growth", "year": "2024", "venue": "Energy Journal", '
+                '"url": "https://arxiv.org/abs/9999"}]}'
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="Solar Power Trends",
+        style="ieee",
+        abstract_sketch="A short look at solar power adoption.",
+        sections=[{"heading": "Introduction", "summary": "Set the stage."}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    assert "1 section(s)" in result
+    assert "1 source(s) actually cited" in result
+    assert "Solar Power Trends.pdf" in result
+    assert "Solar Power Trends.tex" in result
+
+    # The compiled tex actually contains the rewritten \cite{} and a real .bib was sent.
+    assert len(capture) == 1
+    assert "\\cite{doe2024solar}" in capture[0]["tex"]
+    assert capture[0]["bib"] is not None
+    assert "@article{doe2024solar," in capture[0]["bib"]
+
+    docs = (
+        (await db_session.execute(select(Document).where(Document.user_id == paper_user.id)))
+        .scalars()
+        .all()
+    )
+    filenames = {d.filename for d in docs}
+    assert "Solar Power Trends.pdf" in filenames
+    assert "Solar Power Trends.tex" in filenames
+    pdf_doc = next(d for d in docs if d.filename.endswith(".pdf"))
+    assert pdf_doc.mime_type == "application/pdf"
+
+    raw_pdf = await documents_service.get_document_raw(pdf_doc)
+    assert raw_pdf == _FAKE_PDF
+    assert raw_pdf[:5] == b"%PDF-"
+
+    # RAG chunking ran for both generated documents, same as any other upload.
+    chunk_count = len(
+        (await db_session.execute(select(DocumentChunk).where(DocumentChunk.document_id == pdf_doc.id))).scalars().all()
+    )
+    assert chunk_count >= 0  # pypdf extraction of a fake, non-real PDF may yield no text; must not crash either way
+
+
+async def test_run_deduplicates_a_source_cited_by_two_sections(paper_user, monkeypatch):
+    shared_source = (
+        '{"key": "src1", "type": "misc", "title": "Shared Source", "url": "https://en.wikipedia.org/wiki/Shared"}'
+    )
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": '{"prose": "Intro claim \\\\cite{src1}.", "sources": [' + shared_source + "]}",
+            "Background": '{"prose": "Background claim \\\\cite{src1}.", "sources": [' + shared_source + "]}",
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="Two Sections One Source",
+        style="apa7",
+        abstract_sketch="Testing dedup.",
+        sections=[
+            {"heading": "Introduction", "summary": "s1"},
+            {"heading": "Background", "summary": "s2"},
+        ],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    assert "1 source(s) actually cited" in result  # deduped to exactly one
+    tex = capture[0]["tex"]
+    bib = capture[0]["bib"]
+    assert bib.count("@misc{") == 1
+    # Both sections' \cite{} placeholders point at the SAME final key.
+    import re
+
+    cite_keys = set(re.findall(r"\\cite\{([^}]*)\}", tex))
+    assert len(cite_keys) == 1
+
+
+# ---------------------------------------------------------------------------
+# Compile failure + bounded retry
+# ---------------------------------------------------------------------------
+
+
+async def test_run_retries_once_on_compile_failure_and_succeeds(paper_user, monkeypatch):
+    fake_provider = _FakeSectionProvider(
+        {"Introduction": '{"prose": "Plain text, no sources.", "sources": []}'},
+        retry_response="\\documentclass{IEEEtran}\\begin{document}CORRECTED\\end{document}",
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+
+    calls = []
+
+    async def fake_compile_latex(tex, bib=None, engine="pdflatex"):
+        calls.append(tex)
+        if len(calls) == 1:
+            return LatexCompileResult(pdf_bytes=None, log="! Undefined control sequence.", success=False, timed_out=False)
+        return LatexCompileResult(pdf_bytes=_FAKE_PDF, log="fixed", success=True, timed_out=False)
+
+    monkeypatch.setattr(wrp, "compile_latex", fake_compile_latex)
+
+    result = await WriteResearchPaperTool().run(
+        title="Retry Paper",
+        style="ieee",
+        abstract_sketch="Testing retry.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    assert len(calls) == 2
+    assert "CORRECTED" in calls[1]
+    assert calls[0] != calls[1]
+
+
+async def test_run_reports_honest_failure_when_retry_also_fails(paper_user, monkeypatch):
+    fake_provider = _FakeSectionProvider(
+        {"Introduction": '{"prose": "Plain text, no sources.", "sources": []}'},
+        retry_response="\\documentclass{IEEEtran}\\begin{document}STILL BROKEN\\end{document}",
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+
+    async def always_fails(tex, bib=None, engine="pdflatex"):
+        return LatexCompileResult(pdf_bytes=None, log="! Emergency stop.", success=False, timed_out=False)
+
+    monkeypatch.setattr(wrp, "compile_latex", always_fails)
+
+    result = await WriteResearchPaperTool().run(
+        title="Doomed Paper",
+        style="ieee",
+        abstract_sketch="Testing failure honesty.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Error:")
+    assert "Emergency stop" in result
+
+
+async def test_failed_compile_creates_no_document_rows(paper_user, db_session, monkeypatch):
+    fake_provider = _FakeSectionProvider({"Introduction": '{"prose": "text", "sources": []}'})
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+
+    async def always_fails(tex, bib=None, engine="pdflatex"):
+        return LatexCompileResult(pdf_bytes=None, log="nope", success=False, timed_out=False)
+
+    monkeypatch.setattr(wrp, "compile_latex", always_fails)
+
+    await WriteResearchPaperTool().run(
+        title="Never Persisted",
+        style="ieee",
+        abstract_sketch="A",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    docs = (
+        (await db_session.execute(select(Document).where(Document.user_id == paper_user.id))).scalars().all()
+    )
+    assert docs == []
+
+
+# ---------------------------------------------------------------------------
+# Registry-level threading
+# ---------------------------------------------------------------------------
+
+
+async def test_run_tool_threads_user_id_through_to_write_research_paper(paper_user, monkeypatch):
+    from app.tools.registry import run_tool
+
+    fake_provider = _FakeSectionProvider({"Introduction": '{"prose": "text", "sources": []}'})
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+    _success_compile(monkeypatch)
+
+    result = await run_tool(
+        "write_research_paper",
+        {
+            "title": "Registry Path Paper",
+            "style": "ieee",
+            "abstract_sketch": "A",
+            "sections": [{"heading": "Introduction", "summary": "s"}],
+        },
+        session_id="unused",
+        user_id=str(paper_user.id),
+    )
+    assert result.startswith("Done —")

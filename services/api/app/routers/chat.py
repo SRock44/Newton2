@@ -37,6 +37,7 @@ _TOOL_TO_SUGGESTED_ACTION = {
     "generate_practice_exam": {"panel": "practice_exams", "label": "Open Practice Exams"},
     "generate_study_plan": {"panel": "study_plan", "label": "Open Study Plan"},
     "sync_google_classroom": {"panel": "study_plan", "label": "Open Study Plan"},
+    "write_research_paper": {"panel": "documents", "label": "Open Documents"},
 }
 
 
