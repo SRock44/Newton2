@@ -96,7 +96,59 @@ port-forward so `127.0.0.1:58001` etc. on the dev machine reach the same ports o
 ssh -N -L 58001:127.0.0.1:58001 -L 58080:127.0.0.1:58080 -L 58180:127.0.0.1:58180 -i ~/.ssh/id_claude sr@192.168.1.101
 ```
 
-## Backups
+## Testing
+
+`services/api`'s suite runs two ways — see ROADMAP.md's Phase 7 "Decouple the test
+suite from the shared live dev box" entry for why this split exists.
+
+### Hermetic suite (CI, `.github/workflows/test.yml`)
+
+Runs on every push/PR against a fresh, disposable Postgres + Redis + MinIO (never the
+shared dev box above) and a self-signed fake JWKS server standing in for Keycloak (see
+`services/api/tests/hermetic/`) — no real external service required. Excludes anything
+marked `@pytest.mark.live_smoke` (real Open Library/SearXNG/OpenRouter catalog/
+sandbox-runner/whisper-asr/piper-tts calls — see `pytest.ini`'s marker docs).
+
+To reproduce locally (Docker required):
+
+```bash
+cd services/api
+pip install -r requirements.txt
+
+docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=newton \
+  -e POSTGRES_PASSWORD=newton-ci-secret -e POSTGRES_DB=newton pgvector/pgvector:pg16
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=newton \
+  -e MINIO_ROOT_PASSWORD=newton-ci-secret quay.io/minio/minio:latest server /data
+
+export DATABASE_URL=postgresql+asyncpg://newton:newton-ci-secret@localhost:5432/newton
+export REDIS_URL=redis://localhost:6379/0
+export ARQ_REDIS_URL=redis://localhost:6379/1
+export MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=newton MINIO_SECRET_KEY=newton-ci-secret
+export KEYCLOAK_INTERNAL_URL=http://127.0.0.1:9999/realms/newton
+export KEYCLOAK_ISSUER=http://127.0.0.1:9999/realms/newton
+export KEYCLOAK_AUDIENCE=newton-api
+export API_BASE_URL=http://127.0.0.1:8000
+export HERMETIC_TESTS=1
+
+alembic upgrade head
+python tests/hermetic/jwks_server.py --port 9999 &
+uvicorn app.main:app --port 8000 &
+python -m pytest tests/ -m "not live_smoke"
+```
+
+### Live-box smoke suite (manual)
+
+Everything marked `live_smoke`, plus a full run against the real deployed stack as an
+end-to-end sanity check, is run by hand against the shared dev box above:
+
+```bash
+tar -czf - infra services/api | ssh sr@192.168.1.101 'tar -xzf - -C ~/dev/newton2'
+ssh sr@192.168.1.101 'cd ~/dev/newton2/infra && docker compose up -d --build api'
+ssh sr@192.168.1.101 'docker exec newton2-api-1 python -m pytest tests/ -q'
+```
+
+
 
 `infra/backup/` holds the backup mechanism for the two stateful stores that actually
 matter: Postgres (every account, chat history, profile fact, study plan, ...) and MinIO

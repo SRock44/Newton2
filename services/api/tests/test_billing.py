@@ -28,6 +28,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
+import pytest
 import pytest_asyncio
 import stripe
 from jose import jwt as jose_jwt
@@ -82,6 +83,7 @@ def test_resolve_pro_model_honors_a_valid_selection():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.live_smoke
 async def test_get_pro_model_catalog_returns_real_curated_models_live():
     catalog = await billing_service.get_pro_model_catalog()
     ids = {m["id"] for m in catalog}
@@ -93,6 +95,7 @@ async def test_get_pro_model_catalog_returns_real_curated_models_live():
         assert m["label"]
 
 
+@pytest.mark.live_smoke
 async def test_pricing_for_each_curated_model_parses_as_real_positive_numbers_live():
     for model in billing_service.PRO_MODELS:
         pricing = await billing_service._pricing_for(model["id"])

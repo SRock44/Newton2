@@ -6,6 +6,8 @@ let the Tutor's loop use them for real."""
 
 import uuid
 
+import pytest
+
 from app.agents import tutor
 from app.agents.tutor import TextChunk
 from app.providers.base import ToolCall
@@ -39,18 +41,21 @@ def test_all_expected_tools_are_registered():
     }
 
 
+@pytest.mark.live_smoke
 async def test_run_tool_code_interpreter_hits_the_real_sandbox_runner():
     result = await run_tool("code_interpreter", {"code": "print(6 * 7)"})
     assert "42" in result
     assert "Exit code: 0" in result
 
 
+@pytest.mark.live_smoke
 async def test_run_tool_web_search_hits_the_real_searxng():
     result = await run_tool("web_search", {"query": "python programming language"})
     assert not result.startswith("Search failed")
     assert "Search results for" in result
 
 
+@pytest.mark.live_smoke
 async def test_tutor_loop_can_actually_call_code_interpreter_end_to_end(monkeypatch):
     """The scripted provider stands in for the model's *decision* to call a tool (that
     part is unit-tested against a fake elsewhere, since there's no live model key to

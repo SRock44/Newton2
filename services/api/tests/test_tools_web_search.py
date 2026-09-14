@@ -200,6 +200,7 @@ async def test_tool_run_returns_search_failed_string_on_malformed_json():
 # start skipping (not failing) once that container is gone — which is the point: the
 # mocked tests above are what must keep passing once SearXNG is wired into the real
 # deployed stack.
+@pytest.mark.live_smoke
 async def test_tool_run_against_real_standalone_searxng_instance():
     tool = WebSearchTool(base_url="http://searxng-test:8080")
     try:

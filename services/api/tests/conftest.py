@@ -1,3 +1,4 @@
+import os
 import uuid
 
 import httpx
@@ -8,17 +9,44 @@ from app.core.config import get_settings
 from app.db.base import SessionLocal, engine
 from app.db.models import ChatMessage, ChatSession
 
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 KEYCLOAK_USERNAME = "student1"
 KEYCLOAK_PASSWORD = "newton-dev"
 KEYCLOAK_CLIENT_ID = "newton-api"
 
+# Set by .github/workflows/test.yml (and available to anyone reproducing that CI setup
+# locally -- see infra/README.md's "Running the hermetic suite locally" section): when
+# truthy, keycloak_token below mints a self-signed JWT instead of doing a real password
+# grant against a running Keycloak. Everything else (db_session, http_client, ...)
+# is unchanged either way -- see the module docstring in tests/hermetic/tokens.py for
+# why only auth needed splitting: get_or_create_user JIT-provisions a User row from
+# whatever claims a valid token carries, so the app itself never needs a real Keycloak
+# account to exist, only a token its own JWKS-backed verification accepts.
+HERMETIC_TESTS = os.environ.get("HERMETIC_TESTS", "").lower() in ("1", "true", "yes")
+
 
 @pytest_asyncio.fixture
 async def keycloak_token() -> str:
-    """Password-grant against the dev realm's Keycloak, the same way the project's
-    earlier manual smoke tests did (see infra/README.md)."""
+    """The bearer token every other auth fixture (auth_headers, and anything deriving
+    a user from it, e.g. test_billing.py's student1_user/test_voice_router.py's
+    pro_student) builds on.
+
+    Live mode (default, matches the real deployed stack / the manual smoke tests in
+    infra/README.md): a real Direct Grant (password) login against the dev realm's
+    Keycloak, authenticating as the real student1 account.
+
+    Hermetic mode (HERMETIC_TESTS=1, set by CI): mints a self-signed RS256 JWT with the
+    same shape (sub/email/name/preferred_username, matching aud/iss) instead -- no
+    network call, no real Keycloak needed. The API process under test still verifies it
+    for real, against a fake JWKS server (tests/hermetic/jwks_server.py) CI points
+    KEYCLOAK_INTERNAL_URL at, so this is exercising the actual verification code path
+    in app/core/auth.py, not bypassing it."""
     settings = get_settings()
+    if HERMETIC_TESTS:
+        from hermetic.tokens import mint_token
+
+        return mint_token(audience=settings.keycloak_audience, issuer=settings.keycloak_issuer)
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
             f"{settings.keycloak_internal_url}/protocol/openid-connect/token",

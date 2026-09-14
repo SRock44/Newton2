@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 from app.tools.textbook_lookup import TextbookLookupTool, format_isbn_lookup, format_title_search
 
@@ -118,6 +119,7 @@ async def test_run_handles_connection_error_gracefully():
     assert result.startswith("Textbook lookup failed:")
 
 
+@pytest.mark.live_smoke
 async def test_run_against_real_open_library():
     """One real network call against the actual Open Library API, for a well-known
     ISBN. Not mocked -- confirms the real integration works, not just our mock shape."""

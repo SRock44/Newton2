@@ -1,6 +1,7 @@
 import wave
 from io import BytesIO
 
+import pytest
 import pytest_asyncio
 from jose import jwt as jose_jwt
 from sqlalchemy import select
@@ -44,6 +45,7 @@ def _silent_wav_bytes(seconds: float = 1.0, rate: int = 16000) -> bytes:
     return buffer.getvalue()
 
 
+@pytest.mark.live_smoke
 async def test_transcribe_accepts_real_audio_and_returns_text(http_client, auth_headers, pro_student):
     resp = await http_client.post(
         "/voice/transcribe",
@@ -83,6 +85,7 @@ async def test_transcribe_requires_auth(http_client):
     assert resp.status_code in (401, 403)
 
 
+@pytest.mark.live_smoke
 async def test_synthesize_returns_real_playable_wav_audio(http_client, auth_headers, pro_student):
     resp = await http_client.post(
         "/voice/synthesize",

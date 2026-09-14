@@ -1,0 +1,126 @@
+name: API tests
+
+# Runs services/api's hermetic test suite for real, in CI -- see ROADMAP.md's Phase 7
+# "Decouple the test suite from the shared live dev box" entry. This spins up a FRESH,
+# disposable Postgres/Redis/MinIO for every run (never the shared dev box) and a
+# self-signed fake JWKS server standing in for Keycloak (see
+# services/api/tests/hermetic/), then runs the real API process (the same uvicorn
+# entrypoint the real deployment uses) against them. Tests that are deliberately,
+# genuinely live-network (real Open Library/SearXNG/OpenRouter catalog/sandbox-runner/
+# whisper-asr/piper-tts -- see pytest.ini's live_smoke marker docs) are excluded here;
+# those only ever run against the real deployed stack, by hand (see infra/README.md).
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: services/api
+
+jobs:
+  hermetic-suite:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Same image as infra/docker-compose.yml's `postgres` service -- migration
+        # 0001 does `CREATE EXTENSION IF NOT EXISTS vector`, which the plain postgres
+        # image doesn't ship.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: newton
+          POSTGRES_PASSWORD: newton-ci-secret
+          POSTGRES_DB: newton
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U newton -d newton"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      # Fresh-per-run, disposable -- not the shared dev box's credentials.
+      DATABASE_URL: postgresql+asyncpg://newton:newton-ci-secret@localhost:5432/newton
+      REDIS_URL: redis://localhost:6379/0
+      ARQ_REDIS_URL: redis://localhost:6379/1
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: newton
+      MINIO_SECRET_KEY: newton-ci-secret
+      MINIO_BUCKET: newton
+      MINIO_SECURE: "false"
+      # Points the API process (and pytest's own hermetic token minting) at the fake
+      # JWKS server started below instead of a real Keycloak -- see
+      # tests/hermetic/jwks_server.py + tests/hermetic/tokens.py.
+      KEYCLOAK_INTERNAL_URL: http://127.0.0.1:9999/realms/newton
+      KEYCLOAK_ISSUER: http://127.0.0.1:9999/realms/newton
+      KEYCLOAK_AUDIENCE: newton-api
+      # No GROQ_API_KEY/OPENROUTER_API_KEY set on purpose -- the provider adapter falls
+      # back to the keyless EchoProvider, which is exactly what the hermetic suite's
+      # tool-calling/tutor tests are written to exercise (they script/mock the provider
+      # layer directly for anything that needs specific model behavior).
+      API_BASE_URL: http://127.0.0.1:8000
+      HERMETIC_TESTS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/api/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start MinIO
+        # No `command:` override available for GitHub Actions `services:` containers,
+        # and the official minio image needs one (`server /data ...`) -- so it's run as
+        # a plain background container instead, same image/credentials shape as
+        # infra/docker-compose.yml's `minio` service.
+        run: |
+          docker run -d --name minio -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=newton -e MINIO_ROOT_PASSWORD=newton-ci-secret \
+            quay.io/minio/minio:latest server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && break
+            echo "waiting for minio ($i)..."; sleep 1
+          done
+
+      - name: Run database migrations
+        run: alembic upgrade head
+
+      - name: Start hermetic JWKS server
+        run: |
+          python tests/hermetic/jwks_server.py --port 9999 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:9999/realms/newton/protocol/openid-connect/certs > /dev/null && break
+            echo "waiting for fake jwks server ($i)..."; sleep 0.5
+          done
+
+      - name: Start API server
+        run: |
+          python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > api.log 2>&1 &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8000/health > /dev/null && break
+            echo "waiting for api ($i)..."; sleep 1
+          done
+          curl -sf http://127.0.0.1:8000/health || (echo "API never became healthy"; cat api.log; exit 1)
+
+      - name: Run hermetic test suite
+        run: python -m pytest tests/ -v -m "not live_smoke"
+
+      - name: Show API server log
+        if: always()
+        run: cat api.log || true
