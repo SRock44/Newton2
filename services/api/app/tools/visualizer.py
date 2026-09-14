@@ -3,16 +3,11 @@ from typing import Any
 
 import numpy as np
 import sympy
-from sympy.parsing.sympy_parser import (
-    convert_xor,
-    implicit_multiplication_application,
-    parse_expr,
-    standard_transformations,
-)
+from sympy.parsing.sympy_parser import parse_expr
 
 from app.tools.base import Tool
+from app.tools.symbolic_math import _TRANSFORMATIONS
 
-_TRANSFORMATIONS = standard_transformations + (convert_xor, implicit_multiplication_application)
 _DEFAULT_POINTS = 200
 
 
