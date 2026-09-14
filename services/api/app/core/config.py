@@ -7,6 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # Switch between local dev convenience and a real deployment. Never set by
+    # docker-compose.yml or .env.example today (nothing there defines ENV at all), so
+    # this defaults to "dev" for the shared dev box and any local run; a real
+    # deployment is expected to set ENV to something else (e.g. "production") in its
+    # own environment. See check_no_default_secrets() below, which keys off this.
     env: str = "dev"
 
     database_url: str = "postgresql+asyncpg://newton:newton@postgres:5432/newton"
@@ -118,6 +123,52 @@ class Settings(BaseSettings):
     # cost -- a real, tunable setting rather than a hardcoded literal so it can move
     # without a code change.
     pro_monthly_credit_cents: int = 600
+
+
+def check_no_default_secrets(settings: Settings) -> None:
+    """Refuse to run outside local dev with a publicly-known default secret still in
+    place. `minio_secret_key` defaults to the literal string "newton-dev-secret" --
+    fine for local dev convenience, but that string is hardcoded in this public repo,
+    so nothing previously stopped a real deployment from silently running with the
+    exact same secret if whoever deployed it forgot to override `.env`.
+    `database_url`'s own Python-level default here uses a different placeholder
+    password ("newton"), but infra/docker-compose.yml's `DATABASE_URL` (and the
+    `postgres` service's own `POSTGRES_PASSWORD`) fall back to that same
+    "newton-dev-secret" string when `.env` doesn't set `POSTGRES_PASSWORD` -- so a
+    real deployment run via that compose file without a real `.env` ends up with this
+    same default baked into `database_url` too, even though it's spelled differently
+    in this file's own defaults.
+
+    This only ever fires when `env` is explicitly set to something other than "dev" --
+    never the case for the shared dev box or a local run, since nothing in
+    docker-compose.yml or .env.example sets ENV at all. Local dev keeps working
+    exactly as before; a real deployment must set ENV *and* override every secret
+    below, or it refuses to start.
+
+    NOTE: KEYCLOAK_ADMIN_PASSWORD and the `postgres` container's own
+    POSTGRES_PASSWORD are also `newton-dev-secret`-shaped defaults in
+    docker-compose.yml, but neither is ever read into this app's Settings (they're
+    Keycloak's/Postgres's own container env, invisible to this process except
+    indirectly through database_url) -- this check can only guard what the API
+    process itself can see.
+    """
+    if settings.env == "dev":
+        return
+
+    offenders: list[str] = []
+    if settings.minio_secret_key.get_secret_value() == "newton-dev-secret":
+        offenders.append("minio_secret_key (MINIO_SECRET_KEY / MINIO_ROOT_PASSWORD)")
+    if "newton-dev-secret" in settings.database_url:
+        offenders.append("database_url (DATABASE_URL's embedded POSTGRES_PASSWORD)")
+
+    if offenders:
+        raise RuntimeError(
+            "Refusing to start: env is set to "
+            f"{settings.env!r} (not \"dev\") but the following setting(s) still use "
+            "their publicly-known default value from this open-source repo, which is "
+            "not safe outside local dev: " + ", ".join(offenders) + ". Set a real "
+            "value for each in this deployment's environment/.env before starting."
+        )
 
 
 @lru_cache

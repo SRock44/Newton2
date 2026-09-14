@@ -46,6 +46,16 @@ async def decode_token(token: str) -> dict:
         return jwt.decode(
             token,
             jwks,
+            # Pin the accepted signature algorithm explicitly rather than trusting the
+            # token's own `alg` header, per RFC 8725 (JWT Best Current Practices) --
+            # without this, python-jose lets whoever crafted the token pick how it gets
+            # verified (e.g. `alg: none`, or an RS256-to-HS256 confusion attack if the
+            # public key is obtainable, which it is here since it's served over JWKS).
+            # Keycloak's realm key (infra/keycloak/realm-newton.json) signs every real
+            # token with RS256 -- confirmed live against the running instance's own
+            # JWKS (`GET /protocol/openid-connect/certs`), whose signing key entry
+            # reports `"alg": "RS256"`.
+            algorithms=["RS256"],
             audience=settings.keycloak_audience,
             issuer=settings.keycloak_issuer,
         )
