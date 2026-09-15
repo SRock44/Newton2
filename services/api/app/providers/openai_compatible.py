@@ -75,6 +75,17 @@ class OpenAICompatibleProvider(ChatProvider):
         }
         if tools:
             payload["tools"] = _to_wire_tools(tools)
+        if "openrouter.ai" in self.base_url:
+            # OpenRouter serves most models (including the DeepSeek route this app
+            # defaults to) through several interchangeable upstream inference
+            # providers with real throughput differences -- its own default routing
+            # optimizes for price/availability, not speed. `sort: "throughput"`
+            # (an OpenRouter-specific request extension, see
+            # https://openrouter.ai/docs/features/provider-routing) asks it to
+            # prefer whichever upstream is fastest for this model right now instead.
+            # Groq's API (the other OpenAI-compatible base_url this class is used
+            # against) has no such concept, so this is scoped to OpenRouter only.
+            payload["provider"] = {"sort": "throughput"}
 
         headers = {"Authorization": f"Bearer {self.api_key}", **self.extra_headers}
         accumulator = ToolCallAccumulator()
