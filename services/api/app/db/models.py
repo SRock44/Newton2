@@ -179,7 +179,22 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(String)
     mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
     minio_key: Mapped[str] = mapped_column(String)
+    # "upload" (default -- every row that existed before this column, and every
+    # student-uploaded file since) or "note" (see app/routers/notes.py's "Newton
+    # Notepad" feature). A note is a REAL Document row created empty and grown via
+    # PATCH /notes/{id} -- it runs through the exact same chunk+embed pipeline an
+    # upload does (app.memory.rag.store_document_chunks), so it's automatically
+    # retrievable via RAG in ANY chat session with zero new retrieval logic: see
+    # retrieve_relevant_chunks below, which has no kind filter at all.
+    kind: Mapped[str] = mapped_column(String, default="upload", server_default="upload")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Didn't exist before migration 0016 -- existing rows backfilled to NOW() via that
+    # migration's server_default, harmless since nothing depended on this column's
+    # absence. Bumped explicitly (see update_document_content) on every content/title
+    # save; what GET /notes sorts/displays by for the note picker.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class DocumentChunk(Base):

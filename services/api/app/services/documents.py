@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import HTTPException, UploadFile, status
 from pypdf import PdfReader
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -52,10 +52,13 @@ async def _store_document(
     mime_type: str | None,
     raw: bytes,
     text: str,
+    kind: str = "upload",
 ) -> Document:
-    """Shared tail end of both upload_document() and upload_document_bytes(): store the
-    raw bytes in MinIO under a per-user key, create the Document row, then run the
-    chunk+embed+store pipeline (app.memory.rag) over the already-extracted text."""
+    """Shared tail end of upload_document(), upload_document_bytes(), and create_note():
+    store the raw bytes in MinIO under a per-user key, create the Document row, then run
+    the chunk+embed+store pipeline (app.memory.rag) over the already-extracted text.
+    `kind` distinguishes a student upload from a Notepad note (see Document.kind's
+    docstring in app/db/models.py) -- everything else about the pipeline is identical."""
     settings = get_settings()
     document_id = uuid.uuid4()
     minio_key = f"{user_id}/{document_id}/{filename}"
@@ -70,6 +73,7 @@ async def _store_document(
         filename=filename,
         mime_type=mime_type,
         minio_key=minio_key,
+        kind=kind,
     )
     db.add(document)
     await db.flush()
@@ -118,6 +122,16 @@ async def upload_document_bytes(
     return await _store_document(db, user_id, filename, mime_type, raw, text)
 
 
+async def create_note(db: AsyncSession, user_id: uuid.UUID, title: str) -> Document:
+    """Creates a brand-new, empty note -- a first-class named Document with
+    kind="note" (see app/routers/notes.py's "Newton Notepad" feature). Goes through
+    the exact same MinIO-store + chunk+embed pipeline _store_document already uses for
+    an upload; chunk_text("") yields no chunks, so this starts with zero DocumentChunk
+    rows until the student's first real PATCH /notes/{id} save -- no separate code path
+    to keep in sync with the real editing pipeline."""
+    return await _store_document(db, user_id, title, "text/markdown", b"", "", kind="note")
+
+
 async def get_document_text(document: Document) -> str:
     """Re-fetches the raw file from MinIO and re-runs extraction, rather than storing
     the full text separately from the (overlapping, chunked) RAG copy — documents here
@@ -145,9 +159,17 @@ def is_editable(document: Document) -> bool:
     return lower_name.endswith(_TEXT_EXTENSIONS) or document.mime_type in _TEXT_MIME_TYPES
 
 
-async def update_document_content(db: AsyncSession, document: Document, content: str) -> Document:
+async def update_document_content(
+    db: AsyncSession, document: Document, content: str, filename: str | None = None
+) -> Document:
     """Overwrites the stored file with edited text and re-chunks it for RAG, so
-    retrieval always reflects exactly what the student sees and last edited."""
+    retrieval always reflects exactly what the student sees and last edited. `filename`
+    is optional -- PATCH /notes/{id} passes the note's (possibly renamed) title through
+    here so a title-and-content save is one write, one re-chunk, one commit; the plain
+    document-editor's PUT /documents/{id}/content never passes it and only touches
+    content, exactly as before. Re-chunking the WHOLE document on every save (rather
+    than diffing) is intentional -- these are small text documents/notes, not large
+    PDFs, so it's not worth the complexity of incremental re-chunking."""
     settings = get_settings()
     raw = content.encode("utf-8")
     await asyncio.to_thread(
@@ -155,6 +177,12 @@ async def update_document_content(db: AsyncSession, document: Document, content:
     )
     await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
     await store_document_chunks(db, document.id, content)
+    if filename is not None:
+        document.filename = filename
+    # Explicitly touched (not just relying on onupdate=func.now()) because the
+    # DocumentChunk delete+insert above doesn't itself dirty this Document row -- with
+    # no filename change, this UPDATE would otherwise never be emitted at all.
+    document.updated_at = func.now()
     await db.commit()
     await db.refresh(document)
     return document

@@ -65,11 +65,17 @@ async def upload(
 async def list_documents(
     claims: dict = Depends(require_user), db: AsyncSession = Depends(get_db)
 ) -> list[dict]:
+    """Uploaded files only (kind="upload") -- Newton Notepad notes (kind="note", see
+    app/routers/notes.py) have their own listing at GET /notes and are deliberately
+    left out here so the existing Documents panel doesn't get cluttered with notes it
+    was never designed to show."""
     user = await get_or_create_user(db, claims)
     rows = (
         (
             await db.execute(
-                select(Document).where(Document.user_id == user.id).order_by(Document.created_at.desc())
+                select(Document)
+                .where(Document.user_id == user.id, Document.kind == "upload")
+                .order_by(Document.created_at.desc())
             )
         )
         .scalars()

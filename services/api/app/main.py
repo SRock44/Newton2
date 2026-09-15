@@ -16,6 +16,7 @@ from app.routers import (
     flashcards,
     gamification,
     health,
+    notes,
     practice_exams,
     study_plan,
     tools,
@@ -94,6 +95,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(documents.router)
+app.include_router(notes.router)
 app.include_router(tools.router)
 app.include_router(study_plan.router)
 app.include_router(classroom.router)
