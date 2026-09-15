@@ -16,13 +16,10 @@ class GetWeakAreasTool(Tool):
 
     name = "get_weak_areas"
     description = (
-        "Looks at the student's REAL performance data -- flashcard review history and "
-        "completed practice exam results -- and surfaces which documents/topics they "
-        "are actually struggling with, with real example questions/cards, not just "
-        "counts. Call this when a student asks what to study, what they're bad at, or "
-        "whether they're ready for an exam, and consider calling it proactively before "
-        "generating a new practice exam or flashcard set so it can be targeted at real "
-        "weak spots instead of guessed."
+        "Reads the student's REAL performance data (flashcard review history, "
+        "completed practice exam results) and surfaces which topics they're actually "
+        "struggling with, with real example questions/cards, not just counts. Call "
+        "when asked what to study, what they're bad at, or if they're exam-ready."
     )
     parameters: dict[str, Any] = {"type": "object", "properties": {}}
 

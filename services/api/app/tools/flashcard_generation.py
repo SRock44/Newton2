@@ -19,11 +19,10 @@ class FlashcardGenerationTool(Tool):
 
     name = "generate_flashcards"
     description = (
-        "Generates a real, saved set of spaced-repetition flashcards from one of the "
-        "student's uploaded documents. Call this whenever the student asks for "
-        "flashcards, a deck, or something to quiz themselves with from their course "
-        "material — never just write flashcard-style text directly in your reply, "
-        "since that wouldn't actually be saved anywhere for them to review later."
+        "Generates a real, saved set of spaced-repetition flashcards from an uploaded "
+        "document. Call when asked for flashcards, a deck, or something to self-quiz "
+        "with -- never just write flashcard-style text in your reply, since that "
+        "isn't saved anywhere for later review."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -31,9 +30,8 @@ class FlashcardGenerationTool(Tool):
             "document_filename": {
                 "type": "string",
                 "description": (
-                    "A filename or substring to match against the student's uploaded "
-                    "documents (e.g. 'biology' or 'syllabus.pdf'). Omit to use their "
-                    "most recently uploaded document."
+                    "Filename or substring matching an uploaded document (e.g. "
+                    "'biology'). Omit to use the most recently uploaded one."
                 ),
             },
         },

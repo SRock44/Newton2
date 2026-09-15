@@ -108,9 +108,10 @@ def format_citation(
 class CitationFormatterTool(Tool):
     name = "format_citation"
     description = (
-        "Formats a source into an APA, MLA, or Chicago (author-date) citation. Deterministic "
-        "and exact, not a guess — always use this instead of writing a citation by hand. "
-        "Covers books, journal articles, and websites."
+        "Formats a source into an APA, MLA, or Chicago (author-date) citation -- exact, "
+        "not a guess, always use this instead of writing one by hand. source_type "
+        "'book' uses publisher; 'journal_article' uses journal/volume/issue/pages; "
+        "'website' uses site_name/url."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -119,7 +120,7 @@ class CitationFormatterTool(Tool):
             "source_type": {"type": "string", "enum": sorted(_SOURCE_TYPES)},
             "authors": {
                 "type": "array",
-                "description": "At least one author, e.g. [{\"last\": \"Doe\", \"first\": \"Jane\"}]",
+                "description": "e.g. [{\"last\": \"Doe\", \"first\": \"Jane\"}]",
                 "items": {
                     "type": "object",
                     "properties": {"last": {"type": "string"}, "first": {"type": "string"}},
@@ -128,13 +129,13 @@ class CitationFormatterTool(Tool):
             },
             "title": {"type": "string"},
             "year": {"type": "string"},
-            "publisher": {"type": "string", "description": "Books only"},
-            "journal": {"type": "string", "description": "Journal articles only"},
-            "volume": {"type": "string", "description": "Journal articles only"},
-            "issue": {"type": "string", "description": "Journal articles only"},
-            "pages": {"type": "string", "description": "Journal articles only"},
-            "site_name": {"type": "string", "description": "Websites only"},
-            "url": {"type": "string", "description": "Websites only"},
+            "publisher": {"type": "string"},
+            "journal": {"type": "string"},
+            "volume": {"type": "string"},
+            "issue": {"type": "string"},
+            "pages": {"type": "string"},
+            "site_name": {"type": "string"},
+            "url": {"type": "string"},
         },
         "required": ["style", "source_type", "authors", "title", "year"],
     }

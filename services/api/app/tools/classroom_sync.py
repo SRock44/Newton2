@@ -20,12 +20,10 @@ class ClassroomSyncTool(Tool):
 
     name = "sync_google_classroom"
     description = (
-        "Syncs the student's Google Classroom coursework (assignments and due dates) "
-        "into their study plan. Call this when the student asks to sync, refresh, or "
-        "pull in their Google Classroom assignments. Only works if they've already "
-        "connected Google Classroom from the Study Plan panel in the app — if not "
-        "connected, this returns a clear message telling them to connect it there "
-        "first (connecting requires a browser sign-in this tool can't perform)."
+        "Syncs the student's Google Classroom coursework into their study plan. Call "
+        "when asked to sync/refresh/pull in Classroom assignments. Only works if "
+        "already connected from the Study Plan panel -- otherwise returns a message "
+        "to connect there first (this tool can't drive the browser sign-in)."
     )
     parameters: dict[str, Any] = {"type": "object", "properties": {}}
 

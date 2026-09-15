@@ -15,10 +15,10 @@ _HTTP_TIMEOUT_S = 20.0
 class CodeInterpreterTool(Tool):
     name = "code_interpreter"
     description = (
-        "Execute Python code in an isolated sandbox and return its stdout/stderr/exit code. "
-        "Use this for anything that needs real computation, data manipulation, or verification "
-        "that a hand-worked answer is correct — not for code that needs network or filesystem "
-        "access beyond a scratch directory, both of which are unavailable here."
+        "Executes Python code in an isolated sandbox, returning stdout/stderr/exit "
+        "code. Use for real computation, data manipulation, or verifying a "
+        "hand-worked answer. No network or filesystem access beyond a scratch "
+        "directory."
     )
     parameters: dict[str, Any] = {
         "type": "object",

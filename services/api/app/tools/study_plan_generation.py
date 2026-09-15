@@ -15,11 +15,10 @@ class StudyPlanGenerationTool(Tool):
 
     name = "generate_study_plan"
     description = (
-        "Extracts due dates/assignments from one of the student's uploaded documents "
-        "(e.g. a syllabus) into a real, saved study plan. Call this whenever the "
-        "student asks for a study plan, a schedule, or help tracking deadlines from "
-        "their course material — never just describe a plan directly in your reply, "
-        "since that wouldn't actually be saved anywhere for them to track."
+        "Extracts due dates/assignments from an uploaded document (e.g. a syllabus) "
+        "into a real, saved study plan. Call when asked for a study plan, a "
+        "schedule, or help tracking deadlines -- never just describe a plan in your "
+        "reply, since that isn't saved anywhere to track."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -27,9 +26,8 @@ class StudyPlanGenerationTool(Tool):
             "document_filename": {
                 "type": "string",
                 "description": (
-                    "A filename or substring to match against the student's uploaded "
-                    "documents (e.g. 'syllabus' or 'schedule.pdf'). Omit to use their "
-                    "most recently uploaded document."
+                    "Filename or substring matching an uploaded document (e.g. "
+                    "'syllabus'). Omit to use the most recently uploaded one."
                 ),
             },
         },

@@ -62,11 +62,10 @@ class StudySessionTool(Tool):
 
     name = "start_study_session"
     description = (
-        "Prepares a full study session from one of the student's uploaded documents in "
-        "one shot: extracts due assignments into the study plan, generates flashcards, "
-        "and builds a practice exam, all at once. Call this when the student asks to "
-        "prepare for an exam/quiz/test, or wants a comprehensive review of a document, "
-        "rather than doing each of those one at a time yourself."
+        "Prepares a full study session from an uploaded document in one shot: study "
+        "plan items, flashcards, and a practice exam, all at once. Call when asked to "
+        "prepare for an exam/quiz/test or wants a comprehensive review, instead of "
+        "doing each of those individually yourself."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -74,9 +73,8 @@ class StudySessionTool(Tool):
             "document_filename": {
                 "type": "string",
                 "description": (
-                    "A filename or substring to match against the student's uploaded "
-                    "documents (e.g. 'biology' or 'syllabus.pdf'). Omit to use their "
-                    "most recently uploaded document."
+                    "Filename or substring matching an uploaded document (e.g. "
+                    "'biology'). Omit to use the most recently uploaded one."
                 ),
             },
         },

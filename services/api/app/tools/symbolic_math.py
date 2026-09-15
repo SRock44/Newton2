@@ -56,9 +56,8 @@ def solve_math(operation: str, expression: str, variable: str = "x") -> str:
 class SymbolicMathTool(Tool):
     name = "symbolic_math"
     description = (
-        "Exact symbolic math via a computer algebra system (SymPy): solve equations, "
-        "differentiate, integrate, simplify, factor, or expand. Use this instead of doing "
-        "symbolic/exact math by hand whenever precision matters."
+        "Exact symbolic math (SymPy): solve, differentiate, integrate, simplify, "
+        "factor, or expand. Use instead of doing symbolic/exact math by hand."
     )
     parameters: dict[str, Any] = {
         "type": "object",

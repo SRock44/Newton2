@@ -56,11 +56,10 @@ class GrammarCheckTool(Tool):
 
     name = "grammar_check"
     description = (
-        "Checks a piece of writing for grammar, spelling, and style issues via a "
-        "self-hosted LanguageTool instance. Use this when a student asks for feedback "
-        "on an essay, short answer, or other prose — never guess at grammar issues by "
-        "eye when this is available. Returns a numbered list of issues with the exact "
-        "text flagged, the problem, and a suggested fix."
+        "Checks writing for grammar, spelling, and style issues via LanguageTool. Use "
+        "for feedback on an essay, short answer, or other prose instead of guessing by "
+        "eye. Returns a numbered list of issues with the flagged text, the problem, "
+        "and a suggested fix."
     )
     parameters: dict[str, Any] = {
         "type": "object",

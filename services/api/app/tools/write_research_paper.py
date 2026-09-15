@@ -478,29 +478,24 @@ class WriteResearchPaperTool(Tool):
 
     name = "write_research_paper"
     description = (
-        "Writes and compiles a full academic research paper to a real PDF, from a plan "
-        "the student has ALREADY approved (a prior ```paper-plan block they confirmed, "
-        "not one you're inventing now). Pass through the exact same title/style/"
-        "abstract_sketch/sections the student approved -- never redesign the plan at "
-        "this step. Researches each section (the student's own attached document, plus "
-        "web search/fetch for outside sources when useful), drafts real cited prose for "
-        "each, assembles a bibliography from what was actually found, and compiles a "
-        "real IEEE or APA7 LaTeX document to PDF. Only call this in direct response to "
-        "the student approving a specific plan -- if they ask for changes instead, "
-        "revise and re-emit the ```paper-plan block, do not call this tool."
+        "Compiles a student-APPROVED ```paper-plan into a real, saved PDF (never call "
+        "this to invent or revise a plan). Pass the EXACT title/style/abstract_sketch/"
+        "sections most recently approved -- never redesign them here. Only call in "
+        "direct response to explicit approval; if the student asks for changes "
+        "instead, revise and re-emit the plan rather than calling this tool."
     )
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
-            "title": {"type": "string", "description": "The paper's title, exactly as approved."},
+            "title": {"type": "string", "description": "Exactly as approved."},
             "style": {
                 "type": "string",
                 "enum": sorted(RENDERERS),
-                "description": "The paper's format, exactly as approved.",
+                "description": "Exactly as approved.",
             },
             "abstract_sketch": {
                 "type": "string",
-                "description": "The 1-3 sentence abstract sketch, exactly as approved.",
+                "description": "1-3 sentence abstract sketch, exactly as approved.",
             },
             "sections": {
                 "type": "array",
@@ -513,14 +508,13 @@ class WriteResearchPaperTool(Tool):
                     },
                     "required": ["heading"],
                 },
-                "description": "The approved section outline, in order, exactly as approved.",
+                "description": "The approved section outline, in order.",
             },
             "document_filename": {
                 "type": "string",
                 "description": (
-                    "A filename or substring matching one of the student's own uploaded "
-                    "documents to draw on as source material. Omit if the plan didn't "
-                    "rely on one of their documents."
+                    "Filename/substring matching one of the student's uploaded "
+                    "documents to draw on. Omit if the plan didn't rely on one."
                 ),
             },
         },

@@ -29,10 +29,9 @@ class VisionTool(Tool):
 
     name = "read_image"
     description = (
-        "Reads an image the student has attached to this conversation — a photo of "
-        "handwritten work, a textbook page, or a screenshot of a problem — and returns "
-        "a transcription plus a solution/explanation. Call this whenever the student's "
-        "message references an attached image."
+        "Reads an image attached to this conversation (handwritten work, a textbook "
+        "page, a screenshot) and returns a transcription plus a solution/explanation. "
+        "Call whenever the student's message references an attached image."
     )
     parameters: dict[str, Any] = {
         "type": "object",

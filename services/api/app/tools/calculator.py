@@ -37,8 +37,8 @@ def evaluate(expression: str) -> float:
 class CalculatorTool(Tool):
     name = "calculator"
     description = (
-        "Evaluate an exact arithmetic expression (+, -, *, /, //, %, **, parentheses). "
-        "Use this instead of computing arithmetic yourself whenever precision matters."
+        "Evaluates an exact arithmetic expression (+, -, *, /, //, %, **, parentheses). "
+        "Use instead of computing arithmetic by hand when precision matters."
     )
     parameters: dict[str, Any] = {
         "type": "object",

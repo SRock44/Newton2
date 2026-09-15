@@ -64,20 +64,19 @@ class TextbookLookupTool(Tool):
 
     name = "textbook_lookup"
     description = (
-        "Look up a course textbook by ISBN or title/author to confirm the edition and see its "
-        "subjects/table of contents for context on the course material. If the instructor "
-        "assigned no textbook for this course, call this with no_textbook=true instead of "
-        "guessing or leaving it blank."
+        "Looks up a course textbook by ISBN or title/author (edition, subjects, table "
+        "of contents) for context on the course material. If no textbook is assigned, "
+        "call with no_textbook=true instead of guessing or leaving it blank."
     )
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
             "isbn": {"type": "string", "description": "10 or 13 digit ISBN, if known"},
             "title": {"type": "string", "description": "Book title, used if no ISBN is known"},
-            "author": {"type": "string", "description": "Author name, helps disambiguate a title search"},
+            "author": {"type": "string", "description": "Author name, to disambiguate a title search"},
             "no_textbook": {
                 "type": "boolean",
-                "description": "Set true if the instructor assigned no textbook for this course",
+                "description": "Set true if the instructor assigned no textbook",
             },
         },
     }

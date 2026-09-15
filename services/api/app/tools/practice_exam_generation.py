@@ -17,11 +17,10 @@ class PracticeExamGenerationTool(Tool):
 
     name = "generate_practice_exam"
     description = (
-        "Generates a real, saved practice exam (multiple-choice questions) from one of "
-        "the student's uploaded documents. Call this whenever the student asks to be "
-        "quizzed or tested, or wants practice questions from their course material — "
-        "never just write quiz questions directly in your reply, since that wouldn't "
-        "actually be saved anywhere for them to take and get graded on."
+        "Generates a real, saved practice exam (multiple-choice) from an uploaded "
+        "document. Call when asked to be quizzed/tested or wants practice questions "
+        "-- never just write quiz questions in your reply, since that isn't saved "
+        "anywhere to take or get graded on."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -29,9 +28,8 @@ class PracticeExamGenerationTool(Tool):
             "document_filename": {
                 "type": "string",
                 "description": (
-                    "A filename or substring to match against the student's uploaded "
-                    "documents (e.g. 'biology' or 'syllabus.pdf'). Omit to use their "
-                    "most recently uploaded document."
+                    "Filename or substring matching an uploaded document (e.g. "
+                    "'biology'). Omit to use the most recently uploaded one."
                 ),
             },
         },

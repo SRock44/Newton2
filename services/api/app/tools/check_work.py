@@ -155,13 +155,11 @@ class CheckStudentWorkTool(Tool):
 
     name = "check_student_work"
     description = (
-        "Checks a student's own TYPED answer or solution to a problem and reports "
-        "specifically where it's right or wrong -- not a fresh re-solved answer for "
-        "them to compare against themselves. For math, this is verified against real "
-        "symbolic-math computation (never guessed). Call this whenever a student "
-        "shares their own attempt at a problem and asks if it's right, wants it "
-        "checked, or wants feedback on their work. (For a photo of handwritten work, "
-        "use read_image instead.)"
+        "Checks a student's own TYPED answer/solution and reports specifically where "
+        "it's right or wrong -- not a fresh re-solved answer to compare against. Math "
+        "is verified via real symbolic computation, never guessed. Call when a "
+        "student shares an attempt and asks if it's right or wants feedback. For a "
+        "photo of handwritten work, use read_image instead."
     )
     parameters: dict[str, Any] = {
         "type": "object",

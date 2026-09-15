@@ -167,13 +167,13 @@ def plot_function_spec(
 class VisualizerTool(Tool):
     name = "plot_function"
     description = (
-        "Generate an interactive plot of a real-valued function of one variable over a range "
-        "(e.g. 'sin(x)/x' from -10 to 10). Returns a Plotly.js figure spec as JSON — include it "
-        "verbatim in a fenced ```plotly-figure code block so the app can render it, rather than "
-        "describing the shape of the graph in words. Optionally pass `vary` (Learn Mode only — "
-        "see the system prompt) to produce a slider-enabled plot instead of one static curve: "
-        "{\"symbol\": \"a\", \"min\": 0.5, \"max\": 3, \"steps\": 6} for an expression like "
-        "'a*x^2' that has a parameter worth letting the student explore interactively."
+        "Generates an interactive plot of a real-valued function over a range, returned "
+        "as a Plotly.js figure spec. Include the result verbatim in a fenced "
+        "```plotly-figure block (never describe the graph's shape in words instead). "
+        "Pass `vary` (Learn Mode only) for a slider-enabled plot that varies a second "
+        "parameter across positions instead of one fixed curve, e.g. "
+        '{"symbol": "a", "min": 0.5, "max": 3, "steps": 6} for an expression like '
+        "'a*x^2'."
     )
     parameters: dict[str, Any] = {
         "type": "object",
@@ -184,11 +184,7 @@ class VisualizerTool(Tool):
             "x_max": {"type": "number", "default": 10},
             "vary": {
                 "type": "object",
-                "description": (
-                    "Optional: name a free parameter in `expression` (distinct from `variable`) "
-                    "to vary across a small discrete set of positions instead of plotting one "
-                    "fixed curve, producing a slider-enabled chart."
-                ),
+                "description": "A second parameter to vary, distinct from `variable` (see example above).",
                 "properties": {
                     "symbol": {"type": "string", "description": "the parameter's symbol, e.g. 'a'"},
                     "min": {"type": "number"},

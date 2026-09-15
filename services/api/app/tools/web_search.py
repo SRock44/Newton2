@@ -47,10 +47,10 @@ class WebSearchTool(Tool):
 
     name = "web_search"
     description = (
-        "Search the web for current information via a self-hosted metasearch instance. "
-        "Use this for facts, events, prices, or documentation that may postdate your "
-        "training data or that you're not confident about. Returns a numbered list of "
-        "top results, each with a title, URL, and short snippet."
+        "Searches the web via a self-hosted metasearch instance for current "
+        "information -- use for anything that may postdate your training data or "
+        "you're not confident about. Returns numbered results with a title, URL, "
+        "and snippet."
     )
     parameters: dict[str, Any] = {
         "type": "object",

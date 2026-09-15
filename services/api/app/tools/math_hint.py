@@ -89,12 +89,10 @@ class GetMathHintTool(Tool):
 
     name = "get_math_hint"
     description = (
-        "Gives a progressive, verified hint for a math problem, grounded in real "
-        "symbolic-math computation (never hallucinated) -- without just handing over "
-        "the full answer. Call this when a student says they're stuck and want a "
-        "nudge rather than a solved answer. hint_level 1 = a conceptual nudge about "
-        "which technique applies (no numbers, no steps); 2 = the first concrete step; "
-        "3 = the full worked answer."
+        "Gives a progressive, verified math hint (grounded in real symbolic "
+        "computation, never hallucinated) without revealing the full answer outright. "
+        "Call when a student is stuck and wants a nudge, not a solved answer -- see "
+        "hint_level for how much it reveals."
     )
     parameters: dict[str, Any] = {
         "type": "object",
