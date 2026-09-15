@@ -243,10 +243,13 @@ async def test_note_content_is_retrieved_into_rag_like_any_uploaded_document(db_
 # ---------------------------------------------------------------------------
 
 
-async def test_annotate_returns_generated_text_for_each_action(http_client, auth_headers, db_session, monkeypatch):
-    create_resp = await http_client.post("/notes", headers=auth_headers, json={"title": "Annotate me"})
-    note_id = create_resp.json()["id"]
-
+async def test_annotate_selection_returns_generated_text_for_each_action(monkeypatch):
+    """Exercises app.services.notes.annotate_selection directly, the same way
+    test_agents_tutor.py's provider-mocking tests call tutor.run_tutor directly rather
+    than through HTTP -- the hermetic suite's http_client hits a REAL, separate uvicorn
+    subprocess (see tests/conftest.py), so a monkeypatch in this test process would be
+    invisible to it. Direct in-process calls are how this codebase already tests
+    provider-dependent behavior without a real model."""
     for action, canned in (
         ("explain", "This means the derivative measures instantaneous rate of change."),
         ("define", "Derivative: the instantaneous rate of change of a function."),
@@ -255,21 +258,38 @@ async def test_annotate_returns_generated_text_for_each_action(http_client, auth
         fake = ScriptedToolCallingProvider([[canned]])
         monkeypatch.setattr(notes_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
 
-        resp = await http_client.post(
-            f"/notes/{note_id}/annotate",
-            headers=auth_headers,
-            json={
-                "selected_text": "the derivative",
-                "context": "In calculus, the derivative describes how a function changes.",
-                "action": action,
-            },
+        result = await notes_service.annotate_selection(
+            "the derivative", "In calculus, the derivative describes how a function changes.", action
         )
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["text"] == canned
+
+        assert result == canned
         # No tool belt, no chat history — a single system+user turn, exactly like
         # _plan_narration.
         assert len(fake.calls_seen) == 1
         assert [t.role for t in fake.calls_seen[0]["messages"]] == ["system", "user"]
+
+
+async def test_annotate_endpoint_returns_a_reasonably_scoped_response_over_http(
+    http_client, auth_headers, db_session
+):
+    """A real HTTP round-trip through the router (auth, ownership check, JSON shape) --
+    deliberately doesn't assert exact wording (the hermetic suite has no real model
+    configured, see pytest.ini/test.yml, so this exercises the keyless EchoProvider
+    fallback), just that the endpoint wires up correctly end to end."""
+    create_resp = await http_client.post("/notes", headers=auth_headers, json={"title": "Annotate me"})
+    note_id = create_resp.json()["id"]
+
+    resp = await http_client.post(
+        f"/notes/{note_id}/annotate",
+        headers=auth_headers,
+        json={
+            "selected_text": "the derivative",
+            "context": "In calculus, the derivative describes how a function changes.",
+            "action": "explain",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert isinstance(resp.json()["text"], str) and resp.json()["text"].strip()
 
     document = await db_session.get(Document, uuid.UUID(note_id))
     await documents_service.delete_document(db_session, document)
@@ -290,13 +310,12 @@ async def test_annotate_rejects_invalid_action(http_client, auth_headers, db_ses
     await documents_service.delete_document(db_session, document)
 
 
-async def test_annotate_never_records_frontier_usage(http_client, auth_headers, db_session, monkeypatch):
+async def test_annotate_selection_never_records_frontier_usage(monkeypatch):
     """Mirrors app/agents/tutor.py's own billing-isolation test for _plan_narration:
     annotate_selection must never touch billing_service.record_frontier_usage, since
-    it's an unbilled operational cost like _plan_narration, not a routed frontier call."""
-    create_resp = await http_client.post("/notes", headers=auth_headers, json={"title": "Unbilled check"})
-    note_id = create_resp.json()["id"]
-
+    it's an unbilled operational cost like _plan_narration, not a routed frontier call.
+    Calls annotate_selection directly (in-process) for the same reason the
+    generated-text test above does -- see its docstring."""
     fake = ScriptedToolCallingProvider([["A short, on-topic answer."]])
     monkeypatch.setattr(notes_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
 
@@ -308,13 +327,7 @@ async def test_annotate_never_records_frontier_usage(http_client, auth_headers, 
 
     monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
 
-    resp = await http_client.post(
-        f"/notes/{note_id}/annotate",
-        headers=auth_headers,
-        json={"selected_text": "x", "context": "y", "action": "explain"},
-    )
-    assert resp.status_code == 200, resp.text
-    assert recorded == []
+    result = await notes_service.annotate_selection("x", "y", "explain")
 
-    document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    assert result == "A short, on-topic answer."
+    assert recorded == []
