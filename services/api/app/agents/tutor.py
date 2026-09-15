@@ -287,10 +287,16 @@ PLAN_NARRATION_SYSTEM_PROMPT = (
     "plan."
 )
 
-# Strict and short: a slow/failed plan-narration call must never noticeably delay the
-# real reply. Any failure or timeout here is silently swallowed by _plan_narration --
-# the caller proceeds straight to the normal flow with zero visible error.
-PLAN_NARRATION_TIMEOUT_SECONDS = 3.5
+# Bounded, but not razor-thin: live testing against the real deployed OpenRouter route
+# (see ROADMAP.md) showed real, well-formed responses whose headers arrive in ~1-2s but
+# whose first SSE content chunk can genuinely take another couple of seconds on top of
+# that under real (non-mocked) network/provider-routing conditions -- an earlier, much
+# tighter 3.5s value was timing this out on a real, otherwise-successful call more often
+# than not. Any failure or timeout here is silently swallowed by _plan_narration -- the
+# caller proceeds straight to the normal flow with zero visible error -- so the cost of
+# this being a little more generous is a slightly later (never absent) plan chip, not a
+# delayed reply.
+PLAN_NARRATION_TIMEOUT_SECONDS = 8.0
 
 
 async def _plan_narration(user_message: str) -> str | None:
