@@ -351,6 +351,20 @@ async def run_tutor(
     byok_anthropic_key: str | None = None,
     user_id: str | None = None,
 ) -> AsyncIterator[TutorEvent]:
+    # Fired immediately, concurrently with the bundle/user-load/turn-assembly work
+    # below -- NEVER awaited with any timeout budget of its own from this point on.
+    # This must add zero latency to a real turn: live testing against the deployed
+    # stack showed the previous "await _plan_narration(...) before the main loop"
+    # version blocking every turn for the full PLAN_NARRATION_TIMEOUT_SECONDS budget
+    # whenever the call didn't come back fast (which was most of the time under real
+    # OpenRouter latency) -- turning the one thing meant to fill the dead gap before
+    # the first token into an extra flat tax on top of it. Checked opportunistically,
+    # non-blockingly, right before the main loop starts: if it already finished by
+    # then (a real possibility since get_bundle/_load_user/turn assembly below take
+    # real time too), use it; otherwise drop it for good rather than waiting even
+    # briefly -- "wait a bit longer for a bonus" is exactly the regression this fixes.
+    plan_task = asyncio.create_task(_plan_narration(user_message))
+
     bundle = await get_bundle(session_id)
     user = await _load_user(user_id)
 
@@ -379,13 +393,18 @@ async def run_tutor(
     provider, model, is_frontier = _select_provider(user, byok_anthropic_key)
     tools = get_tool_specs()
 
-    # A cheap, honest "thinking" chip: one short, separate plan-narration call, fired
-    # before the real tool-calling/answer loop below and never charged against any
-    # user's credit ledger (see _plan_narration's own docstring). No-ops silently
-    # (returns None) if OpenRouter isn't configured or the call fails/times out.
-    plan_text = await _plan_narration(user_message)
-    if plan_text:
-        yield PlanChunk(plan_text)
+    # A cheap, honest "thinking" chip: use the plan-narration task kicked off at the
+    # top of this function ONLY if it's already finished -- never wait for it here,
+    # per the comment on plan_task's creation above. Cancel it otherwise so a slow
+    # call doesn't linger. Never charged against any user's credit ledger (see
+    # _plan_narration's own docstring); no-ops silently if OpenRouter isn't
+    # configured or the call failed/timed out.
+    if plan_task.done():
+        plan_text = plan_task.result()
+        if plan_text:
+            yield PlanChunk(plan_text)
+    else:
+        plan_task.cancel()
 
     # Tracks real token usage across every round of this call (which may span several
     # tool-call rounds, each its own provider call) — yielded once as UsageInfo for the
