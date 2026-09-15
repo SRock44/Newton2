@@ -1654,30 +1654,30 @@ textarea:focus-visible,
   padding-top: 3px;
 }
 
-.transcript-role {
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--color-text-faint);
-}
-
-/* Newton's role label gets the editorial display voice — a quiet way of giving the
-   assistant a distinct "presence" in the transcript without a full avatar or a
-   differently-colored bubble. The student's own label stays plain, upright UI type. */
-.transcript-entry--assistant .transcript-role {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-variation-settings: "opsz" 14, "SOFT" 45;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: var(--font-size-sm);
+/* No literal "YOU"/"Newton" text label — product feedback called the old version
+   "annoying and stupid." Role reads from this small brand mark (assistant only; a
+   user message needs no icon, its .transcript-body tint/accent border already says
+   "you") plus the hairline rule already separating entries — see .transcript-entry's
+   own comment. */
+.transcript-mark {
   color: var(--color-accent);
+  flex-shrink: 0;
 }
 
+/* The timestamp stays out of the always-visible default view — present in the DOM
+   (so it's still copyable/inspectable, and has a native `title` tooltip) but only
+   visually revealed on hover, rather than a permanent fixture next to every message. */
 .transcript-time {
   font-size: var(--font-size-2xs);
   color: var(--color-text-faint);
   margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.transcript-entry:hover .transcript-time,
+.transcript-entry:focus-within .transcript-time {
+  opacity: 1;
 }
 
 .transcript-body {
@@ -1797,15 +1797,37 @@ textarea:focus-visible,
   font-family: var(--font-mono);
 }
 
-.streaming-dots {
+/* The always-visible "Newton is thinking" placeholder — rendered from the instant a
+   message is sent (see App.tsx's handleSend), replacing the old dots-only signal with
+   something that reads as genuinely alive: a slow breathing pulse on the text itself
+   plus a small bouncing-dots accent, in this app's existing restrained serif-italic
+   voice (the same one .transcript-mark/.plan-chip already use for "Newton"), not a
+   generic spinner. Never shown alongside real content — see MessageBubble.tsx's
+   showStreamingDots, which is false the moment text, tool activity, or a plan chip
+   has landed. */
+.thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.thinking-indicator-text {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  animation: thinking-text-breathe 1.8s ease-in-out infinite;
+}
+
+.thinking-indicator-dots {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  margin-top: var(--space-2);
   height: 8px;
 }
 
-.streaming-dots span {
+.thinking-indicator-dots span {
   width: 4px;
   height: 4px;
   border-radius: 50%;
@@ -1814,12 +1836,22 @@ textarea:focus-visible,
   animation: streaming-bounce 1.1s infinite ease-in-out;
 }
 
-.streaming-dots span:nth-child(2) {
+.thinking-indicator-dots span:nth-child(2) {
   animation-delay: 0.15s;
 }
 
-.streaming-dots span:nth-child(3) {
+.thinking-indicator-dots span:nth-child(3) {
   animation-delay: 0.3s;
+}
+
+@keyframes thinking-text-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes streaming-bounce {
@@ -2621,6 +2653,37 @@ textarea:focus-visible,
   font-variant-numeric: tabular-nums;
   min-width: 3.5em;
   text-align: right;
+}
+
+/* ---------- Math virtual-keyboard dock ----------
+   MathLive's `mathVirtualKeyboard` singleton defaults to rendering as a page-level
+   fixed overlay appended to `document.body` (its own `body > .ML__keyboard { position:
+   fixed }` rule) — on the real running app that meant the keyboard panel covered
+   whatever `<math-field>` opened it (often scrolled mid-transcript) AND the Composer's
+   own primary input at the bottom of the window. Product feedback: "if you open up the
+   math calculator, you can't even see what you are typing because it BLOCKS the
+   textbox."
+
+   Fixed by retargeting the singleton (see src/lib/mathKeyboardDock.ts) at this element
+   instead — a normal flex child of .main-pane, a sibling of .chat-pane/.composer
+   rather than a page-covering overlay. Normal document flow means it can never overlap
+   the composer (showing it pushes the composer down / shrinks .chat-pane's scroll area
+   instead), and it's naturally confined to the main chat column's width, excluding the
+   sidebar and right context panel. Starts at zero height so it takes no space at all
+   until the keyboard is actually shown (mathKeyboardDock.ts toggles
+   .math-keyboard-dock--visible from the singleton's own real "virtual-keyboard-toggle"
+   event, not a guess). */
+.math-keyboard-dock {
+  flex-shrink: 0;
+  height: 0;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.math-keyboard-dock--visible {
+  height: min(320px, 42vh);
+  overflow: auto;
+  border-top: 1px solid var(--color-border-2);
 }
 
 /* ---------- Composer ---------- */

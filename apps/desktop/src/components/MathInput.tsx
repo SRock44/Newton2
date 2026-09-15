@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { setupMathKeyboardDock } from "../lib/mathKeyboardDock";
 
 /** The slice of MathfieldElement's real API this wrapper actually touches — kept
  * intentionally small and structural (rather than importing MathLive's own
@@ -93,6 +94,12 @@ function MathInput({ value, onChange, onSubmit, placeholder, disabled, ariaLabel
     loadMathlive().then(() => {
       if (cancelled || !containerRef.current) return;
 
+      // Retarget the page-level virtual-keyboard singleton at this app's own dock
+      // element instead of its default document.body overlay — see
+      // lib/mathKeyboardDock.ts's docstring for the full "why." Idempotent (real work
+      // happens once per page load), so calling it from every field's mount is fine.
+      setupMathKeyboardDock();
+
       field = document.createElement("math-field") as MathFieldEl;
       field.className = "math-input__field";
       // "manual" (rather than the default "auto") means the virtual keyboard never
@@ -156,6 +163,12 @@ function MathInput({ value, onChange, onSubmit, placeholder, disabled, ariaLabel
 
   function showKeyboard() {
     fieldRef.current?.focus();
+    // The field can be scrolled to the middle (or bottom) of a long transcript when
+    // its keyboard opens — bring it into the upper portion of the scrollable message
+    // list first so the now-docked keyboard below (see mathKeyboardDock.ts) never ends
+    // up covering the very field it's meant to help type into. Optional-chained: jsdom
+    // (MathInput.test.tsx) has no real scrollIntoView implementation.
+    fieldRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     // Only present in a real browser with MathLive fully loaded — never in the mocked
     // test boundary (see MathInput.test.tsx), so this is deliberately optional-chained
     // rather than assumed to exist.

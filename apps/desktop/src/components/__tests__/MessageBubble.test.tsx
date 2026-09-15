@@ -8,6 +8,82 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Product feedback: "the YOU and the NEWTON on the left side of the chatbox is
+// annoying and stupid." The literal role-label text is gone from default view; role
+// is read from the surrounding chrome instead (a small NewtonMark icon for the
+// assistant, nothing for the user) plus an accessible name on the row itself, and the
+// timestamp is present but visually hidden until hover (see App.css's hover-reveal
+// rule -- not directly testable via jsdom's computed styles here, so this just proves
+// the element still renders in the DOM for that CSS rule to apply to).
+describe("MessageBubble role attribution (no literal text label)", () => {
+  it("never renders the literal words 'YOU' or 'Newton' as visible text for either role", () => {
+    const assistantMessage: ChatMessage = { role: "assistant", content: "Here's the answer." };
+    const { container: assistantContainer } = render(
+      <MessageBubble
+        message={assistantMessage}
+        token="tok"
+        sessionId="s1"
+        onOpenSuggestedPanel={vi.fn()}
+        onOpenDocument={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/^you$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^newton$/i)).not.toBeInTheDocument();
+
+    const userMessage: ChatMessage = { role: "user", content: "What's the answer?" };
+    const { container: userContainer } = render(
+      <MessageBubble message={userMessage} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
+    expect(screen.queryByText(/^you$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^newton$/i)).not.toBeInTheDocument();
+
+    expect(assistantContainer.querySelector(".transcript-role")).toBeNull();
+    expect(userContainer.querySelector(".transcript-role")).toBeNull();
+  });
+
+  it("renders a NewtonMark icon in the gutter for an assistant message, and none at all for a user message", () => {
+    const assistantMessage: ChatMessage = { role: "assistant", content: "Here's the answer." };
+    const { container: assistantContainer } = render(
+      <MessageBubble
+        message={assistantMessage}
+        token="tok"
+        sessionId="s1"
+        onOpenSuggestedPanel={vi.fn()}
+        onOpenDocument={vi.fn()}
+      />,
+    );
+    expect(assistantContainer.querySelector(".transcript-gutter svg.transcript-mark")).toBeInTheDocument();
+
+    const userMessage: ChatMessage = { role: "user", content: "What's the answer?" };
+    const { container: userContainer } = render(
+      <MessageBubble message={userMessage} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
+    expect(userContainer.querySelector(".transcript-gutter svg")).toBeNull();
+  });
+
+  it("still exposes role as an accessible name on the row, for screen-reader users", () => {
+    const assistantMessage: ChatMessage = { role: "assistant", content: "Here's the answer." };
+    render(
+      <MessageBubble
+        message={assistantMessage}
+        token="tok"
+        sessionId="s1"
+        onOpenSuggestedPanel={vi.fn()}
+        onOpenDocument={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Newton")).toBeInTheDocument();
+  });
+
+  it("keeps the timestamp in the DOM (for App.css's hover-reveal rule) rather than never rendering it", () => {
+    const message: ChatMessage = { role: "assistant", content: "Hi.", created_at: new Date().toISOString() };
+    const { container } = render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
+    expect(container.querySelector(".transcript-time")).toBeInTheDocument();
+  });
+});
+
 describe("MessageBubble", () => {
   it("renders plain messages without an attached-image marker unaffected", () => {
     const message: ChatMessage = { role: "assistant", content: "Just some text." };
@@ -206,7 +282,7 @@ describe("MessageBubble", () => {
       render(
         <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
       );
-      expect(screen.getByLabelText("Newton is responding")).toBeInTheDocument();
+      expect(screen.getByLabelText("Newton is thinking")).toBeInTheDocument();
     });
 
     it("does not show the streaming dots once a finished/non-streaming message renders", () => {
@@ -214,7 +290,7 @@ describe("MessageBubble", () => {
       render(
         <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
       );
-      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
     });
 
     it("hides the streaming dots once real text content has arrived", () => {
@@ -222,7 +298,7 @@ describe("MessageBubble", () => {
       render(
         <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
       );
-      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
     });
 
     it("hides the streaming dots once tool activity has arrived, even with no text yet", () => {
@@ -235,7 +311,7 @@ describe("MessageBubble", () => {
       render(
         <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
       );
-      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
     });
 
     it("hides the streaming dots once a plan-narration chip has arrived, even with no text or activity yet", () => {
@@ -248,7 +324,7 @@ describe("MessageBubble", () => {
       render(
         <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
       );
-      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
     });
   });
 

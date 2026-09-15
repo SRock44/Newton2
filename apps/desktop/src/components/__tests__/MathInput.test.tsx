@@ -93,4 +93,29 @@ describe("MathInput", () => {
     await user.click(screen.getByRole("button", { name: /show math keyboard/i }));
     expect(focusSpy).toHaveBeenCalled();
   });
+
+  // Issue: MathLive's virtual keyboard used to render as a page-covering overlay that
+  // could land nowhere near a field scrolled to the middle of a long transcript --
+  // "if you open up the math calculator, you can't even see what you are typing
+  // because it BLOCKS the textbox." Regardless of how well the keyboard itself gets
+  // docked (see lib/mathKeyboardDock.ts), the field should always be scrolled into the
+  // upper portion of view the moment its keyboard opens.
+  it("scrolls the field into the upper portion of view when the keyboard-toggle button is clicked", async () => {
+    const scrollIntoViewMock = vi.fn();
+    // jsdom has no real scrollIntoView implementation -- stub it directly so the
+    // optional-chained call in showKeyboard() has something real to hit and assert on.
+    (HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = scrollIntoViewMock;
+
+    try {
+      const user = userEvent.setup();
+      const { container } = render(<MathInput value="" onChange={vi.fn()} />);
+      await getField(container);
+
+      await user.click(screen.getByRole("button", { name: /show math keyboard/i }));
+
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ block: "start" }));
+    } finally {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
 });

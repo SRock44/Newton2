@@ -528,27 +528,24 @@ function App() {
 
         if (payload.type === "plan_chunk") {
           // Always fires (if at all) before any real answer text/tool activity for the
-          // same reply -- but can still be the very first event of the turn, so start
-          // the streaming assistant message here if it doesn't exist yet, mirroring
-          // tool_start's identical "first event of the reply" handling below.
+          // same reply. Updates the streaming placeholder handleSend already pushed
+          // synchronously the moment the user's message was sent (see ROADMAP.md's
+          // "always-visible thinking indicator" entry) -- it's guaranteed to already
+          // exist by the time any WS frame lands, so this is a plain in-place update,
+          // never a second/duplicate message.
           setIsStreaming(true);
           const planNarration = payload.content ?? "";
           setMessages((prev) => {
             const last = prev[prev.length - 1];
-            if (!last || last.role !== "assistant" || !last.streaming) {
-              return [...prev, { role: "assistant", content: "", streaming: true, planNarration }];
-            }
+            if (!last || last.role !== "assistant" || !last.streaming) return prev;
             return [...prev.slice(0, -1), { ...last, planNarration }];
           });
         } else if (payload.type === "chunk") {
           setIsStreaming(true);
           setMessages((prev) => {
             const last = prev[prev.length - 1];
-            if (last?.role === "assistant" && last.streaming) {
-              const updated = { ...last, content: last.content + (payload.content ?? "") };
-              return [...prev.slice(0, -1), updated];
-            }
-            return [...prev, { role: "assistant", content: payload.content ?? "", streaming: true }];
+            if (!last || last.role !== "assistant" || !last.streaming) return prev;
+            return [...prev.slice(0, -1), { ...last, content: last.content + (payload.content ?? "") }];
           });
         } else if (payload.type === "tool_start" || payload.type === "tool_end") {
           setIsStreaming(true);
@@ -556,17 +553,7 @@ function App() {
           const label = payload.label ?? tool;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
-            if (!last || last.role !== "assistant" || !last.streaming) {
-              // A tool call can be the very first event of a reply (before any text) —
-              // start the streaming assistant message here if it doesn't exist yet.
-              if (payload.type === "tool_start") {
-                return [
-                  ...prev,
-                  { role: "assistant", content: "", streaming: true, activity: [{ tool, label, done: false }] },
-                ];
-              }
-              return prev;
-            }
+            if (!last || last.role !== "assistant" || !last.streaming) return prev;
             const activity = last.activity ?? [];
             if (payload.type === "tool_start") {
               return [...prev.slice(0, -1), { ...last, activity: [...activity, { tool, label, done: false }] }];
@@ -665,7 +652,14 @@ function App() {
       ]);
       return;
     }
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    // The user's message AND an immediate "Newton is thinking" placeholder land in the
+    // same synchronous update, before any WebSocket frame can possibly arrive -- so
+    // there is always visible activity from the instant Send is pressed, not just once
+    // the first real frame eventually lands (see ROADMAP.md's "always-visible thinking
+    // indicator" entry; MessageBubble.tsx's showStreamingDots renders this placeholder
+    // state, and every WS handler above updates this same message in place from here
+    // on, never creating a second one).
+    setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: "", streaming: true }]);
     rememberFirstMessage(activeSessionId, text);
     socket.send(JSON.stringify({ type: "user_message", content: text }));
     setIsStreaming(true);
@@ -906,6 +900,13 @@ function App() {
                     firstRun={!onboardingSeen}
                     onDismissFirstRun={handleDismissOnboarding}
                   />
+                  {/* MathLive's virtual keyboard is retargeted here instead of its
+                      default page-covering overlay — see lib/mathKeyboardDock.ts and
+                      App.css's ".math-keyboard-dock" for the full "why". A flex
+                      sibling of ChatPane/Composer: showing the keyboard pushes the
+                      composer down rather than ever overlapping it, and starts at
+                      zero height so it takes no space until actually shown. */}
+                  <div id="math-keyboard-dock" className="math-keyboard-dock" />
                   <Composer
                     ref={composerRef}
                     onSend={handleSend}

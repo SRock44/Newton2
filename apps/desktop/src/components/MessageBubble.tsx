@@ -2,6 +2,7 @@ import type { ChatMessage } from "../types";
 import MessageContent from "./MessageContent";
 import AttachedImage from "./AttachedImage";
 import AttachedDocumentChip from "./AttachedDocumentChip";
+import NewtonMark from "./NewtonMark";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -80,10 +81,17 @@ function formatTime(iso?: string): string | null {
 }
 
 // A conversation renders as a single flowing transcript column, not a stack of chat
-// bubbles: each turn is a grid row with a narrow marginal gutter (role + timestamp,
-// the way a printed dialogue or annotated notebook page marks who's speaking) and a
-// full-measure body. Role is read from the gutter label and a hairline rule, never
-// from left/right alignment — see App.css's ".transcript-entry" rules for the rest.
+// bubbles: each turn is a grid row with a narrow marginal gutter and a full-measure
+// body. Role is read from the surrounding chrome, never a literal "YOU"/"Newton" label
+// — a small NewtonMark icon for the assistant, nothing at all for the student (its
+// distinct background tint/accent border on .transcript-body already says "you" without
+// a word), plus a hairline rule. Product feedback on the earlier literal-label version:
+// "the YOU and the NEWTON on the left side of the chatbox is annoying and stupid" — the
+// flowing single-column structure itself was praised separately and is unchanged here,
+// only what renders inside the gutter changed. The timestamp stays out of the way too:
+// present in the DOM for a11y/copy but visually hidden until the row is hovered (see
+// App.css's ".transcript-time" hover-reveal), not a permanent fixture next to every
+// message. See App.css's ".transcript-entry" rules for the rest.
 function MessageBubble({
   message,
   token,
@@ -96,6 +104,8 @@ function MessageBubble({
   isLatestPaperPlanMessage,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  // Still used as an accessible name for the row (a screen-reader user still needs to
+  // know who's speaking) even though no literal text renders in the gutter anymore.
   const roleLabel = isUser ? "You" : message.role === "assistant" ? "Newton" : message.role;
   const time = formatTime(message.created_at);
   const { text: afterImages, imageIds } = extractAttachedImages(message.content);
@@ -110,16 +120,27 @@ function MessageBubble({
   // Once real text or tool activity has landed, the plan chip is done being "live" --
   // same grayed-out/checked treatment tool chips already get, not an abrupt disappearance.
   const planNarrationDone = hasRealContent || hasActivity;
-  // The streaming dots exist to signal "genuinely nothing has arrived yet" -- once any
-  // of text, tool activity, or the plan-narration chip has landed, one of those is
-  // already telling the student Newton is working, so the redundant dots stop.
+  // The "Newton is thinking" indicator exists to signal "genuinely nothing has arrived
+  // yet" -- once any of text, tool activity, or the plan-narration chip has landed, one
+  // of those is already telling the student Newton is working, so the redundant
+  // indicator stops. It's also what App.tsx's handleSend renders synchronously the
+  // instant a message is sent (a fresh placeholder message has none of the three yet),
+  // so there is always visible activity from message zero, not just once a WS frame
+  // eventually arrives — see ROADMAP.md's "always-visible thinking indicator" entry.
   const showStreamingDots = Boolean(message.streaming) && !hasRealContent && !hasActivity && !hasPlanNarration;
 
   return (
-    <div className={`transcript-entry transcript-entry--${isUser ? "user" : "assistant"}`}>
+    <div
+      className={`transcript-entry transcript-entry--${isUser ? "user" : "assistant"}`}
+      aria-label={roleLabel}
+    >
       <div className="transcript-gutter">
-        <span className="transcript-role">{roleLabel}</span>
-        {time && <span className="transcript-time">{time}</span>}
+        {!isUser && <NewtonMark size={16} className="transcript-mark" />}
+        {time && (
+          <span className="transcript-time" title={time}>
+            {time}
+          </span>
+        )}
       </div>
       <div
         className={`transcript-body${message.error ? " transcript-body--error" : ""}${
@@ -197,11 +218,14 @@ function MessageBubble({
         )}
         {message.stoppedByUser && <div className="message-stopped-note">Stopped</div>}
         {showStreamingDots && (
-          <span className="streaming-dots" aria-label="Newton is responding">
-            <span />
-            <span />
-            <span />
-          </span>
+          <div className="thinking-indicator" aria-label="Newton is thinking">
+            <span className="thinking-indicator-text">Newton is thinking…</span>
+            <span className="thinking-indicator-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </div>
         )}
       </div>
     </div>

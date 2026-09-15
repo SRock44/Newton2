@@ -343,7 +343,7 @@ describe("App", () => {
   // Item 4 (ROADMAP.md): the plan-narration chip. plan_chunk can arrive as the very
   // first frame of a reply, before any text or tool activity -- mirrors the existing
   // tool_start-as-first-frame handling exercised above.
-  it("creates the assistant message from a plan_chunk frame, and marks the plan chip done once real text lands", async () => {
+  it("updates the already-live thinking placeholder from a plan_chunk frame, and marks the plan chip done once real text lands", async () => {
     const user = await signIn();
     await (await messageList()).findByText("Hello from s1");
 
@@ -356,16 +356,19 @@ describe("App", () => {
     await user.type(textarea, "Explain the chain rule");
     await user.keyboard("{Enter}");
 
-    // No assistant message exists yet -- plan_chunk must create one.
+    // handleSend already pushed a synchronous "Newton is thinking" placeholder --
+    // plan_chunk updates that same message in place rather than creating a new one.
+    expect(await screen.findByLabelText("Newton is thinking")).toBeInTheDocument();
+
     act(() => {
       socket.onmessage?.({
         data: JSON.stringify({ type: "plan_chunk", content: "I'll explain the chain rule with an example." }),
       });
     });
     expect(await screen.findByText("I'll explain the chain rule with an example.")).toBeInTheDocument();
-    // The plan chip itself is already a "still working" signal -- the dots don't stack
-    // on top of it.
-    expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+    // The plan chip itself is already a "still working" signal -- the thinking
+    // indicator doesn't stack on top of it.
+    expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
 
     act(() => {
       socket.onmessage?.({ data: JSON.stringify({ type: "chunk", content: "The chain rule says..." }) });
@@ -374,6 +377,75 @@ describe("App", () => {
     // Once real text has landed, the plan chip gets marked done rather than vanishing.
     const chip = screen.getByText("I'll explain the chain rule with an example.").closest(".plan-chip");
     expect(chip).toHaveClass("tool-activity-chip--done");
+  });
+
+  // Item 6 (ROADMAP.md): an immediate, unconditional, zero-network-dependency "Newton
+  // is thinking" placeholder -- there must always be visible activity from the instant
+  // Send is pressed, regardless of whether the backend's plan-narration race (see
+  // app/agents/tutor.py) wins or loses, or how long the first real WS frame takes.
+  describe("the synchronous thinking placeholder", () => {
+    it("appears the instant a message is sent, with zero async wait for any WS frame", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+
+      const textarea = screen.getByPlaceholderText(/ask newton/i);
+      await user.type(textarea, "Explain gravity");
+      await user.keyboard("{Enter}");
+
+      // Synchronous: no findBy/waitFor needed, it's already there right after send.
+      expect(screen.getByLabelText("Newton is thinking")).toBeInTheDocument();
+    });
+
+    it("gets replaced in place (never duplicated) by whichever real content arrives first", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+      const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
+        onmessage: ((event: { data: string }) => void) | null;
+      };
+
+      const textarea = screen.getByPlaceholderText(/ask newton/i);
+      await user.type(textarea, "Search the web for today's date");
+      await user.keyboard("{Enter}");
+
+      expect(screen.getByLabelText("Newton is thinking")).toBeInTheDocument();
+      const list = await messageList();
+      const assistantMessagesBefore = list.getAllByLabelText("Newton").length;
+
+      act(() => {
+        socket.onmessage?.({
+          data: JSON.stringify({ type: "tool_start", tool: "web_search", label: "Searching the web" }),
+        });
+      });
+
+      // The thinking indicator is gone -- tool activity is now the "still working"
+      // signal -- and no second assistant message was created for this turn.
+      expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
+      expect(await screen.findByText("Searching the web")).toBeInTheDocument();
+      expect(list.getAllByLabelText("Newton").length).toBe(assistantMessagesBefore);
+    });
+
+    it("never lingers alongside real answer text once it starts streaming in", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+      const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
+        onmessage: ((event: { data: string }) => void) | null;
+      };
+
+      const textarea = screen.getByPlaceholderText(/ask newton/i);
+      await user.type(textarea, "Explain gravity");
+      await user.keyboard("{Enter}");
+      expect(screen.getByLabelText("Newton is thinking")).toBeInTheDocument();
+
+      act(() => {
+        socket.onmessage?.({ data: JSON.stringify({ type: "chunk", content: "Gravity is a force..." }) });
+      });
+
+      expect(await screen.findByText(/Gravity is a force/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
+    });
   });
 
   // Item 5 (ROADMAP.md): auto-generated conversation titles. The backend enqueues a
