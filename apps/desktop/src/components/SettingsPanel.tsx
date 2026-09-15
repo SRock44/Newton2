@@ -13,6 +13,7 @@ import {
 } from "../api";
 import type { BillingStatus, ProModel } from "../types";
 import { getStudyRemindersEnabled, setStudyRemindersEnabled } from "../lib/preferences";
+import Toggle from "./Toggle";
 
 interface SettingsPanelProps {
   token: string;
@@ -458,12 +459,12 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
               persisted, server-side state (see handleToggleFocusMode) because it
               actually changes how the Tutor behaves and blocks write_research_paper --
               not just a client-side notification preference. */}
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
+          <div className="settings-toggle">
+            <Toggle
               checked={billing?.focus_mode_enabled ?? false}
+              onChange={handleToggleFocusMode}
               disabled={!billing || savingFocusMode}
-              onChange={(e) => handleToggleFocusMode(e.target.checked)}
+              label="Focus Mode"
             />
             <span>
               <span className="settings-toggle-label">Focus Mode</span>
@@ -472,7 +473,7 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
                 you've made a real attempt.
               </span>
             </span>
-          </label>
+          </div>
           {savingFocusMode && <p className="settings-waiting">Saving…</p>}
           {focusModeError && <div className="banner banner--error">{focusModeError}</div>}
 
@@ -481,12 +482,13 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
               primary control (always visible while chatting, per explicit product
               direction), this is the secondary Settings surface. Independent of Focus
               Mode: a student can have either, both, or neither. */}
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
+          <div className="settings-toggle">
+            <Toggle
               checked={billing?.learn_mode_enabled ?? false}
+              onChange={handleToggleLearnMode}
               disabled={!billing || savingLearnMode}
-              onChange={(e) => handleToggleLearnMode(e.target.checked)}
+              label="Learn Mode"
+              emphasized={billing?.learn_mode_enabled ?? false}
             />
             <span>
               <span className="settings-toggle-label">Learn Mode</span>
@@ -495,7 +497,7 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
                 explaining everything up front.
               </span>
             </span>
-          </label>
+          </div>
           {savingLearnMode && <p className="settings-waiting">Saving…</p>}
           {learnModeError && <div className="banner banner--error">{learnModeError}</div>}
         </section>

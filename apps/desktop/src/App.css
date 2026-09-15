@@ -1329,6 +1329,100 @@ textarea:focus-visible,
   margin-top: 3px;
 }
 
+/* Focus Mode / Learn Mode use Toggle.tsx (a real role="switch" button) instead of the
+   checkbox above -- same row shape, just a non-<label> wrapper (see SettingsPanel.tsx),
+   so the switch itself needs the same small top offset a checkbox got for free from
+   sitting on the text baseline. */
+.settings-toggle .toggle {
+  margin-top: 2px;
+}
+
+/* ---------- Toggle switch (Toggle.tsx) — a real role="switch" pill control replacing
+   every raw <input type="checkbox"> mode/preference toggle in the app (Composer.tsx's
+   Learn Mode, and SettingsPanel.tsx's Focus Mode/Learn Mode) ---------- */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.toggle:focus-visible .toggle__track {
+  box-shadow: var(--focus-ring);
+}
+
+.toggle__track {
+  position: relative;
+  display: inline-block;
+  border-radius: var(--radius-full);
+  background-color: var(--color-border-2);
+  border: 1px solid var(--color-border);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.toggle__thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  border-radius: 50%;
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease;
+}
+
+.toggle--checked .toggle__track {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.toggle--sm .toggle__track {
+  width: 30px;
+  height: 17px;
+}
+
+.toggle--sm .toggle__thumb {
+  width: 13px;
+  height: 13px;
+}
+
+.toggle--sm.toggle--checked .toggle__thumb {
+  transform: translateX(13px);
+}
+
+.toggle--md .toggle__track {
+  width: 38px;
+  height: 21px;
+}
+
+.toggle--md .toggle__thumb {
+  width: 17px;
+  height: 17px;
+}
+
+.toggle--md.toggle--checked .toggle__thumb {
+  transform: translateX(17px);
+}
+
+/* Learn Mode's own toggle instance gets a little more visual presence than a bare
+   switch would have on its own, per explicit product direction (Toggle.tsx's own doc
+   comment) — a soft accent glow around the track while on, not a different shape or
+   color, so it stays consistent with this app's restrained visual language. */
+.toggle--emphasized.toggle--checked .toggle__track {
+  box-shadow: 0 0 0 3px var(--color-accent-tint-strong);
+}
+
 .settings-toggle-label {
   display: block;
   font-size: var(--font-size-sm);
@@ -2337,25 +2431,8 @@ textarea:focus-visible,
 
 .step-check__form {
   display: flex;
+  align-items: flex-start;
   gap: var(--space-2);
-}
-
-.step-check__input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background-color: var(--color-surface);
-  color: inherit;
-  font-family: inherit;
-  font-size: var(--font-size-sm);
-  padding: var(--space-2) var(--space-3);
-}
-
-.step-check__input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: var(--focus-ring);
 }
 
 .step-check__answer {
@@ -2365,6 +2442,83 @@ textarea:focus-visible,
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
+}
+
+/* Answered attempts render through MessageContent (real KaTeX), so their outermost
+   markdown wrapper needs to stop acting like a block of prose with its own margins. */
+.step-check__answer .message-content > :first-child {
+  margin-top: 0;
+}
+
+.step-check__answer .message-content > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- MathInput (StepCheck's WYSIWYG math field, MathInput.tsx wrapping
+   MathLive's <math-field>) ---------- */
+
+.math-input {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+
+.math-input__field-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.math-input__field {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: 6px var(--space-3);
+  font-size: var(--font-size-sm);
+  /* MathLive's own theming hooks — set here rather than fighting its default look
+     with brute-force overrides (see MathInput.tsx's own doc comment). */
+  --caret-color: var(--color-accent);
+  --primary-color: var(--color-accent);
+  --selection-background-color: var(--color-accent-tint);
+  --selection-color: inherit;
+  --placeholder-color: var(--color-text-faint);
+}
+
+.math-input__field:focus,
+.math-input__field:focus-within {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring);
+}
+
+.math-input__field[disabled] {
+  opacity: 0.6;
+}
+
+.math-input__keyboard-toggle {
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  padding: 0 var(--space-2);
+  cursor: pointer;
+}
+
+.math-input__keyboard-toggle:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.math-input__keyboard-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ---------- Checkpoint (Learn Mode — comprehension check on an explanation) ---------- */
@@ -2736,14 +2890,9 @@ textarea:focus-visible,
   gap: var(--space-1);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
-  cursor: pointer;
 }
 
-.composer-learn-mode-toggle input {
-  margin: 0;
-}
-
-.composer-learn-mode-toggle:has(input:checked) {
+.composer-learn-mode-toggle:has(.toggle--checked) {
   color: var(--color-accent);
   font-weight: var(--font-weight-medium);
 }

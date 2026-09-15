@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { KeyboardEvent } from "react";
+import MathInput from "./MathInput";
+import MessageContent from "./MessageContent";
 
 /**
  * Fenced-block contract — Learn Mode's interactive step-by-step math flow (see
@@ -15,12 +16,20 @@ import type { KeyboardEvent } from "react";
  *
  * - `prompt`: required, non-empty string — the instruction shown above the input.
  *
- * Submitting (button click or Enter) sends the student's exact typed text back into
- * the chat, prefixed with "My attempt: " — a distinctive, documented marker (NOT
- * special-cased by any backend parsing) that LEARN_MODE_SYSTEM_ADDENDUM tells the model
- * to look for, so a plain reading of the conversation is enough for it to recognize
- * this as a step attempt rather than a fresh, unrelated question. Keep this prefix in
- * sync with the one named in that addendum's text if it's ever changed here.
+ * The input itself is a real WYSIWYG math field (MathInput.tsx, wrapping MathLive's
+ * `<math-field>`), not a plain text box — a math-specific answer deserves math-specific
+ * input assistance (live-rendered glyphs, a virtual keyboard with sqrt/exponent/
+ * fraction/integral panels), same reasoning `Checkpoint.tsx` deliberately does NOT
+ * share, since its comprehension-check answers are often prose, not pure math.
+ *
+ * Submitting (button click or Enter) sends the student's exact typed expression back
+ * into the chat as LaTeX, wrapped in single `$...$` inline-math delimiters (confirmed
+ * against MessageContent.tsx's remark-math/rehype-katex setup) and prefixed with
+ * "My attempt: " — a distinctive, documented marker (NOT special-cased by any backend
+ * parsing) that LEARN_MODE_SYSTEM_ADDENDUM tells the model to look for, so a plain
+ * reading of the conversation is enough for it to recognize this as a step attempt
+ * rather than a fresh, unrelated question. Keep this prefix in sync with the one named
+ * in that addendum's text if it's ever changed here.
  *
  * Like OptionsPicker/PaperPlanCard, this component keeps no client-only "already
  * answered" flag (that would reset on reload) — whoever renders it decides that from
@@ -54,7 +63,8 @@ function parseStepCheckBlock(json: string): StepCheckBlock | null {
 }
 
 /** Strips the leading "My attempt: " marker off a follow-up message for display, if
- * present — an answered card shows the student's own words, not the raw wire prefix. */
+ * present — an answered card shows the student's own words (rendered as real math, see
+ * below), not the raw wire prefix. */
 function displayAnswer(answeredWith: string): string {
   return answeredWith.startsWith(ATTEMPT_PREFIX) ? answeredWith.slice(ATTEMPT_PREFIX.length) : answeredWith;
 }
@@ -72,15 +82,8 @@ function StepCheck({ json, onSend, answeredWith }: StepCheckProps) {
   function submit() {
     const trimmed = draft.trim();
     if (!trimmed) return;
-    onSend(`${ATTEMPT_PREFIX}${trimmed}`);
+    onSend(`${ATTEMPT_PREFIX}$${trimmed}$`);
     setDraft("");
-  }
-
-  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      submit();
-    }
   }
 
   return (
@@ -88,17 +91,21 @@ function StepCheck({ json, onSend, answeredWith }: StepCheckProps) {
       <div className="step-check__label">Your turn</div>
       <div className="step-check__prompt">{block.prompt}</div>
       {answered ? (
-        <div className="step-check__answer">{displayAnswer(answeredWith)}</div>
+        // Routed through the normal markdown+KaTeX pipeline (the same one every chat
+        // message uses) rather than a plain <div>, so a wrapped `$...$` attempt renders
+        // as real typeset math here too, not raw LaTeX source text. Harmless for older/
+        // malformed attempts with no math delimiters — those just render as plain text.
+        <div className="step-check__answer">
+          <MessageContent content={displayAnswer(answeredWith)} />
+        </div>
       ) : (
         <div className="step-check__form">
-          <input
-            type="text"
-            className="step-check__input"
+          <MathInput
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onChange={setDraft}
+            onSubmit={submit}
             placeholder="Type your attempt…"
-            aria-label="Your attempt"
+            ariaLabel="Your attempt"
           />
           <button
             type="button"

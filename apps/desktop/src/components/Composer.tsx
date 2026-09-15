@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import type { ChangeEvent, KeyboardEvent } from "react";
 import { ApiError, getBillingStatus, listDocuments, setLearnMode, uploadChatImage, uploadDocument } from "../api";
 import type { UploadedDocument } from "../types";
+import Toggle from "./Toggle";
 
 /** Imperative handle exposed via ref — currently just `focus()`, used by
  * PaperPlanCard's "Request Changes" action (see App.tsx's handleFocusComposer) to put
@@ -262,18 +263,20 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   return (
     <div className="composer">
       <div className="composer-controls">
-        <label
+        <div
           className="composer-learn-mode-toggle"
           title="Newton checks your work step by step and asks you to try things yourself"
         >
-          <input
-            type="checkbox"
+          <Toggle
             checked={learnModeEnabled}
+            onChange={handleToggleLearnMode}
             disabled={!learnModeLoaded || savingLearnMode}
-            onChange={(e) => handleToggleLearnMode(e.target.checked)}
+            label="Learn Mode"
+            size="sm"
+            emphasized={learnModeEnabled}
           />
           <span>Learn Mode</span>
-        </label>
+        </div>
         {learnModeError && <span className="composer-learn-mode-error">{learnModeError}</span>}
       </div>
       {(attachedImage || attachedDocument) && (

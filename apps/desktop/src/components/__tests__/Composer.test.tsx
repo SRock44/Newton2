@@ -230,7 +230,7 @@ describe("Composer", () => {
     it("is visible directly in the composer, not just in Settings, and starts unchecked by default", async () => {
       render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
 
-      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      const toggle = await screen.findByRole("switch", { name: /learn mode/i });
       await waitFor(() => expect(toggle).not.toBeDisabled());
       expect(toggle).not.toBeChecked();
     });
@@ -239,7 +239,7 @@ describe("Composer", () => {
       vi.mocked(getBillingStatus).mockResolvedValue({ ...FREE_BILLING_STATUS, learn_mode_enabled: true });
       render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
 
-      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      const toggle = await screen.findByRole("switch", { name: /learn mode/i });
       await waitFor(() => expect(toggle).toBeChecked());
     });
 
@@ -247,7 +247,7 @@ describe("Composer", () => {
       const user = userEvent.setup();
       render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
 
-      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      const toggle = await screen.findByRole("switch", { name: /learn mode/i });
       await waitFor(() => expect(toggle).not.toBeDisabled());
       await user.click(toggle);
 
@@ -261,7 +261,7 @@ describe("Composer", () => {
       const user = userEvent.setup();
       render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
 
-      const toggle = await screen.findByRole("checkbox", { name: /learn mode/i });
+      const toggle = await screen.findByRole("switch", { name: /learn mode/i });
       await waitFor(() => expect(toggle).not.toBeDisabled());
       await user.click(toggle);
 

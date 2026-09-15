@@ -259,7 +259,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    const toggle = screen.getByRole("checkbox", { name: /focus mode/i });
+    const toggle = screen.getByRole("switch", { name: /focus mode/i });
     expect(toggle).not.toBeChecked();
 
     await user.click(toggle);
@@ -274,7 +274,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    const toggle = screen.getByRole("checkbox", { name: /focus mode/i });
+    const toggle = screen.getByRole("switch", { name: /focus mode/i });
     expect(toggle).toBeChecked();
 
     await user.click(toggle);
@@ -287,7 +287,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    expect(screen.getByRole("checkbox", { name: /focus mode/i })).toBeEnabled();
+    expect(screen.getByRole("switch", { name: /focus mode/i })).toBeEnabled();
   });
 
   it("focus mode: reverts the toggle and shows an error when saving fails", async () => {
@@ -296,7 +296,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    const toggle = screen.getByRole("checkbox", { name: /focus mode/i });
+    const toggle = screen.getByRole("switch", { name: /focus mode/i });
     await user.click(toggle);
 
     expect(await screen.findByText("Couldn't save your Focus Mode setting.")).toBeInTheDocument();
@@ -308,7 +308,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    const toggle = screen.getByRole("checkbox", { name: /learn mode/i });
+    const toggle = screen.getByRole("switch", { name: /learn mode/i });
     expect(toggle).not.toBeChecked();
 
     await user.click(toggle);
@@ -323,7 +323,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    const toggle = screen.getByRole("checkbox", { name: /learn mode/i });
+    const toggle = screen.getByRole("switch", { name: /learn mode/i });
     expect(toggle).toBeChecked();
 
     await user.click(toggle);
@@ -336,7 +336,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    expect(screen.getByRole("checkbox", { name: /learn mode/i })).toBeEnabled();
+    expect(screen.getByRole("switch", { name: /learn mode/i })).toBeEnabled();
   });
 
   it("learn mode: reverts the toggle and shows an error when saving fails", async () => {
@@ -345,7 +345,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    const toggle = screen.getByRole("checkbox", { name: /learn mode/i });
+    const toggle = screen.getByRole("switch", { name: /learn mode/i });
     await user.click(toggle);
 
     expect(await screen.findByText("Couldn't save your Learn Mode setting.")).toBeInTheDocument();
@@ -357,8 +357,8 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
-    const learnToggle = screen.getByRole("checkbox", { name: /learn mode/i });
-    const focusToggle = screen.getByRole("checkbox", { name: /focus mode/i });
+    const learnToggle = screen.getByRole("switch", { name: /learn mode/i });
+    const focusToggle = screen.getByRole("switch", { name: /focus mode/i });
 
     await user.click(learnToggle);
     await waitFor(() => expect(learnToggle).toBeChecked());
