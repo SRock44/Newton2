@@ -16,7 +16,15 @@ export default defineConfig(() => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // Bind explicitly to IPv4 loopback rather than leaving Vite to resolve the
+    // ambiguous "localhost" default itself -- on this machine that resolution landed
+    // on IPv6-only (`::1`), while tauri.conf.json's devUrl ("http://localhost:1420")
+    // and the webview's own request both ended up on IPv4, producing a real, 100%-
+    // reproducible ERR_CONNECTION_REFUSED (confirmed via `netstat`: Vite listening only
+    // on ::1, zero IPv4 listener on port 1420, `curl http://127.0.0.1:1420` refused
+    // every single time). host || false (Vite's own scaffolded default) is exactly
+    // what produced that ambiguity; pinning it removes the ambiguity outright.
+    host: host || "127.0.0.1",
     hmr: host
       ? {
           protocol: "ws",
