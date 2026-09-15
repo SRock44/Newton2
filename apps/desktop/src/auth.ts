@@ -182,6 +182,7 @@ export class TokenManager {
   private tokens: TokenSet | null = null;
   private refreshing: Promise<string> | null = null;
   private onChange: (accessToken: string | null) => void;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(onChange: (accessToken: string | null) => void) {
     this.onChange = onChange;
@@ -191,6 +192,7 @@ export class TokenManager {
     this.tokens = tokens;
     storeTokens(tokens);
     this.onChange(tokens.accessToken);
+    this._scheduleBackgroundRefresh();
   }
 
   clear(): void {
@@ -198,6 +200,37 @@ export class TokenManager {
     this.refreshing = null;
     storeTokens(null);
     this.onChange(null);
+    if (this.refreshTimer !== null) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
+
+  /** Keeps `this.tokens` (and every `onChange` subscriber — every plain REST call in
+   * api.ts reads that React `token` state directly, not getValidAccessToken) fresh on
+   * its own clock, instead of only ever refreshing reactively when something happens to
+   * open a new WebSocket. Real bug this fixes: a student staying on the SAME chat
+   * session for longer than the realm's accessTokenLifespan (infra/keycloak/
+   * realm-newton.json, 3600s) with no new WS connection in between had a silently
+   * stale token sitting in React state the whole time -- getValidAccessToken's own
+   * proactive refresh never got a chance to run, since nothing was calling it. Every
+   * ordinary REST call (a settings toggle like Learn Mode, a billing-status fetch, ...)
+   * used that stale token, got a 401, and surfaced as a generic "couldn't save" error
+   * with no indication it was ever a token problem. Self-perpetuating: each successful
+   * background refresh calls setTokens again, which reschedules the next one. */
+  private _scheduleBackgroundRefresh(): void {
+    if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
+    if (!this.tokens) return;
+    const delay = Math.max(0, this.tokens.expiresAt - EXPIRY_BUFFER_MS - Date.now());
+    this.refreshTimer = setTimeout(() => {
+      // Reuses getValidAccessToken's own de-duplication (shares an in-flight refresh
+      // with any concurrent caller, e.g. a WS reconnect landing at the same moment)
+      // rather than calling _refreshNow directly. A failure here means the refresh
+      // token itself is no longer valid (revoked, or past the offline session's own
+      // much-longer max lifespan) -- sign out cleanly to the login screen rather than
+      // leaving a dead session silently failing every REST call forever.
+      this.getValidAccessToken().catch(() => this.clear());
+    }, delay);
   }
 
   hasSession(): boolean {
