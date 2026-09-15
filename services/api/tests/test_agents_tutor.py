@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 
 import pytest
@@ -9,7 +10,7 @@ from app.agents import tutor
 from app.agents.tutor import PlanChunk, TextChunk, ToolActivity, UsageInfo
 from app.core.config import Settings
 from app.db.models import User
-from app.providers.base import ChatProvider, TextDelta, ToolCall
+from app.providers.base import ChatProvider, TextDelta, ToolCall, ToolCallRequest
 from app.services import billing as billing_service
 from tests.fakes import ScriptedToolCallingProvider
 
@@ -625,6 +626,130 @@ async def test_run_tutor_plan_chunk_is_never_billed_to_the_pro_credit_ledger(tut
 
     assert any(isinstance(e, PlanChunk) for e in events)
     assert len(recorded) == 1
+
+
+# ---------------------------------------------------------------------------
+# Racing the plan-narration call against the real answer's actual first byte (see
+# app/agents/tutor.py's `_round == 0` branch in run_tutor). Live testing (ROADMAP.md's
+# Phase 9 entries) found the plan chip essentially never won under the old "check
+# plan_task.done() once, right before the main loop" design, because real OpenRouter
+# latency for even this tiny narration call is itself multiple seconds -- far longer
+# than the near-instant local turn-assembly work it was being raced against. The fix
+# races it against the main stream's actual first event instead. These fakes add a
+# real (small) delay so tests can deterministically control which side of that race
+# wins without reaching into asyncio internals.
+# ---------------------------------------------------------------------------
+
+
+def _make_delayed_plan_provider(delay: float, text: str):
+    """Builds a fresh OpenAICompatibleProvider stand-in (a class, not an instance --
+    tutor.py constructs it itself) whose plan-narration call resolves after a real
+    `delay` seconds with `text`."""
+
+    class _DelayedPlanProvider(ChatProvider):
+        def __init__(self, base_url: str, api_key: str):
+            pass
+
+        async def stream_chat(self, messages, model, tools=None):
+            if delay:
+                await asyncio.sleep(delay)
+            yield TextDelta(text)
+
+    return _DelayedPlanProvider
+
+
+class _DelayedScriptedProvider(ChatProvider):
+    """Like ScriptedToolCallingProvider, but the first round's first chunk can be
+    preceded by a real delay -- lets a test make the main answer's actual first byte
+    deterministically slower (or faster) than a competing plan-narration call."""
+
+    def __init__(self, script: list[list[str] | list[ToolCall]], *, delay: float = 0.0):
+        self._script = list(script)
+        self._delay = delay
+        self.calls_seen: list[dict] = []
+
+    async def stream_chat(self, messages, model, tools=None):
+        self.calls_seen.append({"messages": list(messages), "model": model, "tools": tools})
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        step = self._script.pop(0)
+        if step and isinstance(step[0], ToolCall):
+            yield ToolCallRequest(list(step))
+        else:
+            for text in step:
+                yield TextDelta(text)
+
+
+async def test_run_tutor_plan_chunk_wins_the_race_against_a_slower_first_answer_event(monkeypatch):
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _make_delayed_plan_provider(0.02, "Quick plan."))
+    fake = _DelayedScriptedProvider([["The answer."]], delay=0.3)
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert isinstance(events[0], PlanChunk), "the plan chunk must be yielded before any other event"
+    assert events[0].text == "Quick plan."
+    plan_events = [e for e in events if isinstance(e, PlanChunk)]
+    assert len(plan_events) == 1
+    # The real answer's own event is neither dropped nor duplicated by the race.
+    assert text_of(events) == "The answer."
+
+
+async def test_run_tutor_main_stream_wins_the_race_and_drops_the_plan_chunk_with_no_added_delay(monkeypatch):
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    # The plan call would take 5 real seconds -- if it were ever awaited instead of
+    # cancelled, this test would itself take 5+ seconds.
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _make_delayed_plan_provider(5.0, "Too slow to matter."))
+    fake = _DelayedScriptedProvider([["Immediate answer."]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    start = time.monotonic()
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+    elapsed = time.monotonic() - start
+
+    assert not any(isinstance(e, PlanChunk) for e in events)
+    assert text_of(events) == "Immediate answer."
+    # Proves the slow plan call was cancelled, not awaited to completion.
+    assert elapsed < 2.0
+
+
+async def test_run_tutor_never_drops_or_duplicates_the_raced_first_stream_event(monkeypatch):
+    """Regardless of which side of the race wins, the main stream's own first event
+    must be consumed exactly once -- never silently dropped (skipping straight to the
+    second chunk) and never double-fetched (yielded twice)."""
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _make_delayed_plan_provider(0.02, "A plan."))
+    fake = ScriptedToolCallingProvider([["Hello", ", ", "world", "."]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert text_of(events) == "Hello, world."
+    text_chunks = [e.text for e in events if isinstance(e, TextChunk)]
+    assert text_chunks == ["Hello", ", ", "world", "."]
+
+
+async def test_run_tutor_races_the_plan_chunk_correctly_when_the_first_event_is_a_tool_call(monkeypatch):
+    """The raced "first event" isn't always text -- a tool call can be the very first
+    thing the model does. Proves the race machinery hands a ToolCallRequest first event
+    through to the tool-calling loop exactly as before, whichever side of the race won."""
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _make_delayed_plan_provider(0.02, "Let me compute that."))
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="call_1", name="calculator", arguments={"expression": "6*7"})],
+            ["42."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "what is 6 times 7?")]
+
+    assert text_of(events) == "42."
+    activity = [e for e in events if isinstance(e, ToolActivity)]
+    assert [(a.tool, a.phase) for a in activity] == [("calculator", "started"), ("calculator", "finished")]
+    assert len(fake.calls_seen) == 2
 
 
 def test_system_prompt_honestly_describes_the_free_vs_pro_generation_target():

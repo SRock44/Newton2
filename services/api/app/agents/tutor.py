@@ -345,6 +345,49 @@ async def _plan_narration(user_message: str) -> str | None:
         return None
 
 
+# Sentinel distinguishing "the stream ended with no more events" from any real event
+# (including a legitimate falsy-ish one) -- see _anext_or_end/_prepend below.
+_STREAM_END = object()
+
+
+async def _anext_or_end(aiter):
+    """Awaits exactly one `__anext__()` on an async iterator, returning `_STREAM_END`
+    instead of raising `StopAsyncIteration` when it's exhausted -- lets the caller treat
+    "fetch the next event" as an ordinary awaitable it can race via `asyncio.wait`
+    alongside another task (`StopAsyncIteration` doesn't play well with that: it's a
+    control-flow signal `async for` handles specially, not a value a Task can resolve
+    to)."""
+    try:
+        return await aiter.__anext__()
+    except StopAsyncIteration:
+        return _STREAM_END
+
+
+async def _prepend(first, rest_iter):
+    """Yields `first` (unless it's `_STREAM_END`, meaning the stream was already
+    exhausted) followed by everything remaining in `rest_iter`. Lets a caller consume
+    an async iterator's first item -- already fetched once, e.g. to race it against
+    something else -- without a second, duplicate `__anext__()` call that would either
+    drop that first item or skip straight to the second one."""
+    if first is not _STREAM_END:
+        yield first
+    async for item in rest_iter:
+        yield item
+
+
+def _resolve_plan_chunk(plan_task: "asyncio.Task[str | None]") -> "PlanChunk | None":
+    """Reads a finished plan_task's result as a PlanChunk, or None if there's nothing
+    worth showing (not actually done yet, cancelled, or a falsy/empty result --
+    _plan_narration itself never raises, but this stays defensive either way)."""
+    if not plan_task.done() or plan_task.cancelled():
+        return None
+    try:
+        text = plan_task.result()
+    except Exception:
+        return None
+    return PlanChunk(text) if text else None
+
+
 async def run_tutor(
     session_id: str,
     user_message: str,
@@ -353,16 +396,19 @@ async def run_tutor(
 ) -> AsyncIterator[TutorEvent]:
     # Fired immediately, concurrently with the bundle/user-load/turn-assembly work
     # below -- NEVER awaited with any timeout budget of its own from this point on.
-    # This must add zero latency to a real turn: live testing against the deployed
-    # stack showed the previous "await _plan_narration(...) before the main loop"
-    # version blocking every turn for the full PLAN_NARRATION_TIMEOUT_SECONDS budget
-    # whenever the call didn't come back fast (which was most of the time under real
-    # OpenRouter latency) -- turning the one thing meant to fill the dead gap before
-    # the first token into an extra flat tax on top of it. Checked opportunistically,
-    # non-blockingly, right before the main loop starts: if it already finished by
-    # then (a real possibility since get_bundle/_load_user/turn assembly below take
-    # real time too), use it; otherwise drop it for good rather than waiting even
-    # briefly -- "wait a bit longer for a bonus" is exactly the regression this fixes.
+    # This must add zero latency to a real turn. Two PM re-verification passes already
+    # happened on this mechanism (see ROADMAP.md's Phase 9 entries): the first found the
+    # original "await _plan_narration(...) before the main loop" version blocking every
+    # turn for up to PLAN_NARRATION_TIMEOUT_SECONDS; the fix for that (checking
+    # plan_task.done() once, non-blockingly, right before the main loop started) turned
+    # out to essentially never win in practice, because real OpenRouter latency for even
+    # this tiny narration call is itself multiple seconds -- far longer than the
+    # near-instant local get_bundle/_load_user/turn-assembly work it was being raced
+    # against. The actual fix: race plan_task against the REAL answer's actual first
+    # byte (the main provider stream's first event), not against local setup work --
+    # see the `_round == 0` branch below. Both calls are genuinely in flight
+    # concurrently the whole time; this never waits any *extra* time for either one
+    # beyond what its own real network round trip already costs.
     plan_task = asyncio.create_task(_plan_narration(user_message))
 
     bundle = await get_bundle(session_id)
@@ -393,19 +439,6 @@ async def run_tutor(
     provider, model, is_frontier = _select_provider(user, byok_anthropic_key)
     tools = get_tool_specs()
 
-    # A cheap, honest "thinking" chip: use the plan-narration task kicked off at the
-    # top of this function ONLY if it's already finished -- never wait for it here,
-    # per the comment on plan_task's creation above. Cancel it otherwise so a slow
-    # call doesn't linger. Never charged against any user's credit ledger (see
-    # _plan_narration's own docstring); no-ops silently if OpenRouter isn't
-    # configured or the call failed/timed out.
-    if plan_task.done():
-        plan_text = plan_task.result()
-        if plan_text:
-            yield PlanChunk(plan_text)
-    else:
-        plan_task.cancel()
-
     # Tracks real token usage across every round of this call (which may span several
     # tool-call rounds, each its own provider call) — yielded once as UsageInfo for the
     # caller to persist a per-chat running total, and, only when is_frontier, also
@@ -417,7 +450,51 @@ async def run_tutor(
     try:
         for _round in range(MAX_TOOL_ROUNDS):
             pending_calls = None
-            async for event in provider.stream_chat(turns, model, tools=tools):
+            stream_iter = provider.stream_chat(turns, model, tools=tools).__aiter__()
+
+            if _round == 0:
+                # The one point in this whole call where the plan-narration chip can
+                # still legitimately win: race "fetch the real answer's first event"
+                # against "the plan-narration call finishes" -- whichever resolves
+                # first wins, with zero extra latency added to either. Only ever done
+                # for the very first event of the very first round; every later event
+                # (this round's own rest, or any later round's) is fetched normally.
+                next_event_fut = asyncio.ensure_future(_anext_or_end(stream_iter))
+                if not plan_task.done():
+                    done, _pending = await asyncio.wait(
+                        {next_event_fut, plan_task}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if next_event_fut not in done:
+                        # plan_task resolved first -- surface it immediately, then keep
+                        # waiting on the SAME already-in-flight next_event_fut so the
+                        # real answer's first event is never dropped or fetched twice.
+                        plan_chunk = _resolve_plan_chunk(plan_task)
+                        if plan_chunk is not None:
+                            yield plan_chunk
+                    else:
+                        # The real answer's first byte won the race -- proceed exactly
+                        # as before: zero delay, no plan chip. Drop the now-useless
+                        # call: cancel it if still running, or just retrieve (and
+                        # discard) its result if it happened to finish in this same
+                        # tick, so asyncio never logs an "exception was never
+                        # retrieved" warning for a task nobody looked at.
+                        if plan_task.done():
+                            _resolve_plan_chunk(plan_task)
+                        else:
+                            plan_task.cancel()
+                else:
+                    # Already resolved by the time we got here (e.g. the bundle/user
+                    # load above took long enough on its own) -- same "use it if it's
+                    # already there" behavior as always, just checked at a more
+                    # realistic point than before.
+                    plan_chunk = _resolve_plan_chunk(plan_task)
+                    if plan_chunk is not None:
+                        yield plan_chunk
+                first_event = await next_event_fut
+            else:
+                first_event = await _anext_or_end(stream_iter)
+
+            async for event in _prepend(first_event, stream_iter):
                 if isinstance(event, TextDelta):
                     yield TextChunk(event.text)
                 elif isinstance(event, ToolCallRequest):
