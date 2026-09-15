@@ -4,10 +4,11 @@ from arq.connections import RedisSettings
 from app.core.config import get_settings
 from app.jobs.consolidate import consolidate_session
 from app.jobs.retention import report_inactive_accounts
+from app.jobs.titling import generate_session_title
 
 
 class WorkerSettings:
-    functions = [consolidate_session, report_inactive_accounts]
+    functions = [consolidate_session, report_inactive_accounts, generate_session_title]
     # Weekly, off-peak UTC -- report_inactive_accounts is read-only/logging-only (see
     # app/jobs/retention.py's module docstring for the scope decision), so there's no
     # correctness reason to run it more often than that; a real cadence can be revisited

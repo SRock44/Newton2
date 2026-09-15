@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -55,7 +56,18 @@ class UsageInfo:
     completion_tokens: int
 
 
-TutorEvent = TextChunk | ToolActivity | UsageInfo
+@dataclass
+class PlanChunk:
+    """A short, one-time "here's my plan" narration fired before the main tool-calling/
+    answer loop starts (see _plan_narration below) — the "Planning…" chip
+    (MessageBubble.tsx's .plan-chip). Mirrors TextChunk's shape deliberately (a plain
+    `text` payload); the frontend is what gives it a visually distinct treatment from
+    the streamed answer text and from tool-activity chips."""
+
+    text: str
+
+
+TutorEvent = TextChunk | ToolActivity | UsageInfo | PlanChunk
 
 # Short, student-facing descriptions of what each tool is doing — keyed by each tool's
 # real registry `.name` (see app/tools/registry.py's _TOOLS). Deliberately not technical
@@ -266,6 +278,66 @@ LEARN_MODE_SYSTEM_ADDENDUM = (
 # calling tools back-to-back with no final answer.
 MAX_TOOL_ROUNDS = 4
 
+# Kept terse and cheap on purpose -- this is a single throwaway call, not part of the
+# real answer, so it should read as "under 15 words," never restate or answer the
+# question, and never itself look like the tutor's real reply.
+PLAN_NARRATION_SYSTEM_PROMPT = (
+    "In one short sentence (under 15 words), state your plan for answering the "
+    "student's next message. Do not restate the question. Do not answer it. Just the "
+    "plan."
+)
+
+# Strict and short: a slow/failed plan-narration call must never noticeably delay the
+# real reply. Any failure or timeout here is silently swallowed by _plan_narration --
+# the caller proceeds straight to the normal flow with zero visible error.
+PLAN_NARRATION_TIMEOUT_SECONDS = 3.5
+
+
+async def _plan_narration(user_message: str) -> str | None:
+    """Fires one short, separate, cheap model call that narrates a 1-2 sentence plan
+    before the main tool-calling/answer loop starts -- the "Planning…" chip's content
+    (see MessageBubble.tsx's .plan-chip / ROADMAP.md's "cheap, honest thinking chip").
+
+    Dormant until settings.openrouter_api_key is configured -- same pattern every
+    other optional integration in this codebase uses (Stripe, Google Classroom, ...):
+    quietly does nothing rather than erroring. Always goes through OpenRouter directly
+    (never billing_service._select_provider's frontier routing) and is NEVER charged
+    against a Pro user's credit ledger or tracked via billing_service.
+    record_frontier_usage -- this is an unbilled operational cost of the product, like
+    the embedding model itself, not a billed frontier-model routing decision.
+
+    Returns None (never raises) on missing config, any provider error, or timeout --
+    callers should treat a None return as "skip the plan chip entirely," identical to
+    the feature never having fired."""
+    settings = get_settings()
+    if not settings.openrouter_api_key:
+        return None
+
+    async def _call() -> str:
+        provider = OpenAICompatibleProvider(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.openrouter_api_key.get_secret_value(),  # type: ignore[union-attr]
+        )
+        turns = [
+            ChatTurn(role="system", content=PLAN_NARRATION_SYSTEM_PROMPT),
+            ChatTurn(role="user", content=user_message),
+        ]
+        text = ""
+        async for event in provider.stream_chat(turns, settings.openrouter_model):
+            if isinstance(event, TextDelta):
+                text += event.text
+        return text.strip()
+
+    try:
+        text = await asyncio.wait_for(_call(), timeout=PLAN_NARRATION_TIMEOUT_SECONDS)
+        return text or None
+    except Exception:
+        # Never let a slow/broken plan-narration call delay or break the real reply --
+        # skip it entirely and proceed with zero visible error, exactly like any other
+        # dormant-until-configured integration failing closed.
+        logger.info("plan narration call failed or timed out; skipping", exc_info=True)
+        return None
+
 
 async def run_tutor(
     session_id: str,
@@ -300,6 +372,14 @@ async def run_tutor(
 
     provider, model, is_frontier = _select_provider(user, byok_anthropic_key)
     tools = get_tool_specs()
+
+    # A cheap, honest "thinking" chip: one short, separate plan-narration call, fired
+    # before the real tool-calling/answer loop below and never charged against any
+    # user's credit ledger (see _plan_narration's own docstring). No-ops silently
+    # (returns None) if OpenRouter isn't configured or the call fails/times out.
+    plan_text = await _plan_narration(user_message)
+    if plan_text:
+        yield PlanChunk(plan_text)
 
     # Tracks real token usage across every round of this call (which may span several
     # tool-call rounds, each its own provider call) — yielded once as UsageInfo for the

@@ -47,7 +47,7 @@ async def store_document_chunks(
             document_id=document_id,
             chunk_index=index,
             content=content,
-            embedding=embed_text(content),
+            embedding=await embed_text(content),
         )
         db.add(chunk)
         rows.append(chunk)
@@ -62,7 +62,7 @@ async def retrieve_relevant_chunks(
     a small top-k pgvector cosine-distance nearest-neighbor search. DocumentChunk has no
     user_id of its own, so the scoping is enforced by joining through Document — a user
     must never be able to retrieve another user's document chunks this way."""
-    query_embedding = embed_text(query)
+    query_embedding = await embed_text(query)
     stmt = (
         select(DocumentChunk)
         .join(Document, DocumentChunk.document_id == Document.id)

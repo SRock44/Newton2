@@ -52,7 +52,7 @@ async def upsert_fact(
         subject_key=subject_key,
         value=value,
         confidence=confidence,
-        embedding=embed_text(f"{subject_key}: {value}"),
+        embedding=await embed_text(f"{subject_key}: {value}"),
         source_session_id=source_session_id,
     )
     db.add(new_fact)
@@ -70,7 +70,7 @@ async def retrieve_relevant_facts(
 ) -> list[ProfileFact]:
     """Tier 3 read path: small top-k similarity search, not a full dump of everything
     ever learned about the student."""
-    query_embedding = embed_text(query)
+    query_embedding = await embed_text(query)
     stmt = (
         select(ProfileFact)
         .where(ProfileFact.user_id == user_id, ProfileFact.superseded_by.is_(None))

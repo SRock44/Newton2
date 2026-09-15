@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import pytest
@@ -5,7 +6,7 @@ import pytest_asyncio
 from sqlalchemy import delete
 
 from app.agents import tutor
-from app.agents.tutor import TextChunk, ToolActivity, UsageInfo
+from app.agents.tutor import PlanChunk, TextChunk, ToolActivity, UsageInfo
 from app.core.config import Settings
 from app.db.models import User
 from app.providers.base import ChatProvider, TextDelta, ToolCall
@@ -503,6 +504,127 @@ def test_learn_mode_addendum_genuinely_describes_step_check_and_checkpoint_block
     assert "evaluate" in lowered
     assert "vary" in lowered and "plot_function" in addendum
     assert "while learn mode is on" in lowered or "while it's on" in lowered or "learn mode is on" in lowered
+
+
+# ---------------------------------------------------------------------------
+# The plan-narration "thinking" chip (app/agents/tutor.py's PlanChunk / _plan_narration)
+# -- a single short, cheap, unbilled OpenRouter call fired before the main tool-calling/
+# answer loop starts, dormant until settings.openrouter_api_key is configured, and
+# never allowed to delay or break the real reply on any failure or timeout.
+# ---------------------------------------------------------------------------
+
+
+class _FakePlanProvider(ChatProvider):
+    """Stands in for OpenAICompatibleProvider for the plan-narration call specifically
+    -- a separate instance from whatever answers the main loop, so tests can tell the
+    two calls apart."""
+
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url
+        self.api_key = api_key
+
+    async def stream_chat(self, messages, model, tools=None):
+        yield TextDelta("I'll explain the chain rule with an example.")
+
+
+class _BoomPlanProvider(ChatProvider):
+    """A plan-narration provider that always errors -- proves a failure here is fully
+    swallowed rather than propagating and breaking the real reply."""
+
+    def __init__(self, base_url: str, api_key: str):
+        pass
+
+    async def stream_chat(self, messages, model, tools=None):
+        raise RuntimeError("boom")
+        yield  # pragma: no cover - unreachable; keeps this a real async generator
+
+
+class _SlowPlanProvider(ChatProvider):
+    """A plan-narration provider that never finishes in time -- proves a timeout here
+    is fully swallowed rather than delaying the real reply."""
+
+    def __init__(self, base_url: str, api_key: str):
+        pass
+
+    async def stream_chat(self, messages, model, tools=None):
+        await asyncio.sleep(10)
+        yield TextDelta("too slow to matter")  # pragma: no cover - never reached
+
+
+async def test_run_tutor_yields_a_plan_chunk_before_the_main_answer_when_openrouter_is_configured(monkeypatch):
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakePlanProvider)
+    fake = ScriptedToolCallingProvider([["The answer."]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "explain the chain rule")]
+
+    assert isinstance(events[0], PlanChunk), "the plan chunk must be yielded before any other event"
+    assert events[0].text == "I'll explain the chain rule with an example."
+    plan_events = [e for e in events if isinstance(e, PlanChunk)]
+    assert len(plan_events) == 1
+    assert text_of(events) == "The answer."
+
+
+async def test_run_tutor_yields_no_plan_chunk_when_openrouter_is_not_configured(monkeypatch):
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key=None))
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert not any(isinstance(e, PlanChunk) for e in events)
+    assert text_of(events) == "ok"
+
+
+async def test_run_tutor_skips_the_plan_chunk_gracefully_when_the_plan_call_errors(monkeypatch):
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _BoomPlanProvider)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert not any(isinstance(e, PlanChunk) for e in events)
+    # The real reply must proceed completely normally -- no visible error of any kind.
+    assert text_of(events) == "ok"
+
+
+async def test_run_tutor_skips_the_plan_chunk_when_the_call_times_out(monkeypatch):
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _SlowPlanProvider)
+    monkeypatch.setattr(tutor, "PLAN_NARRATION_TIMEOUT_SECONDS", 0.05)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert not any(isinstance(e, PlanChunk) for e in events)
+    assert text_of(events) == "ok"
+
+
+async def test_run_tutor_plan_chunk_is_never_billed_to_the_pro_credit_ledger(tutor_user, monkeypatch):
+    """The plan-narration call must never be tracked via billing_service.
+    record_frontier_usage -- it's an unbilled operational cost, not a routed frontier
+    call. Uses a Pro user with real frontier routing on the main loop too, so this
+    proves exactly one billed call is recorded (the main loop's real answer), never a
+    second one for the plan-narration call that ran alongside it."""
+    user = await tutor_user(plan="pro", credits_used_cents=0)
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    recorded: list[tuple] = []
+
+    async def fake_record(user_id, model, prompt_tokens, completion_tokens):
+        recorded.append((user_id, model, prompt_tokens, completion_tokens))
+        return 5
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+
+    assert any(isinstance(e, PlanChunk) for e in events)
+    assert len(recorded) == 1
 
 
 def test_system_prompt_honestly_describes_the_free_vs_pro_generation_target():

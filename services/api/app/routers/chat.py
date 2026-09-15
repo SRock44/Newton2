@@ -6,11 +6,11 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.router import route
-from app.agents.tutor import TextChunk, ToolActivity, UsageInfo, run_tutor
+from app.agents.tutor import PlanChunk, TextChunk, ToolActivity, UsageInfo, run_tutor
 from app.core.auth import decode_token, require_user
 from app.core.crisis_detection import CRISIS_RESPONSE_TEXT, classify_crisis, detects_crisis
 from app.core.logging import correlation_id_scope, new_correlation_id
@@ -45,6 +45,56 @@ _TOOL_TO_SUGGESTED_ACTION = {
     "sync_google_classroom": {"panel": "study_plan", "label": "Open Study Plan"},
     "write_research_paper": {"panel": "documents", "label": "Open Documents"},
 }
+
+
+async def _gather_memory_context(
+    user_id: uuid.UUID, user_message: str
+) -> tuple[list, list]:
+    """Fetches Tier 3 profile facts and document-RAG chunks concurrently instead of one
+    after another. Each retrieval does its own embed_text() call (app/memory/
+    embeddings.py) -- real ONNX inference that, even off the event loop via
+    asyncio.to_thread, still takes real wall-clock time -- so running the two
+    independent reads concurrently roughly halves that latency instead of paying it
+    twice, sequentially, before the tutor even starts.
+
+    Each gets its own short-lived AsyncSession rather than sharing the WS handler's
+    `db`: AsyncSession forbids concurrent use by two coroutines at once (it raises
+    under real overlap), so reusing one session across a gather() here would be unsafe,
+    not just slower."""
+
+    async def _facts() -> list:
+        async with SessionLocal() as facts_db:
+            return await profile_memory.retrieve_relevant_facts(facts_db, user_id, user_message)
+
+    async def _chunks() -> list:
+        async with SessionLocal() as chunks_db:
+            return await rag_memory.retrieve_relevant_chunks(chunks_db, user_id, user_message)
+
+    return await asyncio.gather(_facts(), _chunks())
+
+
+async def _maybe_enqueue_title_job(
+    db: AsyncSession, session: ChatSession, session_id: uuid.UUID
+) -> None:
+    """Auto-generated conversation titles (ROADMAP.md): enqueues app/jobs/titling.py's
+    generate_session_title exactly once, right after the SECOND assistant reply lands
+    for this session -- enough transcript for a real title without waiting for the
+    whole conversation, and never fired on every turn. `session.title is None` is
+    checked here so a race/double-trigger is harmless; generate_session_title itself
+    also no-ops if a title is already set by the time it runs, so this check is
+    belt-and-suspenders, not load-bearing on its own."""
+    if session.title is not None:
+        return
+    assistant_reply_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(ChatMessage)
+            .where(ChatMessage.session_id == session_id, ChatMessage.role == "assistant")
+        )
+    ).scalar_one()
+    if assistant_reply_count == 2:
+        pool = await get_arq_pool()
+        await pool.enqueue_job("generate_session_title", str(session_id))
 
 
 @router.post("/sessions")
@@ -327,16 +377,13 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
 
                     # Tier 3 read path: pull only what's relevant to *this* message into
                     # the Tier 1 bundle, rather than dumping the whole profile into every
-                    # turn.
-                    relevant_facts = await profile_memory.retrieve_relevant_facts(db, user.id, user_message)
+                    # turn. Profile facts and the student's uploaded-document chunks are
+                    # independent reads, fetched concurrently (see _gather_memory_context)
+                    # rather than one after another.
+                    relevant_facts, relevant_chunks = await _gather_memory_context(user.id, user_message)
                     await set_profile_facts(
                         str(session_id), [f"{f.subject_key}: {f.value}" for f in relevant_facts]
                     )
-
-                    # Same shape, for the student's uploaded documents: retrieve only
-                    # what's relevant to this message and stash it in the Tier 1 bundle
-                    # for the Tutor.
-                    relevant_chunks = await rag_memory.retrieve_relevant_chunks(db, user.id, user_message)
                     await set_retrieved_chunks(str(session_id), [c.content for c in relevant_chunks])
 
                     plan = route(user_message)
@@ -350,7 +397,9 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                     async def _drain_generation() -> None:
                         nonlocal full_response, usage
                         async for event in run_tutor(str(session_id), user_message, user_id=str(user.id)):
-                            if isinstance(event, TextChunk):
+                            if isinstance(event, PlanChunk):
+                                await websocket.send_json({"type": "plan_chunk", "content": event.text})
+                            elif isinstance(event, TextChunk):
                                 full_response += event.text
                                 await websocket.send_json({"type": "chunk", "content": event.text})
                             elif isinstance(event, ToolActivity):
@@ -423,6 +472,8 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                     )
                     await db.commit()
                     await append_turn(str(session_id), "assistant", full_response)
+
+                    await _maybe_enqueue_title_job(db, session, session_id)
 
                     await websocket.send_json(
                         {
