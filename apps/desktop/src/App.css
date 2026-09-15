@@ -2668,6 +2668,39 @@ textarea:focus-visible,
   padding: var(--space-2) var(--space-3);
 }
 
+/* ---------- Newton Notepad's highlight-to-act insertion (read-only card) ---------- */
+
+.newton-note {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  background-color: var(--color-success-tint);
+  padding: var(--space-3) 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.newton-note--error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+  border-color: var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.newton-note__label {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-success);
+}
+
+.newton-note__text {
+  white-space: pre-wrap;
+}
+
 /* ---------- Plot slider (Learn Mode — manipulable parameter on a plotly-figure) ---------- */
 
 .plotly-figure__sliders {
@@ -3531,6 +3564,202 @@ textarea:focus-visible,
   font-size: var(--font-size-md);
   color: var(--color-text-muted);
   line-height: var(--line-height-relaxed);
+}
+
+.notepad-window__error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: 0 var(--space-4);
+}
+
+/* ---------- Note picker ---------- */
+
+.notepad-window__picker {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+
+.notepad-window__new {
+  align-self: stretch;
+}
+
+.notepad-window__note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.notepad-window__note-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.notepad-window__note-item:hover {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+}
+
+.notepad-window__note-title {
+  font-weight: var(--font-weight-medium);
+}
+
+.notepad-window__note-updated {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-faint);
+}
+
+/* ---------- Note editor (Write/Preview + highlight-to-act) ---------- */
+
+.notepad-window__editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.notepad-window__editor-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.notepad-window__back {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.notepad-window__title-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.notepad-window__title-input:focus {
+  outline: none;
+  background-color: var(--color-surface-2);
+}
+
+.notepad-window__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.notepad-window__mode-toggle {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 2px;
+}
+
+.notepad-window__mode-btn,
+.notepad-window__mode-btn--active {
+  border: none;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  padding: 3px var(--space-3);
+  cursor: pointer;
+}
+
+.notepad-window__mode-btn--active {
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.notepad-window__save-status {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+}
+
+.notepad-window__textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  resize: none;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-relaxed);
+}
+
+.notepad-window__textarea:focus {
+  outline: none;
+}
+
+.notepad-window__preview {
+  min-height: 100%;
+}
+
+.notepad-window__selection-toolbar {
+  position: fixed;
+  display: flex;
+  gap: 2px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 2px;
+  z-index: 20;
+}
+
+.notepad-window__selection-toolbar button {
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.notepad-window__selection-toolbar button:hover:not(:disabled) {
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+}
+
+.notepad-window__selection-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ---------- Responsive ----------

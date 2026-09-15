@@ -78,6 +78,22 @@ export interface ToolInfo {
   description: string;
 }
 
+/** A Newton Notepad note — a first-class, listable Document (kind="note") on the
+ * backend, see app/routers/notes.py. Summary shape (no content) for the note picker. */
+export interface NoteSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Full note shape (NoteSummary + raw content) — GET /notes/{id}. */
+export interface Note extends NoteSummary {
+  content: string;
+}
+
+export type NoteAnnotateAction = "explain" | "define" | "summarize";
+
 export interface StudyPlanItem {
   id: string;
   document_id: string | null;

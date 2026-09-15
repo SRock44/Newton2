@@ -7,6 +7,7 @@ import OptionsPicker from "./OptionsPicker";
 import PaperPlanCard from "./PaperPlanCard";
 import StepCheck from "./StepCheck";
 import Checkpoint from "./Checkpoint";
+import NewtonNoteBlock from "./NewtonNoteBlock";
 import { hashString } from "../lib/hashString";
 
 type PreProps = ComponentPropsWithoutRef<"pre"> & {
@@ -63,10 +64,13 @@ function extractText(node: ReactNode): string {
  * block, which renders as a "pick 1 of up to 4" question, a "paper-plan" block, which
  * renders as a plan-review card with Approve/Request Changes actions, a "step-check"
  * block (Learn Mode), which renders as an attempt-this-step-yourself card, or a
- * "checkpoint" block (Learn Mode), which renders as a comprehension-check card. The
- * latter two reuse the exact same `onSend`/`nextMessageContent` plumbing "options"
- * already uses (see StepCheck.tsx/Checkpoint.tsx's own contract comments) — no new
- * props or WebSocket protocol needed. */
+ * "checkpoint" block (Learn Mode), which renders as a comprehension-check card, or a
+ * "newton-note" block (Newton Notepad's highlight-to-act insertion), which renders as
+ * a small read-only card. The middle two reuse the exact same `onSend`/
+ * `nextMessageContent` plumbing "options" already uses (see StepCheck.tsx/
+ * Checkpoint.tsx's own contract comments) — no new props or WebSocket protocol
+ * needed; "newton-note" needs neither, since it's read-only (see
+ * NewtonNoteBlock.tsx's own contract comment). */
 function CodeBlock({
   children,
   node: _node,
@@ -117,6 +121,9 @@ function CodeBlock({
     return (
       <Checkpoint json={extractText(children)} onSend={onSend ?? (() => {})} answeredWith={nextMessageContent} />
     );
+  }
+  if (language === "newton-note") {
+    return <NewtonNoteBlock json={extractText(children)} />;
   }
 
   async function handleCopy() {

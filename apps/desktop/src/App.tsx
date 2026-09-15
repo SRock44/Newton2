@@ -28,7 +28,6 @@ import type {
   UploadedDocument,
 } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
-import { latestMathStepsJson } from "./lib/notepadContent";
 import AgeGateScreen from "./components/AgeGateScreen";
 import LoginScreen from "./components/LoginScreen";
 import TitleBar from "./components/TitleBar";
@@ -178,7 +177,6 @@ function App() {
   // puts the cursor in the composer so the student can type their own tweaks, without
   // anything being sent on their behalf.
   const composerRef = useRef<ComposerHandle>(null);
-  const lastSyncedNotepadJson = useRef<string | null>(null);
   const remindersCheckedRef = useRef(false);
   // A session id we just created client-side (see createNewSession) — its history is
   // known to be empty, so the message-history effect below should skip fetching it
@@ -325,20 +323,21 @@ function App() {
     };
   }, []);
 
-  // Keeps the always-on-top Notepad window (if open) mirroring whatever step-by-step
-  // derivation most recently appeared in this chat — see NotepadWindow.tsx, which listens
-  // for this same event. Only re-emits when the content actually changes, not on every
-  // render/message-list update.
+  // Pushes a live, valid access token to the Notepad window (if open) — see
+  // NotepadWindow.tsx, which listens for this event and has no login/API access of its
+  // own otherwise. Fires once whenever `token` first becomes non-null (a fresh sign-in
+  // or a restored session) AND again every time TokenManager's onChange callback fires
+  // for an ordinary background refresh (that's the only thing that ever changes `token`
+  // — see the `[tokenManager]` useState above), so the Notepad window's own copy never
+  // goes stale either. A no-op (nothing listening on the other end) if the Notepad
+  // window isn't currently open.
   useEffect(() => {
-    const json = latestMathStepsJson(messages);
-    if (json === lastSyncedNotepadJson.current) return;
-    lastSyncedNotepadJson.current = json;
     import("@tauri-apps/api/event")
-      .then(({ emit }) => emit("notepad-sync", { json }))
+      .then(({ emit }) => emit("notepad-auth", { token }))
       .catch(() => {
         // No Tauri context — nothing listening on the other end.
       });
-  }, [messages]);
+  }, [token]);
 
   // Keeps the displayed/passed-down `token` fresh even when nothing is actively
   // fetching — otherwise a session left idle for over an hour would only discover

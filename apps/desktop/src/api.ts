@@ -8,6 +8,9 @@ import type {
   DocumentContent,
   Flashcard,
   GamificationStats,
+  Note,
+  NoteAnnotateAction,
+  NoteSummary,
   PracticeExamDetail,
   PracticeExamSummary,
   ProModel,
@@ -188,6 +191,80 @@ export async function renameDocument(
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't rename this document."));
   return (await res.json()) as UploadedDocument;
+}
+
+// ---------------------------------------------------------------------------
+// Newton Notepad's notes — separate from the uploaded-files Documents endpoints
+// above even though both are backed by the same `documents` table server-side (see
+// app/routers/notes.py): a note is a first-class, listable thing in its own right,
+// not folded into the Documents panel's UI or listing.
+// ---------------------------------------------------------------------------
+
+export async function listNotes(token: string): Promise<NoteSummary[]> {
+  const res = await fetch(`${API_URL}/notes`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your notes."));
+  return (await res.json()) as NoteSummary[];
+}
+
+export async function createNote(token: string, title?: string): Promise<NoteSummary> {
+  const res = await fetch(`${API_URL}/notes`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ title: title ?? null }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't create a new note."));
+  return (await res.json()) as NoteSummary;
+}
+
+export async function getNote(token: string, noteId: string): Promise<Note> {
+  const res = await fetch(`${API_URL}/notes/${noteId}`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load this note."));
+  return (await res.json()) as Note;
+}
+
+/** Full replace of a note's content+title — called on a client-side debounce (see
+ * NotepadWindow.tsx), not per keystroke. */
+export async function updateNote(
+  token: string,
+  noteId: string,
+  title: string,
+  content: string,
+): Promise<NoteSummary> {
+  const res = await fetch(`${API_URL}/notes/${noteId}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ title, content }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save this note."));
+  return (await res.json()) as NoteSummary;
+}
+
+export async function deleteNote(token: string, noteId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/notes/${noteId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete this note."));
+}
+
+/** Highlight-to-act: explain/define/summarize a selection from within a note. Returns
+ * the generated text for the caller to insert inline into the note's raw markdown —
+ * never routed to the main chat window (see app/routers/notes.py's own docstring). */
+export async function annotateNoteSelection(
+  token: string,
+  noteId: string,
+  selectedText: string,
+  context: string,
+  action: NoteAnnotateAction,
+): Promise<string> {
+  const res = await fetch(`${API_URL}/notes/${noteId}/annotate`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ selected_text: selectedText, context, action }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't get a response for that selection."));
+  const data = await res.json();
+  return data.text as string;
 }
 
 /** The live tool belt, straight from the backend registry — never hand-duplicated
