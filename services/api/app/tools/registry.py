@@ -58,9 +58,104 @@ _TOOLS: dict[str, Tool] = {
 # tool needs something else about the calling context.
 _CONTEXT_PARAMS = ("session_id", "user_id")
 
+# Sent directly, in full, on EVERY turn (see app/agents/tutor.py's run_tutor) --
+# everything a typical simple student request (arithmetic, a quick lookup, a unit
+# conversion, "what's happening right now") needs, kept small on purpose since this is
+# real per-turn token cost regardless of whether the model ends up calling any of them.
+CORE_TOOL_NAMES = ("calculator", "unit_converter", "symbolic_math", "web_search")
+
+# The one deliberate exception to "everything else is on-demand": read_image is never
+# offered via use_capability at all (see get_use_capability_spec below) because whether
+# it's relevant is a deterministic, cheap, application-level fact about *this* message
+# (does it contain a real "[Attached image: <id>]" marker -- see app/routers/chat.py's
+# upload endpoint and app/agents/tutor.py's _IMAGE_ATTACHMENT_RE), never something worth
+# spending a model round-trip discovering.
+_READ_IMAGE_TOOL_NAME = "read_image"
+
+# Every other registered tool, grouped with a short reason -- this IS get_use_capability_
+# spec's own description text below, so it's kept compact rather than restating each
+# tool's full own description. Order here is just presentation order in that text.
+_ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("plot_function",), "graphing a function/equation, incl. slider-enabled variants"),
+    (("code_interpreter",), "running or testing real code"),
+    (("research_fetch",), "reading one specific URL/source in full"),
+    (("textbook_lookup",), "looking up a textbook definition or passage"),
+    (("start_study_session",), "a full plan+flashcards+exam study session in one shot"),
+    (("grammar_check",), "proofreading grammar/style"),
+    (("format_citation",), "an exact APA/MLA/Chicago citation"),
+    (
+        ("generate_flashcards", "generate_practice_exam", "generate_study_plan"),
+        "building study materials from a document/topic",
+    ),
+    (("sync_google_classroom",), "pulling assignments/grades from Google Classroom"),
+    (("check_student_work",), "checking the student's own typed/attempted answer"),
+    (("get_weak_areas",), "finding real weak areas/exam-readiness before studying or generating"),
+    (("get_math_hint",), "a leveled hint without giving the answer away"),
+    (("write_research_paper",), "writing a full cited paper after an approved plan"),
+)
+
+ON_DEMAND_TOOL_NAMES: tuple[str, ...] = tuple(name for names, _reason in _ON_DEMAND_GROUPS for name in names)
+
+USE_CAPABILITY_TOOL_NAME = "use_capability"
+
 
 def get_tool_specs() -> list[ToolSpec]:
+    """Every registered tool, regardless of whether it's core, on-demand, or the
+    deterministic read_image exception -- used where the FULL real tool belt matters
+    (the /tools listing endpoint, the registry-integration test proving every tool is
+    actually reachable). Never what a live run_tutor() call sends the model per turn --
+    see get_core_tool_specs/get_use_capability_spec/get_tool_spec for that."""
     return [ToolSpec(name=t.name, description=t.description, parameters=t.parameters) for t in _TOOLS.values()]
+
+
+def get_core_tool_specs() -> list[ToolSpec]:
+    """The always-sent subset (see CORE_TOOL_NAMES) -- what run_tutor() starts every
+    fresh turn with, before use_capability or an attached image ever grows the list."""
+    return [
+        ToolSpec(name=t.name, description=t.description, parameters=t.parameters)
+        for name, t in _TOOLS.items()
+        if name in CORE_TOOL_NAMES
+    ]
+
+
+def get_tool_spec(name: str) -> ToolSpec | None:
+    """One tool's real spec by name, or None if it isn't registered -- how run_tutor()
+    grows its per-turn tools list, both for the deterministic read_image case and for
+    whatever use_capability just loaded."""
+    t = _TOOLS.get(name)
+    if t is None:
+        return None
+    return ToolSpec(name=t.name, description=t.description, parameters=t.parameters)
+
+
+def get_use_capability_spec() -> ToolSpec:
+    """The one meta-tool sent alongside the core four on every turn. Naming it here
+    (never a real domain tool, never routed through run_tool/_TOOLS) keeps it clearly
+    distinct: calling it does no real work, it only tells run_tutor's own loop which
+    real tool schema(s) to add for the model's NEXT round."""
+    options = "; ".join(f"{'/'.join(names)} -- {reason}" for names, reason in _ON_DEMAND_GROUPS)
+    description = (
+        "Loads one or more less-common tools so you can call them for real on your "
+        "NEXT turn -- this itself never does real work. Name every tool you'll need in "
+        "ONE call when you can tell upfront (don't spend a separate call per tool). "
+        f"Options: {options}."
+    )
+    return ToolSpec(
+        name=USE_CAPABILITY_TOOL_NAME,
+        description=description,
+        parameters={
+            "type": "object",
+            "properties": {
+                "names": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(ON_DEMAND_TOOL_NAMES)},
+                    "minItems": 1,
+                    "description": "One or more tool names to load, from the Options listed above.",
+                },
+            },
+            "required": ["names"],
+        },
+    )
 
 
 async def run_tool(

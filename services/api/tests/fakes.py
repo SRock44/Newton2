@@ -17,7 +17,15 @@ class ScriptedToolCallingProvider(ChatProvider):
     async def stream_chat(
         self, messages: list[ChatTurn], model: str, tools: list[ToolSpec] | None = None
     ) -> AsyncIterator[StreamEvent]:
-        self.calls_seen.append({"messages": list(messages), "model": model, "tools": tools})
+        # Snapshot `tools` (a copy, not the live reference) at the moment of this call --
+        # app/agents/tutor.py's run_tutor mutates its own `tools` list IN PLACE across
+        # rounds as use_capability loads more of the belt, so recording the bare
+        # reference here would make every earlier round's recorded snapshot silently
+        # "see" tools loaded in later rounds too, which never actually happened on the
+        # wire for that earlier, already-sent request.
+        self.calls_seen.append(
+            {"messages": list(messages), "model": model, "tools": list(tools) if tools is not None else None}
+        )
         step = self._script.pop(0)
         if step and isinstance(step[0], ToolCall):
             yield ToolCallRequest(list(step))  # type: ignore[arg-type]

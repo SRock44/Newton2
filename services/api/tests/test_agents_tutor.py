@@ -767,3 +767,226 @@ def test_system_prompt_honestly_describes_the_free_vs_pro_generation_target():
     lowered = prompt.lower()
     for phrase in ("per day", "daily", "per week", "weekly", "per hour", "hourly", "per month", "monthly", "24 hours"):
         assert phrase not in lowered, f"system prompt must not imply a time-based limit ({phrase!r} found)"
+
+
+# ---------------------------------------------------------------------------
+# On-demand tool loading (app/tools/registry.py's use_capability meta-tool,
+# app/agents/tutor.py's _load_capabilities) -- most real student requests are simple
+# and don't need most of the tool belt, so only the core four (+use_capability itself)
+# are sent by default; everything else is loaded into THIS turn's own `tools` list only
+# once the model explicitly asks for it via use_capability. See ROADMAP.md's per-turn
+# tool-belt-trim entry for the full design rationale.
+# ---------------------------------------------------------------------------
+
+
+def tool_names_of(fake, round_index: int) -> set[str]:
+    return {t.name for t in fake.calls_seen[round_index]["tools"]}
+
+
+async def test_run_tutor_sends_only_the_core_tools_and_use_capability_by_default(monkeypatch):
+    fake = ScriptedToolCallingProvider([["Hello."]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "what's 17 times 23")]
+
+    assert text_of(events) == "Hello."
+    sent = tool_names_of(fake, 0)
+    assert sent == {"calculator", "unit_converter", "symbolic_math", "web_search", "use_capability"}
+    # None of the on-demand tools are genuinely offered to the model at all on a plain
+    # turn -- the real enforcement lives in the provider only allowing calls to tools
+    # actually present in this list, so this IS the "cannot be called" proof.
+    for name in tutor.ON_DEMAND_TOOL_NAMES:
+        assert name not in sent
+
+
+async def test_run_tutor_use_capability_loads_the_named_tool_for_the_next_round(monkeypatch):
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="c1", name="use_capability", arguments={"names": ["format_citation"]})],
+            [
+                ToolCall(
+                    id="c2",
+                    name="format_citation",
+                    arguments={
+                        "style": "apa",
+                        "source_type": "book",
+                        "authors": [{"last": "Doe", "first": "Jane"}],
+                        "title": "A Book",
+                        "year": "2020",
+                    },
+                )
+            ],
+            ["Here's your citation."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "format a citation for a book")]
+
+    assert text_of(events) == "Here's your citation."
+    # Round 0 (before use_capability ran) never offered format_citation at all.
+    assert "format_citation" not in tool_names_of(fake, 0)
+    # Round 1 (after use_capability's result was fed back) genuinely offers it now.
+    assert "format_citation" in tool_names_of(fake, 1)
+
+    activity = [e for e in events if isinstance(e, ToolActivity)]
+    assert [(a.tool, a.phase) for a in activity] == [
+        ("use_capability", "started"),
+        ("use_capability", "finished"),
+        ("format_citation", "started"),
+        ("format_citation", "finished"),
+    ]
+
+    use_capability_result = next(
+        m for m in fake.calls_seen[1]["messages"] if m.role == "tool" and m.tool_call_id == "c1"
+    )
+    assert use_capability_result.content == "Loaded: format_citation. Call them directly now."
+
+    tool_result_turns = [m for m in fake.calls_seen[2]["messages"] if m.role == "tool" and m.tool_call_id == "c2"]
+    assert "Doe" in tool_result_turns[0].content  # the real tool actually ran
+
+
+async def test_run_tutor_use_capability_can_batch_load_two_tools_in_one_call(monkeypatch):
+    """A turn genuinely needing two different on-demand tools (e.g. "check my work AND
+    give me a hint if I'm wrong") should be loadable in ONE use_capability call naming
+    both, rather than costing a whole extra round per tool."""
+    fake = ScriptedToolCallingProvider(
+        [
+            [
+                ToolCall(
+                    id="c1", name="use_capability", arguments={"names": ["format_citation", "get_math_hint"]}
+                )
+            ],
+            [
+                ToolCall(
+                    id="c2",
+                    name="format_citation",
+                    arguments={
+                        "style": "mla",
+                        "source_type": "website",
+                        "authors": [{"last": "Doe", "first": "Jane"}],
+                        "title": "A Page",
+                        "year": "2021",
+                    },
+                ),
+                ToolCall(
+                    id="c3",
+                    name="get_math_hint",
+                    arguments={"operation": "solve", "expression": "x^2 - 9 = 0", "hint_level": 1},
+                ),
+            ],
+            ["Done."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "cite this AND give me a hint")]
+
+    assert text_of(events) == "Done."
+    assert "format_citation" not in tool_names_of(fake, 0)
+    assert "get_math_hint" not in tool_names_of(fake, 0)
+    # Both loaded from the single batched use_capability call -- only 3 rounds total,
+    # not 5, proving the batch actually saved the extra round-trips.
+    assert len(fake.calls_seen) == 3
+    assert {"format_citation", "get_math_hint"} <= tool_names_of(fake, 1)
+
+    tool_results = {m.tool_call_id: m.content for m in fake.calls_seen[2]["messages"] if m.role == "tool"}
+    assert "Doe" in tool_results["c2"]
+    assert "Hint" in tool_results["c3"]
+
+
+async def test_run_tutor_use_capability_ignores_unknown_already_loaded_and_core_names(monkeypatch):
+    fake = ScriptedToolCallingProvider(
+        [
+            [
+                ToolCall(
+                    id="c1",
+                    name="use_capability",
+                    arguments={"names": ["format_citation", "calculator", "not_a_real_tool"]},
+                )
+            ],
+            [ToolCall(id="c2", name="use_capability", arguments={"names": ["format_citation"]})],
+            ["ok"],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert text_of(events) == "ok"
+    first_result = next(m for m in fake.calls_seen[1]["messages"] if m.role == "tool" and m.tool_call_id == "c1")
+    assert first_result.content == "Loaded: format_citation. Call them directly now."
+    # calculator (core) and not_a_real_tool (unknown) were silently skipped -- only the
+    # one genuinely valid, not-yet-loaded on-demand name was actually loaded, on top of
+    # the core tools that were already there from round 0.
+    assert tool_names_of(fake, 1) == {
+        "calculator",
+        "unit_converter",
+        "symbolic_math",
+        "web_search",
+        "use_capability",
+        "format_citation",
+    }
+
+    # Requesting the SAME tool again once it's already loaded loads nothing new.
+    second_result = next(m for m in fake.calls_seen[2]["messages"] if m.role == "tool" and m.tool_call_id == "c2")
+    assert "No new tools loaded" in second_result.content
+
+
+async def test_run_tutor_includes_read_image_only_when_the_message_has_a_real_attachment(monkeypatch):
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "what's 2+2")]
+    assert text_of(events) == "ok"
+    assert "read_image" not in tool_names_of(fake, 0)
+
+
+async def test_run_tutor_includes_read_image_when_the_message_has_a_real_attachment(monkeypatch):
+    fake = ScriptedToolCallingProvider([["Here's what I see."]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    message = "Can you check my work? [Attached image: abc-123]"
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), message)]
+
+    assert text_of(events) == "Here's what I see."
+    assert "read_image" in tool_names_of(fake, 0)
+    # read_image is never one of use_capability's own on-demand options -- it's always
+    # deterministic, never something the model has to discover.
+    assert "read_image" not in tutor.ON_DEMAND_TOOL_NAMES
+
+
+async def test_run_tutor_tool_belt_resets_between_separate_calls(monkeypatch):
+    """A tool loaded via use_capability in one run_tutor() call must not leak into a
+    later, unrelated run_tutor() call -- each fresh turn starts back at core-only +
+    use_capability, exactly as documented in ROADMAP.md's per-turn tool-belt-trim entry."""
+    fake1 = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="c1", name="use_capability", arguments={"names": ["format_citation"]})],
+            [
+                ToolCall(
+                    id="c2",
+                    name="format_citation",
+                    arguments={
+                        "style": "apa",
+                        "source_type": "book",
+                        "authors": [{"last": "Doe", "first": "Jane"}],
+                        "title": "A Book",
+                        "year": "2020",
+                    },
+                )
+            ],
+            ["cited"],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake1, "fake-model"))
+    events1 = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "cite a book")]
+    assert text_of(events1) == "cited"
+    assert "format_citation" in tool_names_of(fake1, 1)
+
+    fake2 = ScriptedToolCallingProvider([["hi there"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake2, "fake-model"))
+    events2 = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "unrelated new question")]
+    assert text_of(events2) == "hi there"
+    assert "format_citation" not in tool_names_of(fake2, 0)
+    assert tool_names_of(fake2, 0) == {"calculator", "unit_converter", "symbolic_math", "web_search", "use_capability"}

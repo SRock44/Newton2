@@ -11,7 +11,16 @@ import pytest
 from app.agents import tutor
 from app.agents.tutor import TextChunk
 from app.providers.base import ToolCall
-from app.tools.registry import get_tool_specs, run_tool
+from app.tools import registry
+from app.tools.registry import (
+    CORE_TOOL_NAMES,
+    ON_DEMAND_TOOL_NAMES,
+    USE_CAPABILITY_TOOL_NAME,
+    get_core_tool_specs,
+    get_tool_specs,
+    get_use_capability_spec,
+    run_tool,
+)
 from tests.fakes import ScriptedToolCallingProvider
 
 
@@ -39,6 +48,47 @@ def test_all_expected_tools_are_registered():
         "get_math_hint",
         "write_research_paper",
     }
+
+
+# ---------------------------------------------------------------------------
+# The core/on-demand/read_image split behind use_capability (ROADMAP.md's per-turn
+# tool-belt-trim entry) -- proves the three groups partition the real registry exactly,
+# with no tool silently missing from every group (unreachable) or double-counted.
+# ---------------------------------------------------------------------------
+
+
+def test_core_on_demand_and_read_image_exactly_partition_every_registered_tool():
+    all_names = {t.name for t in get_tool_specs()}
+    on_demand = set(ON_DEMAND_TOOL_NAMES)
+    core = set(CORE_TOOL_NAMES)
+
+    assert core | on_demand | {"read_image"} == all_names
+    assert core.isdisjoint(on_demand)
+    assert "read_image" not in on_demand
+    assert "read_image" not in core
+    # use_capability itself is a meta-tool, never a real registered domain tool.
+    assert USE_CAPABILITY_TOOL_NAME not in all_names
+
+
+def test_get_core_tool_specs_returns_exactly_the_core_four():
+    assert {t.name for t in get_core_tool_specs()} == set(CORE_TOOL_NAMES)
+
+
+def test_use_capability_spec_names_every_on_demand_tool_and_only_those():
+    spec = get_use_capability_spec()
+    assert spec.name == USE_CAPABILITY_TOOL_NAME
+    enum_names = set(spec.parameters["properties"]["names"]["items"]["enum"])
+    assert enum_names == set(ON_DEMAND_TOOL_NAMES)
+    # Every on-demand tool is at least named somewhere in the description a student's
+    # model actually reads (not just the enum) -- proves the description text and the
+    # enum weren't allowed to drift apart.
+    for name in ON_DEMAND_TOOL_NAMES:
+        assert name in spec.description
+
+
+def test_get_tool_spec_returns_none_for_an_unregistered_name():
+    assert registry.get_tool_spec("not_a_real_tool") is None
+    assert registry.get_tool_spec("calculator") is not None
 
 
 @pytest.mark.live_smoke

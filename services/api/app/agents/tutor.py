@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -9,11 +10,18 @@ from app.core.config import get_settings
 from app.db.base import SessionLocal
 from app.db.models import User
 from app.memory.working import get_bundle
-from app.providers.base import ChatProvider, ChatTurn, TextDelta, ToolCallRequest
+from app.providers.base import ChatProvider, ChatTurn, TextDelta, ToolCallRequest, ToolSpec
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import get_provider
 from app.services import billing as billing_service
-from app.tools.registry import get_tool_specs, run_tool
+from app.tools.registry import (
+    ON_DEMAND_TOOL_NAMES,
+    USE_CAPABILITY_TOOL_NAME,
+    get_core_tool_specs,
+    get_tool_spec,
+    get_use_capability_spec,
+    run_tool,
+)
 
 # Demonstration call site #2 for the correlation-id logging mechanism (see
 # app/core/logging.py's module docstring and app/routers/chat.py's WS handler, the other
@@ -93,11 +101,56 @@ _TOOL_LABELS: dict[str, str] = {
     "get_weak_areas": "Finding what you're weak on",
     "get_math_hint": "Working out a hint",
     "write_research_paper": "Writing your paper",
+    "use_capability": "Checking available tools",
 }
 
 
 def _label_for(tool_name: str) -> str:
     return _TOOL_LABELS.get(tool_name, f"Using {tool_name}")
+
+
+# The real, already-existing marker app/routers/chat.py's image-upload endpoint tells
+# the frontend to embed in the chat message text (e.g. "[Attached image: <abc-123>]")
+# -- reused here, not reinvented, as the deterministic signal for whether THIS message
+# has a real attachment. Application-level and cheap (a regex search on text already in
+# hand), so read_image is included directly rather than gated behind use_capability --
+# see ROADMAP.md's per-turn tool-belt-trim entry for why that's a deliberate exception.
+_IMAGE_ATTACHMENT_RE = re.compile(r"\[Attached image: [^\]]+\]")
+
+
+def _load_capabilities(arguments: dict, tools: list[ToolSpec], loaded: set[str]) -> str:
+    """Handles a real `use_capability` call: appends the requested on-demand tool(s)'
+    real ToolSpec to `tools` IN PLACE (the same list object run_tutor's loop passes to
+    every `provider.stream_chat(..., tools=tools)` call), so the model can actually call
+    them for real starting next round -- then returns a short confirmation string fed
+    back as this call's own tool result. use_capability itself never does real work.
+
+    Silently ignores any name that's core, `read_image`, already loaded, or not a real
+    on-demand tool name at all (a hallucinated name) rather than erroring -- the
+    confirmation text says plainly when nothing new was loaded so the model can react."""
+    raw_names = arguments.get("names")
+    if isinstance(raw_names, str):
+        raw_names = [raw_names]
+    if not isinstance(raw_names, list):
+        return "Error: 'names' must be a list of one or more tool names."
+
+    newly_loaded: list[str] = []
+    for name in raw_names:
+        if not isinstance(name, str) or name not in ON_DEMAND_TOOL_NAMES or name in loaded:
+            continue
+        spec = get_tool_spec(name)
+        if spec is None:
+            continue
+        tools.append(spec)
+        loaded.add(name)
+        newly_loaded.append(name)
+
+    if not newly_loaded:
+        return (
+            "No new tools loaded -- every requested name was already loaded, unknown, "
+            "or not a valid use_capability option."
+        )
+    return f"Loaded: {', '.join(newly_loaded)}. Call them directly now."
 
 
 async def _load_user(user_id: str | None) -> User | None:
@@ -140,6 +193,11 @@ SYSTEM_PROMPT = (
     "When relevant, use what you already know about the student below. "
     "Use your calculator/unit-converter tools for exact arithmetic or unit "
     "conversions instead of computing by hand.\n\n"
+    "Only calculator/unit_converter/symbolic_math/web_search are loaded by default. "
+    "For any other tool mentioned below, call use_capability naming everything you'll "
+    "need first (name several at once if you already know you'll need more than one) "
+    "-- its result just confirms they're loaded; call the real tool(s) directly on "
+    "your next turn.\n\n"
     "For a step-by-step math derivation (solve/differentiate/integrate/simplify/"
     "factor/expand): call symbolic_math first for the exact answer, then present the "
     'derivation as a fenced ```math-steps block: {"steps": ["step 1, plain text or '
@@ -257,7 +315,23 @@ LEARN_MODE_SYSTEM_ADDENDUM = (
 
 # A confused/looping model shouldn't be able to hold the WS connection open forever
 # calling tools back-to-back with no final answer.
-MAX_TOOL_ROUNDS = 4
+#
+# Raised from 4 -> 6 when use_capability was introduced (ROADMAP.md's per-turn
+# tool-belt-trim entry): loading an on-demand tool now costs one extra round (the
+# use_capability call itself) before the tool it unlocked can be called at all, so a
+# turn that used to take 1 round to call e.g. check_student_work directly now takes 2
+# (load, then call). Worst realistic real case is a turn needing two DIFFERENT
+# on-demand tools discovered at different points -- not batchable into one
+# use_capability call because the model didn't know it needed the second one until
+# after acting on the first (e.g. "generate a practice exam" -> get_weak_areas first,
+# then, only after seeing those results, decides to also call format_citation for a
+# source): round0 use_capability(A), round1 call A, round2 use_capability(B), round3
+# call B, round4 final answer -- 5 rounds (indices 0-4), needing MAX_TOOL_ROUNDS>=5. 6
+# leaves one full extra round of headroom above that traced worst case. Live-verified
+# against the real deployed dev box (see ROADMAP.md) that every real on-demand-tool
+# flow this app has, including the two-tools-in-one-exchange case, completes well
+# within this budget.
+MAX_TOOL_ROUNDS = 6
 
 # Kept terse and cheap on purpose -- this is a single throwaway call, not part of the
 # real answer, so it should read as "under 15 words," never restate or answer the
@@ -418,7 +492,19 @@ async def run_tutor(
     turns.append(ChatTurn(role="user", content=user_message))
 
     provider, model, is_frontier = _select_provider(user, byok_anthropic_key)
-    tools = get_tool_specs()
+
+    # Fresh, small tools list every call (never persisted across turns -- a tool loaded
+    # three messages ago must NOT still be paying its schema cost on an unrelated later
+    # message): the core four plus the use_capability meta-tool, growing in place as
+    # use_capability calls unlock more real tools during THIS turn's own rounds below.
+    # read_image is the one deterministic exception -- included directly, never behind
+    # use_capability, whenever this exact message has a real attached-image marker.
+    tools: list[ToolSpec] = get_core_tool_specs() + [get_use_capability_spec()]
+    loaded_tool_names: set[str] = set()
+    if _IMAGE_ATTACHMENT_RE.search(user_message):
+        read_image_spec = get_tool_spec("read_image")
+        if read_image_spec is not None:
+            tools.append(read_image_spec)
 
     # Tracks real token usage across every round of this call (which may span several
     # tool-call rounds, each its own provider call) — yielded once as UsageInfo for the
@@ -497,7 +583,10 @@ async def run_tutor(
                     "tutor tool call round=%s tool=%s session_id=%s", _round, call.name, session_id
                 )
                 yield ToolActivity(tool=call.name, label=label, phase="started")
-                result = await run_tool(call.name, call.arguments, session_id=session_id, user_id=user_id)
+                if call.name == USE_CAPABILITY_TOOL_NAME:
+                    result = _load_capabilities(call.arguments, tools, loaded_tool_names)
+                else:
+                    result = await run_tool(call.name, call.arguments, session_id=session_id, user_id=user_id)
                 logger.info(
                     "tutor tool call finished round=%s tool=%s session_id=%s result_len=%s",
                     _round,
