@@ -417,7 +417,7 @@ describe("App", () => {
     // Not an instant refetch -- it's a bounded follow-up, not immediate.
     expect(vi.mocked(listSessions)).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(16_000);
 
     await waitFor(() => expect(vi.mocked(listSessions)).toHaveBeenCalledTimes(1));
     // The title now appears in more than one place (titlebar, main header, sidebar
@@ -456,7 +456,7 @@ describe("App", () => {
     act(() => {
       socket.onmessage?.({ data: JSON.stringify({ type: "done" }) });
     });
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(16_000);
 
     expect(vi.mocked(listSessions)).not.toHaveBeenCalled();
 

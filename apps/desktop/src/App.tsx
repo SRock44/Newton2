@@ -56,8 +56,12 @@ const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
 // Auto-generated conversation titles (ROADMAP.md): how long to wait after the 2nd
 // assistant reply before re-fetching the session list once, giving app/jobs/titling.
 // py's generate_session_title arq job (enqueued server-side right after that same
-// reply) time to actually finish and write the title.
-const TITLE_REFETCH_DELAY_MS = 3500;
+// reply) time to actually finish and write the title. Live-verified against the real
+// deployed stack: the job itself (one real model call) took ~13.5s wall-clock in
+// practice, well past a naive "a few seconds" guess -- this is set with real headroom
+// above that rather than the original guess, since a late (but eventually correct)
+// refetch is harmless and a too-early one just wastes the one shot this gets.
+const TITLE_REFETCH_DELAY_MS = 15_000;
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
