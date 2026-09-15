@@ -1636,8 +1636,15 @@ textarea:focus-visible,
 
 .transcript-entry {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  column-gap: var(--space-4);
+  /* Narrow on purpose — this column used to need 92px to fit a "YOU"/"NEWTON" text
+     label; now it only holds a 16px icon (assistant) or nothing at all (user), so a
+     wide fixed gutter just reads as dead floated space on the left. Product
+     feedback: "i dont like the gap thats floated to the left... remove that float
+     gap... or make it smaller." Sized to fit the icon plus a little breathing room;
+     the hover-revealed timestamp (see .transcript-time) is allowed to overflow this
+     narrow track rather than forcing it wider, since it's transient and decorative. */
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: var(--space-3);
   padding: var(--space-5) 0;
   border-top: 1px solid var(--color-border-2);
 }
@@ -1652,6 +1659,10 @@ textarea:focus-visible,
   flex-direction: column;
   align-items: flex-start;
   padding-top: 3px;
+  /* The gutter's own grid track is fixed-width and deliberately tight (see
+     .transcript-entry) — let the hover-revealed timestamp spill past it rather than
+     wrapping or forcing the column wider. */
+  overflow: visible;
 }
 
 /* No literal "YOU"/"Newton" text label — product feedback called the old version
@@ -1671,6 +1682,7 @@ textarea:focus-visible,
   font-size: var(--font-size-2xs);
   color: var(--color-text-faint);
   margin-top: 2px;
+  white-space: nowrap;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -3499,11 +3511,6 @@ textarea:focus-visible,
   .sidebar {
     width: 200px;
     min-width: 160px;
-  }
-
-  .transcript-entry {
-    grid-template-columns: 72px minmax(0, 1fr);
-    column-gap: var(--space-3);
   }
 
   .main-header {
