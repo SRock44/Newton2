@@ -1828,8 +1828,25 @@ textarea:focus-visible,
   font-family: var(--font-serif);
   font-style: italic;
   font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  animation: thinking-text-breathe 1.8s ease-in-out infinite;
+  /* A moving highlight sweeps across the text continuously (the same "loading
+     skeleton" shimmer technique used elsewhere on the web) rather than the text
+     just fading in and out in place — a sweep reads as active motion happening
+     right now, where a slow opacity pulse reads as idle/stuck the longer it runs,
+     which is exactly backwards for a signal that might sit on screen for 10+
+     seconds. Direct product feedback: the old version "just gives progress every
+     so often" and "looks bad" — this must feel alive for the WHOLE wait, not just
+     at the moment it first appears. */
+  background: linear-gradient(
+    100deg,
+    var(--color-text-muted) 40%,
+    var(--color-accent) 50%,
+    var(--color-text-muted) 60%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: thinking-text-shimmer 2.2s linear infinite;
 }
 
 .thinking-indicator-dots {
@@ -1843,26 +1860,25 @@ textarea:focus-visible,
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background-color: currentColor;
+  background-color: var(--color-accent);
   opacity: 0.5;
-  animation: streaming-bounce 1.1s infinite ease-in-out;
+  animation: streaming-bounce 0.9s infinite ease-in-out;
 }
 
 .thinking-indicator-dots span:nth-child(2) {
-  animation-delay: 0.15s;
+  animation-delay: 0.12s;
 }
 
 .thinking-indicator-dots span:nth-child(3) {
-  animation-delay: 0.3s;
+  animation-delay: 0.24s;
 }
 
-@keyframes thinking-text-breathe {
-  0%,
-  100% {
-    opacity: 0.65;
+@keyframes thinking-text-shimmer {
+  from {
+    background-position: 200% 0;
   }
-  50% {
-    opacity: 1;
+  to {
+    background-position: -50% 0;
   }
 }
 
@@ -1989,6 +2005,28 @@ textarea:focus-visible,
 
 .plan-chip.tool-activity-chip--done .plan-chip-icon {
   background-color: var(--color-info, var(--color-accent));
+}
+
+/* Direct product feedback: once the plan chip landed, it just sat there completely
+   static (only its small 14px icon kept spinning) for however many more seconds the
+   real answer took -- easy to miss, so the whole chip read as "done" long before it
+   actually was. The chip's own text now carries the same continuous shimmer sweep as
+   .thinking-indicator-text while it's still live, so the one thing actually holding a
+   student's attention (the sentence, not a small corner icon) visibly keeps moving for
+   the entire wait. Dropped the instant real content/activity lands (see
+   MessageBubble.tsx's planNarrationDone) in favor of the plain --done treatment above. */
+.plan-chip--live .plan-chip-text {
+  background: linear-gradient(
+    100deg,
+    var(--color-info, var(--color-text-muted)) 40%,
+    var(--color-accent) 50%,
+    var(--color-info, var(--color-text-muted)) 60%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: thinking-text-shimmer 2.2s linear infinite;
 }
 
 .attached-images {

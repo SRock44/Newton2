@@ -3,6 +3,7 @@ import MessageContent from "./MessageContent";
 import AttachedImage from "./AttachedImage";
 import AttachedDocumentChip from "./AttachedDocumentChip";
 import NewtonMark from "./NewtonMark";
+import ThinkingIndicator from "./ThinkingIndicator";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -152,10 +153,12 @@ function MessageBubble({
         {hasPlanNarration && (
           <div className="tool-activity plan-activity" aria-label="Newton's plan">
             <span
-              className={`tool-activity-chip plan-chip${planNarrationDone ? " tool-activity-chip--done" : ""}`}
+              className={`tool-activity-chip plan-chip${
+                planNarrationDone ? " tool-activity-chip--done" : " plan-chip--live"
+              }`}
             >
               <span className="tool-activity-icon plan-chip-icon" aria-hidden="true" />
-              {message.planNarration}
+              <span className="plan-chip-text">{message.planNarration}</span>
             </span>
           </div>
         )}
@@ -217,16 +220,7 @@ function MessageBubble({
           </div>
         )}
         {message.stoppedByUser && <div className="message-stopped-note">Stopped</div>}
-        {showStreamingDots && (
-          <div className="thinking-indicator" aria-label="Newton is thinking">
-            <span className="thinking-indicator-text">Newton is thinking…</span>
-            <span className="thinking-indicator-dots" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-          </div>
-        )}
+        {showStreamingDots && <ThinkingIndicator />}
       </div>
     </div>
   );

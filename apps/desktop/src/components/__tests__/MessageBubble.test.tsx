@@ -368,6 +368,38 @@ describe("MessageBubble", () => {
       expect(chip).not.toHaveClass("tool-activity-chip--done");
     });
 
+    it("gives the still-live plan chip a continuous shimmer treatment, not static text", () => {
+      // Direct product feedback: once the plan chip landed, it just sat there
+      // completely static for however many more seconds the real answer took --
+      // .plan-chip--live keeps the chip's own text visibly animating for the whole
+      // wait, not just its small corner icon.
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        planNarration: "Planning the explanation.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Planning the explanation.").closest(".plan-chip");
+      expect(chip).toHaveClass("plan-chip--live");
+    });
+
+    it("drops the live shimmer class the moment the chip is marked done", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "Here's the explanation.",
+        streaming: true,
+        planNarration: "Planning the explanation.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Planning the explanation.").closest(".plan-chip");
+      expect(chip).not.toHaveClass("plan-chip--live");
+    });
+
     it("marks the plan chip done (same grayed-out treatment as a finished tool chip) once real text has landed", () => {
       const message: ChatMessage = {
         role: "assistant",
