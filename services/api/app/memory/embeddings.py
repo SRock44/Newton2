@@ -1,5 +1,5 @@
 import asyncio
-from functools import lru_cache
+import threading
 
 from fastembed import TextEmbedding
 
@@ -7,10 +7,28 @@ from app.core.config import get_settings
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"  # 384-dim, CPU-friendly, no API key needed
 
+_embedder: TextEmbedding | None = None
+# Guards first-time construction of the shared embedder below. Each embed_text() call
+# now runs on its own asyncio.to_thread worker thread, and chat.py's
+# _gather_memory_context fires two of them concurrently -- so the very first embed of
+# the process can have two different threads both see `_embedder is None` and race to
+# construct TextEmbedding() at the same time. That's not just wasteful (two model
+# loads/downloads instead of one): fastembed's first-run download path uses tqdm
+# progress bars, and tqdm's own global lock has a real bug under exactly this kind of
+# concurrent-first-use -- reproduced live in CI as `AttributeError: type object 'tqdm'
+# has no attribute '_lock'`. A plain functools.lru_cache does NOT prevent this (it
+# doesn't stop two threads from both calling the wrapped function concurrently on a
+# cache miss); the double-checked lock below does.
+_embedder_lock = threading.Lock()
 
-@lru_cache
+
 def _get_embedder() -> TextEmbedding:
-    return TextEmbedding(model_name=MODEL_NAME, cache_dir=get_settings().embed_cache_dir)
+    global _embedder
+    if _embedder is None:
+        with _embedder_lock:
+            if _embedder is None:  # re-check: another thread may have won the race
+                _embedder = TextEmbedding(model_name=MODEL_NAME, cache_dir=get_settings().embed_cache_dir)
+    return _embedder
 
 
 def _embed_sync(text: str) -> list[float]:

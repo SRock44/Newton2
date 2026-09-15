@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 
 from app.memory import embeddings
@@ -55,6 +56,48 @@ async def test_embed_text_does_not_block_the_event_loop(monkeypatch):
     # Both ran concurrently: total time is close to one SLOW_SECONDS delay, not the sum
     # of both (which a blocking implementation would produce).
     assert elapsed < SLOW_SECONDS * 1.8
+
+
+def test_get_embedder_is_thread_safe_against_a_concurrent_first_call(monkeypatch):
+    """Regression test for a real bug caught in CI: chat.py's _gather_memory_context
+    fires two embed_text() calls concurrently, each on its own asyncio.to_thread worker
+    thread. On the very first embed of a process, both threads used to see the shared
+    embedder as uninitialized and race to construct it at the same time -- wasteful at
+    best, and it actually crashed in CI (fastembed's first-run model-download path hits
+    a real bug in tqdm's own locking under concurrent first-use: `AttributeError: type
+    object 'tqdm' has no attribute '_lock'`). The double-checked lock in _get_embedder
+    must ensure the underlying constructor runs exactly once even when hammered from
+    many threads at once."""
+    monkeypatch.setattr(embeddings, "_embedder", None)
+
+    construct_count = 0
+    construct_lock = threading.Lock()
+
+    class _FakeEmbedder:
+        def __init__(self):
+            nonlocal construct_count
+            # Widens the race window so two threads seeing `_embedder is None` at the
+            # same time is actually likely to happen in this test, not just
+            # theoretically possible.
+            time.sleep(0.02)
+            with construct_lock:
+                construct_count += 1
+
+    monkeypatch.setattr(embeddings, "TextEmbedding", lambda **kwargs: _FakeEmbedder())
+
+    results: list[object] = []
+
+    def call_get_embedder():
+        results.append(embeddings._get_embedder())
+
+    threads = [threading.Thread(target=call_get_embedder) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert construct_count == 1, "the embedder constructor must run exactly once, not once per racing thread"
+    assert len({id(r) for r in results}) == 1, "every caller must get back the same shared instance"
 
 
 async def test_embed_text_runs_two_concurrent_calls_in_roughly_one_delay(monkeypatch):
