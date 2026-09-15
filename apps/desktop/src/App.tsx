@@ -53,6 +53,12 @@ const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
   closed: "offline",
 };
 
+// Auto-generated conversation titles (ROADMAP.md): how long to wait after the 2nd
+// assistant reply before re-fetching the session list once, giving app/jobs/titling.
+// py's generate_session_title arq job (enqueued server-side right after that same
+// reply) time to actually finish and write the title.
+const TITLE_REFETCH_DELAY_MS = 3500;
+
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
@@ -157,6 +163,13 @@ function App() {
   >(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  // Kept in sync with `sessions` (see the effect below) purely so the WebSocket
+  // message handler -- set up once per socket in an effect keyed only on
+  // activeSessionId, so it closes over a `sessions` value that can go stale the moment
+  // the sidebar list changes for any other reason -- can always read the active
+  // session's current title without forcing a socket reconnect on every session-list
+  // update.
+  const sessionsRef = useRef<ChatSession[]>([]);
   // For a "paper-plan" card's "Request Changes" action (see ChatPane/PaperPlanCard) —
   // puts the cursor in the composer so the student can type their own tweaks, without
   // anything being sent on their behalf.
@@ -396,6 +409,10 @@ function App() {
     };
   }, [token]);
 
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
   // Load message history whenever the active session changes.
   useEffect(() => {
     if (!token || !activeSessionId) {
@@ -449,7 +466,29 @@ function App() {
     if (!tokenManager.hasSession() || !activeSessionId) return;
     let cancelled = false;
     let ws: WebSocket | null = null;
+    let titleRefetchTimeout: ReturnType<typeof setTimeout> | null = null;
     setWsStatus("connecting");
+
+    // Auto-generated conversation titles (ROADMAP.md): the backend enqueues a real
+    // title-generation job right after the 2nd assistant reply lands (see chat.py's
+    // _maybe_enqueue_title_job), but that job runs asynchronously — this schedules ONE
+    // bounded follow-up listSessions() fetch a little later to pick up the
+    // eventually-written title in the sidebar, not a repeating poll.
+    const scheduleTitleRefetchOnce = () => {
+      if (titleRefetchTimeout) return; // already scheduled once for this turn
+      titleRefetchTimeout = setTimeout(async () => {
+        titleRefetchTimeout = null;
+        if (cancelled) return;
+        try {
+          const freshToken = await tokenManager.getValidAccessToken();
+          const list = await listSessions(freshToken);
+          if (!cancelled) setSessions(list);
+        } catch {
+          // Best-effort only -- a missed refresh just means the sidebar keeps showing
+          // the fallback title a little longer, nothing to surface to the student.
+        }
+      }, TITLE_REFETCH_DELAY_MS);
+    };
 
     (async () => {
       let accessToken: string;
@@ -483,7 +522,21 @@ function App() {
           return;
         }
 
-        if (payload.type === "chunk") {
+        if (payload.type === "plan_chunk") {
+          // Always fires (if at all) before any real answer text/tool activity for the
+          // same reply -- but can still be the very first event of the turn, so start
+          // the streaming assistant message here if it doesn't exist yet, mirroring
+          // tool_start's identical "first event of the reply" handling below.
+          setIsStreaming(true);
+          const planNarration = payload.content ?? "";
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (!last || last.role !== "assistant" || !last.streaming) {
+              return [...prev, { role: "assistant", content: "", streaming: true, planNarration }];
+            }
+            return [...prev.slice(0, -1), { ...last, planNarration }];
+          });
+        } else if (payload.type === "chunk") {
           setIsStreaming(true);
           setMessages((prev) => {
             const last = prev[prev.length - 1];
@@ -544,8 +597,8 @@ function App() {
         } else if (payload.type === "done" || payload.type === "stopped") {
           setIsStreaming(false);
           const stoppedByUser = payload.type === "stopped";
-          setMessages((prev) =>
-            prev.map((m) =>
+          setMessages((prev) => {
+            const updated = prev.map((m) =>
               m.streaming
                 ? {
                     ...m,
@@ -555,8 +608,21 @@ function App() {
                     completion_tokens: payload.completion_tokens ?? null,
                   }
                 : m,
-            ),
-          );
+            );
+            // Auto-generated conversation titles (ROADMAP.md): right as the session
+            // gets its 2nd assistant reply (done or stopped both persist a real
+            // assistant ChatMessage server-side — see chat.py's
+            // _maybe_enqueue_title_job, which counts both the same way), and it still
+            // has no real title, schedule one bounded follow-up sessions refetch to
+            // pick up the title once the backend's titling job finishes.
+            const assistantReplies = updated.filter((m) => m.role === "assistant").length;
+            if (assistantReplies === 2) {
+              const activeSession = sessionsRef.current.find((s) => s.id === activeSessionId);
+              const titleLooksUnset = !activeSession?.title || activeSession.title.trim().length === 0;
+              if (titleLooksUnset) scheduleTitleRefetchOnce();
+            }
+            return updated;
+          });
         } else if (payload.type === "error") {
           setIsStreaming(false);
           setMessages((prev) => {
@@ -578,6 +644,7 @@ function App() {
 
     return () => {
       cancelled = true;
+      if (titleRefetchTimeout) clearTimeout(titleRefetchTimeout);
       ws?.close();
       if (wsRef.current === ws) wsRef.current = null;
     };

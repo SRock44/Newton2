@@ -194,4 +194,147 @@ describe("MessageBubble", () => {
     expect(screen.getByRole("button", { name: /report\.pdf/i })).toBeInTheDocument();
     expect(screen.getByText("See both.")).toBeInTheDocument();
   });
+
+  // Item 2 (ROADMAP.md): the streaming dots used to show for the entire duration
+  // message.streaming was true, even once real text/activity/plan content had already
+  // started rendering above them -- two "still loading" signals stacked on top of
+  // content that had visibly already arrived. Now they only show when there is
+  // genuinely nothing yet to show for this message.
+  describe("streaming dots visibility", () => {
+    it("shows the streaming dots while there is genuinely nothing to show yet", () => {
+      const message: ChatMessage = { role: "assistant", content: "", streaming: true };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.getByLabelText("Newton is responding")).toBeInTheDocument();
+    });
+
+    it("does not show the streaming dots once a finished/non-streaming message renders", () => {
+      const message: ChatMessage = { role: "assistant", content: "Done.", streaming: false };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+    });
+
+    it("hides the streaming dots once real text content has arrived", () => {
+      const message: ChatMessage = { role: "assistant", content: "Some real text has landed.", streaming: true };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+    });
+
+    it("hides the streaming dots once tool activity has arrived, even with no text yet", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        activity: [{ tool: "web_search", label: "Searching the web", done: false }],
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+    });
+
+    it("hides the streaming dots once a plan-narration chip has arrived, even with no text or activity yet", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        planNarration: "I'll walk through this step by step.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+    });
+  });
+
+  // Item 4 (ROADMAP.md): the plan-narration chip ("cheap, honest thinking" -- a short
+  // model-generated plan sentence rendered before any tool activity or real answer
+  // text). Reuses .tool-activity-chip's chrome via a distinguishing .plan-chip class.
+  describe("plan-narration chip", () => {
+    it("renders nothing when the message has no plan narration", () => {
+      const message: ChatMessage = { role: "assistant", content: "hi", streaming: false };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByLabelText("Newton's plan")).not.toBeInTheDocument();
+    });
+
+    it("renders the plan narration text as a distinct .plan-chip", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        planNarration: "Planning the explanation.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Planning the explanation.");
+      expect(chip.closest(".plan-chip")).toBeInTheDocument();
+    });
+
+    it("keeps the plan chip in its live (not-done) state while no text or activity has landed yet", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        planNarration: "Planning the explanation.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Planning the explanation.").closest(".plan-chip");
+      expect(chip).not.toHaveClass("tool-activity-chip--done");
+    });
+
+    it("marks the plan chip done (same grayed-out treatment as a finished tool chip) once real text has landed", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "Here's the explanation.",
+        streaming: true,
+        planNarration: "Planning the explanation.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Planning the explanation.").closest(".plan-chip");
+      expect(chip).toHaveClass("tool-activity-chip--done");
+    });
+
+    it("marks the plan chip done once tool activity has landed, even with no text yet", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        planNarration: "Planning the explanation.",
+        activity: [{ tool: "calculator", label: "Doing the math", done: false }],
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Planning the explanation.").closest(".plan-chip");
+      expect(chip).toHaveClass("tool-activity-chip--done");
+    });
+
+    it("renders the plan chip before tool-activity chips", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        planNarration: "Planning the explanation.",
+        activity: [{ tool: "calculator", label: "Doing the math", done: false }],
+      };
+      const { container } = render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chips = Array.from(container.querySelectorAll(".tool-activity-chip")).map((el) => el.textContent);
+      expect(chips[0]).toContain("Planning the explanation.");
+      expect(chips[1]).toContain("Doing the math");
+    });
+  });
 });

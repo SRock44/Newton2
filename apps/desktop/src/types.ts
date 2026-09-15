@@ -26,6 +26,11 @@ export interface ChatMessage {
   /** Client-side only: tool calls Newton made while producing this reply, in order,
    * each starting `done: false` and flipping to `true` once its result comes back. */
   activity?: ToolActivityEntry[];
+  /** Client-side only: the model's own short "here's my plan" narration, set from a
+   * `plan_chunk` WS frame (see services/api/app/agents/tutor.py's PlanChunk) — always
+   * fires (if at all) before any real answer text/tool activity for the same reply.
+   * Rendered as its own distinct chip in MessageBubble.tsx, never cleared once set. */
+  planNarration?: string;
   /** Client-side only: one or more "Open Flashcards"-style buttons to offer on this
    * reply -- a message could plausibly earn more than one (e.g. the model calling two
    * generation tools in one turn), so this is always an array, never clobbered. */

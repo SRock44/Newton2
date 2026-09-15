@@ -104,6 +104,17 @@ function MessageBubble({
   // from history, not a reply still streaming live) — see MessageContent's persistKey.
   const persistKey = sessionId && message.created_at ? `${sessionId}|${message.created_at}` : undefined;
 
+  const hasPlanNarration = Boolean(message.planNarration && message.planNarration.trim().length > 0);
+  const hasActivity = Boolean(message.activity && message.activity.length > 0);
+  const hasRealContent = Boolean(message.content && message.content.trim().length > 0);
+  // Once real text or tool activity has landed, the plan chip is done being "live" --
+  // same grayed-out/checked treatment tool chips already get, not an abrupt disappearance.
+  const planNarrationDone = hasRealContent || hasActivity;
+  // The streaming dots exist to signal "genuinely nothing has arrived yet" -- once any
+  // of text, tool activity, or the plan-narration chip has landed, one of those is
+  // already telling the student Newton is working, so the redundant dots stop.
+  const showStreamingDots = Boolean(message.streaming) && !hasRealContent && !hasActivity && !hasPlanNarration;
+
   return (
     <div className={`transcript-entry transcript-entry--${isUser ? "user" : "assistant"}`}>
       <div className="transcript-gutter">
@@ -117,6 +128,16 @@ function MessageBubble({
         data-context-menu="message"
         data-message-content={message.content}
       >
+        {hasPlanNarration && (
+          <div className="tool-activity plan-activity" aria-label="Newton's plan">
+            <span
+              className={`tool-activity-chip plan-chip${planNarrationDone ? " tool-activity-chip--done" : ""}`}
+            >
+              <span className="tool-activity-icon plan-chip-icon" aria-hidden="true" />
+              {message.planNarration}
+            </span>
+          </div>
+        )}
         {message.activity && message.activity.length > 0 && (
           <div className="tool-activity" aria-label="Newton's tool activity">
             {message.activity.map((entry, i) => (
@@ -151,6 +172,7 @@ function MessageBubble({
         <MessageContent
           content={displayContent || " "}
           persistKey={persistKey}
+          streaming={message.streaming}
           onSend={onSend}
           onFocusComposer={onFocusComposer}
           nextMessageContent={nextMessageContent}
@@ -174,7 +196,7 @@ function MessageBubble({
           </div>
         )}
         {message.stoppedByUser && <div className="message-stopped-note">Stopped</div>}
-        {message.streaming && (
+        {showStreamingDots && (
           <span className="streaming-dots" aria-label="Newton is responding">
             <span />
             <span />

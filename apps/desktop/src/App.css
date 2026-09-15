@@ -1832,6 +1832,27 @@ textarea:focus-visible,
   }
 }
 
+/* The plan-narration chip (the model's own short "here's my plan" line, fired before
+   any tool activity or real answer text — see App.tsx's plan_chunk handling) reuses
+   .tool-activity-chip's exact chrome (pill shape, spinning-then-done icon, fade-in) so
+   it reads as the same family of thing, distinguished only by a different accent color
+   (--color-info, the same one Checkpoint.tsx already uses for a distinct "concept
+   check" vs. StepCheck.tsx's --color-accent) so it never reads as just another tool
+   call. */
+.plan-chip {
+  border-color: var(--color-info, var(--color-border-2));
+  color: var(--color-info, var(--color-text-muted));
+}
+
+.plan-chip .plan-chip-icon {
+  border-color: var(--color-info, var(--color-accent));
+  border-top-color: transparent;
+}
+
+.plan-chip.tool-activity-chip--done .plan-chip-icon {
+  background-color: var(--color-info, var(--color-accent));
+}
+
 .attached-images {
   display: flex;
   flex-wrap: wrap;

@@ -340,6 +340,129 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /send/i })).not.toBeDisabled();
   });
 
+  // Item 4 (ROADMAP.md): the plan-narration chip. plan_chunk can arrive as the very
+  // first frame of a reply, before any text or tool activity -- mirrors the existing
+  // tool_start-as-first-frame handling exercised above.
+  it("creates the assistant message from a plan_chunk frame, and marks the plan chip done once real text lands", async () => {
+    const user = await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+    const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
+      onmessage: ((event: { data: string }) => void) | null;
+    };
+
+    const textarea = screen.getByPlaceholderText(/ask newton/i);
+    await user.type(textarea, "Explain the chain rule");
+    await user.keyboard("{Enter}");
+
+    // No assistant message exists yet -- plan_chunk must create one.
+    act(() => {
+      socket.onmessage?.({
+        data: JSON.stringify({ type: "plan_chunk", content: "I'll explain the chain rule with an example." }),
+      });
+    });
+    expect(await screen.findByText("I'll explain the chain rule with an example.")).toBeInTheDocument();
+    // The plan chip itself is already a "still working" signal -- the dots don't stack
+    // on top of it.
+    expect(screen.queryByLabelText("Newton is responding")).not.toBeInTheDocument();
+
+    act(() => {
+      socket.onmessage?.({ data: JSON.stringify({ type: "chunk", content: "The chain rule says..." }) });
+    });
+    expect(await screen.findByText(/The chain rule says/)).toBeInTheDocument();
+    // Once real text has landed, the plan chip gets marked done rather than vanishing.
+    const chip = screen.getByText("I'll explain the chain rule with an example.").closest(".plan-chip");
+    expect(chip).toHaveClass("tool-activity-chip--done");
+  });
+
+  // Item 5 (ROADMAP.md): auto-generated conversation titles. The backend enqueues a
+  // real titling job right after the 2nd assistant reply; the frontend can't know when
+  // that job finishes, so it schedules exactly ONE bounded follow-up listSessions()
+  // fetch a little later rather than polling repeatedly.
+  it("schedules one bounded sessions refetch after the session's 2nd assistant reply to pick up an auto-generated title", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ delay: null });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /sign in/i }));
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+    const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
+      onmessage: ((event: { data: string }) => void) | null;
+      send: (data: string) => void;
+    };
+
+    // s1's fixture history already has one assistant reply -- sending one more turn
+    // makes this its 2nd.
+    const textarea = screen.getByPlaceholderText(/ask newton/i);
+    await user.type(textarea, "One more question");
+    await user.keyboard("{Enter}");
+
+    act(() => {
+      socket.onmessage?.({ data: JSON.stringify({ type: "chunk", content: "Second reply text" }) });
+    });
+    await screen.findByText("Second reply text");
+
+    vi.mocked(listSessions).mockClear();
+    vi.mocked(listSessions).mockResolvedValueOnce([
+      { id: "s1", title: "A Real Generated Title", status: "active", created_at: sessions[0]!.created_at },
+      sessions[1]!,
+    ]);
+
+    act(() => {
+      socket.onmessage?.({ data: JSON.stringify({ type: "done", prompt_tokens: 1, completion_tokens: 1 }) });
+    });
+
+    // Not an instant refetch -- it's a bounded follow-up, not immediate.
+    expect(vi.mocked(listSessions)).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(4000);
+
+    await waitFor(() => expect(vi.mocked(listSessions)).toHaveBeenCalledTimes(1));
+    // The title now appears in more than one place (titlebar, main header, sidebar
+    // item) -- any of them is proof the new title actually landed in app state.
+    expect((await screen.findAllByText("A Real Generated Title")).length).toBeGreaterThan(0);
+
+    vi.useRealTimers();
+  });
+
+  it("does not schedule a sessions refetch when the session already has a real title", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ delay: null });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /sign in/i }));
+    // "Physics review" (s2) already has a real title.
+    await user.click(await screen.findByText("Physics review"));
+    await (await messageList()).findByText("Reply in s2");
+
+    await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+    const results = vi.mocked(openChatSocket).mock.results;
+    const socket = results[results.length - 1]!.value as {
+      onmessage: ((event: { data: string }) => void) | null;
+    };
+
+    const textarea = screen.getByPlaceholderText(/ask newton/i);
+    await user.type(textarea, "One more question");
+    await user.keyboard("{Enter}");
+
+    act(() => {
+      socket.onmessage?.({ data: JSON.stringify({ type: "chunk", content: "Second reply text" }) });
+    });
+    await screen.findByText("Second reply text");
+
+    vi.mocked(listSessions).mockClear();
+
+    act(() => {
+      socket.onmessage?.({ data: JSON.stringify({ type: "done" }) });
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(vi.mocked(listSessions)).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
   it("deletes a chat via the sidebar's hover delete button", async () => {
     const user = await signIn();
     await (await messageList()).findByText("Hello from s1");
