@@ -4,6 +4,7 @@ import MessageBubble from "./MessageBubble";
 import NewtonMark from "./NewtonMark";
 import OnboardingWelcome from "./OnboardingWelcome";
 import { latestPaperPlanMessageIndex } from "../lib/paperPlanIndex";
+import { isAnswerToInteractiveBlock } from "../lib/interactiveAnswers";
 
 interface ChatPaneProps {
   messages: ChatMessage[];
@@ -83,20 +84,28 @@ function ChatPane({
       )}
 
       <div className="message-list" data-testid="message-list">
-        {messages.map((message, index) => (
-          <MessageBubble
-            key={index}
-            message={message}
-            token={token}
-            sessionId={sessionId}
-            onOpenSuggestedPanel={onOpenSuggestedPanel}
-            onOpenDocument={onOpenDocument}
-            onSend={onSend}
-            onFocusComposer={onFocusComposer}
-            nextMessageContent={messages[index + 1]?.content}
-            isLatestPaperPlanMessage={index === latestPaperPlanIndex}
-          />
-        ))}
+        {messages.map((message, index) => {
+          // A student's answer to an options/paper-plan/step-check/checkpoint card is
+          // sent as a real chat message (so the model sees it), but that same card
+          // already shows it inline, read-only, once it lands (see isAnswerToInteractive
+          // Block's own comment) — rendering it again here as an ordinary bubble would
+          // just be a visible duplicate of text already on screen.
+          if (isAnswerToInteractiveBlock(messages, index)) return null;
+          return (
+            <MessageBubble
+              key={index}
+              message={message}
+              token={token}
+              sessionId={sessionId}
+              onOpenSuggestedPanel={onOpenSuggestedPanel}
+              onOpenDocument={onOpenDocument}
+              onSend={onSend}
+              onFocusComposer={onFocusComposer}
+              nextMessageContent={messages[index + 1]?.content}
+              isLatestPaperPlanMessage={index === latestPaperPlanIndex}
+            />
+          );
+        })}
       </div>
     </div>
   );
