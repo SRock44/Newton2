@@ -52,6 +52,24 @@ export async function submitAgeConsent(token: string, ageBand: AgeBand): Promise
   return (await res.json()) as AccountConsentStatus;
 }
 
+/** Permanently deletes the CALLING user's own account and everything they own -- chat
+ * history, documents, notes, flashcards, study plan, uploaded files, the Google
+ * Classroom connection -- see app/routers/account.py's delete_account and
+ * app/services/account.py's delete_own_account. Always "delete my own account", never an
+ * admin action on someone else's: the account deleted is whoever `token` belongs to.
+ *
+ * Irreversible with no undo and no grace period, which is why SettingsPanel.tsx gates it
+ * behind a typed-confirmation dialog rather than the window.confirm() used for
+ * single-document deletes. The caller must sign out afterwards -- the token is still
+ * syntactically valid but now refers to nothing. */
+export async function deleteAccount(token: string): Promise<void> {
+  const res = await fetch(`${API_URL}/account`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete your account."));
+}
+
 export async function createSession(token: string): Promise<string> {
   const res = await fetch(`${API_URL}/chat/sessions`, {
     method: "POST",

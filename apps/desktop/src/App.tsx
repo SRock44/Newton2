@@ -1223,7 +1223,15 @@ function App() {
         <PracticeExamsPanel token={token} onClose={() => setShowPracticeExams(false)} />
       )}
       {showSettings && (
-        <SettingsPanel token={token} username={username || "student"} onClose={() => setShowSettings(false)} />
+        <SettingsPanel
+          token={token}
+          username={username || "student"}
+          onClose={() => setShowSettings(false)}
+          /* After a successful DELETE /account there is nothing left to be signed in
+             to — reuse the existing sign-out teardown rather than inventing a second,
+             nearly-identical path back to the login screen. */
+          onAccountDeleted={handleSignOut}
+        />
       )}
       {showHelp && <HelpModal token={token} onClose={() => setShowHelp(false)} />}
 

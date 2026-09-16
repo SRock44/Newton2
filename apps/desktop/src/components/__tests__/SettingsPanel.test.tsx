@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SettingsPanel from "../SettingsPanel";
 import type { BillingStatus, ProModel } from "../../types";
@@ -53,6 +53,7 @@ vi.mock("../../api", async () => {
     setPreferredProModel: vi.fn(async () => ({ ...proStatus, preferred_pro_model: "model-b" })),
     setFocusMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, focus_mode_enabled: enabled })),
     setLearnMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, learn_mode_enabled: enabled })),
+    deleteAccount: vi.fn(async () => undefined),
   };
 });
 
@@ -66,12 +67,14 @@ import {
   createCheckoutSession,
   createPortalSession,
   createTopupCheckoutSession,
+  deleteAccount,
   getBillingStatus,
   getProModels,
   setFocusMode,
   setLearnMode,
   setPreferredProModel,
 } from "../../api";
+import { getAccentPreset, getThemePreference } from "../../lib/preferences";
 
 describe("SettingsPanel", () => {
   beforeEach(() => {
@@ -89,7 +92,11 @@ describe("SettingsPanel", () => {
     vi.mocked(setLearnMode)
       .mockReset()
       .mockImplementation(async (_token, enabled) => ({ ...freeStatus, learn_mode_enabled: enabled }));
+    vi.mocked(deleteAccount).mockReset().mockResolvedValue(undefined);
     openUrl.mockClear();
+    window.localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-accent");
   });
 
   afterEach(() => {
@@ -99,7 +106,7 @@ describe("SettingsPanel", () => {
   it("closes via the close button", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={onClose} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={onClose} />);
 
     await screen.findByText("You're on the Free plan.");
     await user.click(screen.getByRole("button", { name: /close/i }));
@@ -108,13 +115,13 @@ describe("SettingsPanel", () => {
   });
 
   it("shows the signed-in account name", async () => {
-    render(<SettingsPanel token="tok" username="sean@rockwitz.com" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean@rockwitz.com" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     expect(await screen.findByText("sean@rockwitz.com")).toBeInTheDocument();
   });
 
   it("free plan: shows the upgrade button, which starts checkout and opens the URL", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     const upgradeBtn = await screen.findByRole("button", { name: /upgrade to pro/i });
     await user.click(upgradeBtn);
@@ -127,7 +134,7 @@ describe("SettingsPanel", () => {
   it("free plan: checkout polling picks up a plan flip to pro and stops waiting", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ delay: null });
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     const upgradeBtn = await screen.findByRole("button", { name: /upgrade to pro/i });
     await user.click(upgradeBtn);
@@ -144,7 +151,7 @@ describe("SettingsPanel", () => {
   it("shows a graceful message when checkout isn't configured (503) instead of crashing", async () => {
     vi.mocked(createCheckoutSession).mockRejectedValue(new ApiError("Pro isn't available on this server yet."));
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     const upgradeBtn = await screen.findByRole("button", { name: /upgrade to pro/i });
     await user.click(upgradeBtn);
@@ -157,7 +164,7 @@ describe("SettingsPanel", () => {
 
   it("pro plan: shows status, formatted renewal date, and credits used", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     expect(await screen.findByText(/pro plan · active/i)).toBeInTheDocument();
     expect(screen.getByText(/renews october 13, 2026/i)).toBeInTheDocument();
@@ -167,7 +174,7 @@ describe("SettingsPanel", () => {
   it("pro plan: manage billing opens the portal URL", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     const manageBtn = await screen.findByRole("button", { name: /manage billing/i });
     await user.click(manageBtn);
@@ -177,7 +184,7 @@ describe("SettingsPanel", () => {
   });
 
   it("free plan: the model picker is visible and its options are enabled", async () => {
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     await screen.findByText("You're on the Free plan.");
     expect(await screen.findByText("Model A (default)")).toBeInTheDocument();
@@ -189,7 +196,7 @@ describe("SettingsPanel", () => {
 
   it("free plan: clicking a model option shows the Pro upsell message and saves nothing", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     await screen.findByText("You're on the Free plan.");
     await user.click(screen.getByRole("radio", { name: "Model B" }));
@@ -205,7 +212,7 @@ describe("SettingsPanel", () => {
 
   it("pro plan: lists pro models with the current selection checked", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     await screen.findByText(/pro plan/i);
     expect(await screen.findByText("Model A (default)")).toBeInTheDocument();
@@ -217,7 +224,7 @@ describe("SettingsPanel", () => {
   it("pro plan: selecting a model saves it and reflects the new selection", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     await screen.findByText(/pro plan/i);
     await user.click(screen.getByRole("radio", { name: "Model B" }));
@@ -232,7 +239,7 @@ describe("SettingsPanel", () => {
     vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
     vi.mocked(setPreferredProModel).mockRejectedValue(new ApiError("Couldn't save your model preference."));
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     await screen.findByText(/pro plan/i);
     await user.click(screen.getByRole("radio", { name: "Model B" }));
@@ -244,7 +251,7 @@ describe("SettingsPanel", () => {
 
   it("toggles the study reminders preference", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const toggle = screen.getByRole("checkbox", { name: /study reminders/i });
@@ -256,7 +263,7 @@ describe("SettingsPanel", () => {
 
   it("focus mode: unchecked by default and persists turning it on via the backend", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const toggle = screen.getByRole("switch", { name: /focus mode/i });
@@ -271,7 +278,7 @@ describe("SettingsPanel", () => {
   it("focus mode: persists turning it off via the backend", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue({ ...freeStatus, focus_mode_enabled: true });
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const toggle = screen.getByRole("switch", { name: /focus mode/i });
@@ -284,7 +291,7 @@ describe("SettingsPanel", () => {
   });
 
   it("focus mode: available (not gated) on the free plan, same as Pro", async () => {
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     expect(screen.getByRole("switch", { name: /focus mode/i })).toBeEnabled();
@@ -293,7 +300,7 @@ describe("SettingsPanel", () => {
   it("focus mode: reverts the toggle and shows an error when saving fails", async () => {
     vi.mocked(setFocusMode).mockRejectedValue(new ApiError("Couldn't save your Focus Mode setting."));
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const toggle = screen.getByRole("switch", { name: /focus mode/i });
@@ -305,7 +312,7 @@ describe("SettingsPanel", () => {
 
   it("learn mode: unchecked by default and persists turning it on via the backend", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const toggle = screen.getByRole("switch", { name: /learn mode/i });
@@ -320,7 +327,7 @@ describe("SettingsPanel", () => {
   it("learn mode: persists turning it off via the backend", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue({ ...freeStatus, learn_mode_enabled: true });
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const toggle = screen.getByRole("switch", { name: /learn mode/i });
@@ -333,7 +340,7 @@ describe("SettingsPanel", () => {
   });
 
   it("learn mode: available (not gated) on the free plan, same as Pro", async () => {
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     expect(screen.getByRole("switch", { name: /learn mode/i })).toBeEnabled();
@@ -342,7 +349,7 @@ describe("SettingsPanel", () => {
   it("learn mode: reverts the toggle and shows an error when saving fails", async () => {
     vi.mocked(setLearnMode).mockRejectedValue(new ApiError("Couldn't save your Learn Mode setting."));
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const toggle = screen.getByRole("switch", { name: /learn mode/i });
@@ -354,7 +361,7 @@ describe("SettingsPanel", () => {
 
   it("learn mode and focus mode toggle independently of each other", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const learnToggle = screen.getByRole("switch", { name: /learn mode/i });
@@ -367,7 +374,7 @@ describe("SettingsPanel", () => {
   });
 
   it("top-up: shows the current balance and a button per tier", async () => {
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     expect(await screen.findByText(/top-up balance: \$0\.00/i)).toBeInTheDocument();
@@ -377,7 +384,7 @@ describe("SettingsPanel", () => {
   });
 
   it("top-up: available on the free plan (no Pro subscription required)", async () => {
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     const button = screen.getByRole("button", { name: "+ $10.00" });
@@ -386,7 +393,7 @@ describe("SettingsPanel", () => {
 
   it("top-up: clicking a tier starts checkout for that amount and opens the URL", async () => {
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     await user.click(screen.getByRole("button", { name: "+ $10.00" }));
@@ -399,7 +406,7 @@ describe("SettingsPanel", () => {
   it("top-up: polling picks up a balance increase and stops waiting", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ delay: null });
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     await user.click(screen.getByRole("button", { name: "+ $5.00" }));
@@ -418,7 +425,7 @@ describe("SettingsPanel", () => {
       new ApiError("Adding credits isn't available on this server yet."),
     );
     const user = userEvent.setup();
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
     await screen.findByText("You're on the Free plan.");
 
     await user.click(screen.getByRole("button", { name: "+ $5.00" }));
@@ -430,9 +437,185 @@ describe("SettingsPanel", () => {
 
   it("top-up: pro plan also shows the balance and tier buttons", async () => {
     vi.mocked(getBillingStatus).mockResolvedValue(proStatus);
-    render(<SettingsPanel token="tok" username="sean" onClose={vi.fn()} />);
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
 
     expect(await screen.findByText(/top-up balance: \$4\.60/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "+ $25.00" })).toBeInTheDocument();
+  });
+
+  describe("appearance", () => {
+    it("shows a light/dark/system theme choice, defaulting to system (i.e. no override)", async () => {
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+
+      expect(screen.getByRole("radio", { name: "System" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "false");
+      expect(screen.getByRole("radio", { name: "Dark" })).toHaveAttribute("aria-checked", "false");
+      expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+    });
+
+    it("choosing Dark applies data-theme to <html> immediately and persists it", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+
+      await user.click(screen.getByRole("radio", { name: "Dark" }));
+
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+      expect(getThemePreference()).toBe("dark");
+      expect(screen.getByRole("radio", { name: "Dark" })).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("choosing System again removes the override, handing control back to the OS", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+
+      await user.click(screen.getByRole("radio", { name: "Light" }));
+      expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+
+      await user.click(screen.getByRole("radio", { name: "System" }));
+      expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+      expect(getThemePreference()).toBe("system");
+    });
+
+    it("offers accent presets and applies the chosen one via data-accent", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+
+      expect(screen.getByRole("radio", { name: "Cobalt" })).toHaveAttribute("aria-checked", "true");
+
+      await user.click(screen.getByRole("radio", { name: "Forest" }));
+
+      expect(document.documentElement.getAttribute("data-accent")).toBe("forest");
+      expect(getAccentPreset()).toBe("forest");
+      expect(screen.getByRole("radio", { name: "Forest" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("radio", { name: "Cobalt" })).toHaveAttribute("aria-checked", "false");
+    });
+
+    it("theme and accent are independent — changing one keeps the other", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+
+      await user.click(screen.getByRole("radio", { name: "Violet" }));
+      await user.click(screen.getByRole("radio", { name: "Dark" }));
+
+      expect(document.documentElement.getAttribute("data-accent")).toBe("violet");
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    });
+
+    it("restores the saved appearance when Settings is reopened", async () => {
+      const user = userEvent.setup();
+      const first = render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+      await user.click(screen.getByRole("radio", { name: "Dark" }));
+      await user.click(screen.getByRole("radio", { name: "Teal" }));
+      first.unmount();
+
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+
+      expect(screen.getByRole("radio", { name: "Dark" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("radio", { name: "Teal" })).toHaveAttribute("aria-checked", "true");
+    });
+  });
+
+  describe("delete account", () => {
+    async function openConfirm(user: ReturnType<typeof userEvent.setup>) {
+      await screen.findByText("You're on the Free plan.");
+      await user.click(screen.getByRole("button", { name: "Delete account" }));
+      return screen.getByRole("alertdialog");
+    }
+
+    it("does not delete on a single click — it opens a confirmation dialog instead", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      const dialog = await openConfirm(user);
+
+      expect(dialog).toBeInTheDocument();
+      expect(deleteAccount).not.toHaveBeenCalled();
+    });
+
+    it("keeps the confirm button disabled until the exact phrase is typed", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await openConfirm(user);
+
+      const confirmBtn = screen.getByRole("button", { name: "Delete my account" });
+      expect(confirmBtn).toBeDisabled();
+
+      await user.type(screen.getByRole("textbox", { name: /type delete to confirm/i }), "delete");
+      expect(confirmBtn).toBeDisabled(); // wrong case — not a match
+
+      await user.clear(screen.getByRole("textbox", { name: /type delete to confirm/i }));
+      await user.type(screen.getByRole("textbox", { name: /type delete to confirm/i }), "DELETE");
+      expect(confirmBtn).toBeEnabled();
+    });
+
+    it("calls the real DELETE /account endpoint and then signs the student out", async () => {
+      const user = userEvent.setup();
+      const onAccountDeleted = vi.fn();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={onAccountDeleted} onClose={vi.fn()} />);
+      await openConfirm(user);
+
+      await user.type(screen.getByRole("textbox", { name: /type delete to confirm/i }), "DELETE");
+      await user.click(screen.getByRole("button", { name: "Delete my account" }));
+
+      await waitFor(() => expect(deleteAccount).toHaveBeenCalledWith("tok"));
+      await waitFor(() => expect(onAccountDeleted).toHaveBeenCalledTimes(1));
+    });
+
+    it("cancelling closes the dialog, deletes nothing, and forgets the typed phrase", async () => {
+      const user = userEvent.setup();
+      const onAccountDeleted = vi.fn();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={onAccountDeleted} onClose={vi.fn()} />);
+      await openConfirm(user);
+
+      await user.type(screen.getByRole("textbox", { name: /type delete to confirm/i }), "DELETE");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(deleteAccount).not.toHaveBeenCalled();
+      expect(onAccountDeleted).not.toHaveBeenCalled();
+
+      // Reopening starts from scratch rather than a pre-armed confirm button.
+      await user.click(screen.getByRole("button", { name: "Delete account" }));
+      expect(screen.getByRole("button", { name: "Delete my account" })).toBeDisabled();
+    });
+
+    it("surfaces a backend failure and keeps the student signed in, since the account still exists", async () => {
+      vi.mocked(deleteAccount).mockRejectedValue(new ApiError("Couldn't delete your account."));
+      const user = userEvent.setup();
+      const onAccountDeleted = vi.fn();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={onAccountDeleted} onClose={vi.fn()} />);
+      await openConfirm(user);
+
+      await user.type(screen.getByRole("textbox", { name: /type delete to confirm/i }), "DELETE");
+      await user.click(screen.getByRole("button", { name: "Delete my account" }));
+
+      expect(await screen.findByText("Couldn't delete your account.")).toBeInTheDocument();
+      expect(onAccountDeleted).not.toHaveBeenCalled();
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Delete my account" })).toBeEnabled();
+    });
+
+    it("names the account being deleted, so it can't be mistaken for deleting something smaller", async () => {
+      const user = userEvent.setup();
+      render(
+        <SettingsPanel
+          token="tok"
+          username="sean@rockwitz.com"
+          onAccountDeleted={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+      await screen.findByText("You're on the Free plan.");
+      await user.click(screen.getByRole("button", { name: "Delete account" }));
+
+      expect(within(screen.getByRole("alertdialog")).getByText("sean@rockwitz.com")).toBeInTheDocument();
+    });
   });
 });

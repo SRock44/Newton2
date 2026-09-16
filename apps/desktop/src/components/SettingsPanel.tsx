@@ -5,6 +5,7 @@ import {
   createCheckoutSession,
   createPortalSession,
   createTopupCheckoutSession,
+  deleteAccount,
   getBillingStatus,
   getProModels,
   setFocusMode,
@@ -12,14 +13,41 @@ import {
   setPreferredProModel,
 } from "../api";
 import type { BillingStatus, ProModel } from "../types";
-import { getStudyRemindersEnabled, setStudyRemindersEnabled } from "../lib/preferences";
+import {
+  ACCENT_PRESETS,
+  applyAppearance,
+  getAccentPreset,
+  getStudyRemindersEnabled,
+  getThemePreference,
+  setAccentPreset,
+  setStudyRemindersEnabled,
+  setThemePreference,
+} from "../lib/preferences";
+import type { AccentPresetId, ThemePreference } from "../lib/preferences";
 import Toggle from "./Toggle";
 
 interface SettingsPanelProps {
   token: string;
   username: string;
   onClose: () => void;
+  /** Called after the account has actually been deleted on the backend. App.tsx passes
+   * its existing handleSignOut, which is exactly right: the token now refers to nothing,
+   * so the only correct next screen is the login screen. Reusing sign-out rather than
+   * inventing a "deleted" state also means every bit of in-memory session state (open
+   * chat, messages, panels) is torn down by the one function that already knows how. */
+  onAccountDeleted: () => void;
 }
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+];
+
+/** What the student has to type to confirm deletion. A deliberate, unambiguous word —
+ * not their username, which on this app is usually an email address and long enough
+ * that people paste it without reading. */
+const DELETE_CONFIRM_PHRASE = "DELETE";
 
 const CHECKOUT_POLL_INTERVAL_MS = 3000;
 const CHECKOUT_POLL_TIMEOUT_MS = 2 * 60 * 1000;
@@ -43,7 +71,7 @@ function formatCents(cents: number): string {
  * "open a URL, then poll until the backend reflects it" pattern) — there's no clean
  * redirect-back to a desktop app, so upgrading polls getBillingStatus() for a while
  * afterward instead of making the student manually refresh. */
-function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
+function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsPanelProps) {
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [billingLoading, setBillingLoading] = useState(true);
   const [billingError, setBillingError] = useState<string | null>(null);
@@ -62,6 +90,19 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
   const [showFreeModelNotice, setShowFreeModelNotice] = useState(false);
 
   const [remindersEnabled, setRemindersEnabled] = useState(getStudyRemindersEnabled);
+
+  // Appearance. Purely local (see lib/preferences.ts) — this is window chrome, not
+  // account data, so there's nothing to save to the backend and nothing that can fail.
+  const [theme, setTheme] = useState<ThemePreference>(getThemePreference);
+  const [accent, setAccent] = useState<AccentPresetId>(getAccentPreset);
+
+  // Account deletion. `deleteConfirmOpen` gates a dedicated confirmation dialog rather
+  // than a window.confirm() (which is what DocumentsPanel uses for a single document) —
+  // see the section's own comment further down for why that difference is deliberate.
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [savingFocusMode, setSavingFocusMode] = useState(false);
   const [focusModeError, setFocusModeError] = useState<string | null>(null);
@@ -254,6 +295,49 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
     setStudyRemindersEnabled(enabled);
   }
 
+  /** Both appearance controls apply immediately AND persist — there's no Save button,
+   * because the whole point is seeing the change while the picker is still open.
+   * applyAppearance is called with the new pair rather than re-reading storage, so the
+   * repaint never lags the click by a storage round-trip. */
+  function handleSelectTheme(next: ThemePreference) {
+    setTheme(next);
+    setThemePreference(next);
+    applyAppearance(next, accent);
+  }
+
+  function handleSelectAccent(next: AccentPresetId) {
+    setAccent(next);
+    setAccentPreset(next);
+    applyAppearance(theme, next);
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteConfirmOpen(false);
+    setDeleteConfirmText("");
+    setDeleteError(null);
+  }
+
+  /** Irreversible: DELETE /account cascades away every chat, document, note, flashcard
+   * and study plan item this student owns (see api.ts's deleteAccount). Guarded three
+   * ways — a separate dialog, a typed confirmation phrase, and a submit button that
+   * stays disabled until it matches — and re-checked here so a caller can't get past the
+   * disabled button by any other route. On success it hands off to App.tsx's existing
+   * sign-out; on failure the dialog stays open with the error, since the account very
+   * much still exists. */
+  async function handleDeleteAccount() {
+    if (deletingAccount || deleteConfirmText.trim() !== DELETE_CONFIRM_PHRASE) return;
+    setDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(token);
+      setDeleteConfirmOpen(false);
+      onAccountDeleted();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "Couldn't delete your account.");
+      setDeletingAccount(false);
+    }
+  }
+
   /** Focus Mode (see types.ts's BillingStatus.focus_mode_enabled) is real, persisted,
    * server-side state -- not a local-only preference like study reminders -- since the
    * Tutor's own backend behavior (Socratic-only prompting, blocking write_research_paper)
@@ -437,7 +521,54 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
           )}
         </section>
 
-        <section className="settings-section settings-section--last">
+        {/* Appearance is purely local window chrome (see lib/preferences.ts) — it
+            deliberately sits between billing and the behavioral preferences below,
+            since it's the one section with no account or Tutor consequences at all. */}
+        <section className="settings-section">
+          <h3 className="settings-section-title">Appearance</h3>
+
+          <div className="settings-appearance-row">
+            <span className="settings-toggle-label">Theme</span>
+            <div className="settings-segmented" role="radiogroup" aria-label="Theme">
+              {THEME_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={theme === option.value}
+                  className={`settings-segmented-option${theme === option.value ? " settings-segmented-option--active" : ""}`}
+                  onClick={() => handleSelectTheme(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="settings-toggle-desc settings-appearance-desc">
+            System follows your computer's own light/dark setting.
+          </p>
+
+          <div className="settings-appearance-row">
+            <span className="settings-toggle-label">Accent</span>
+            <div className="settings-accents" role="radiogroup" aria-label="Accent color">
+              {ACCENT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={accent === preset.id}
+                  aria-label={preset.label}
+                  title={preset.label}
+                  className={`settings-accent-swatch${accent === preset.id ? " settings-accent-swatch--active" : ""}`}
+                  style={{ backgroundColor: preset.swatch }}
+                  onClick={() => handleSelectAccent(preset.id)}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="settings-section">
           <h3 className="settings-section-title">Preferences</h3>
           <label className="settings-toggle">
             <input
@@ -501,7 +632,81 @@ function SettingsPanel({ token, username, onClose }: SettingsPanelProps) {
           {savingLearnMode && <p className="settings-waiting">Saving…</p>}
           {learnModeError && <div className="banner banner--error">{learnModeError}</div>}
         </section>
+
+        {/* Account deletion is documented in PRIVACY_POLICY.md as a real, working right
+            and is implemented end-to-end on the backend (DELETE /account), but had no UI
+            at all until now. DocumentsPanel's single-document delete uses a plain
+            window.confirm(); that is deliberately NOT reused here. A mis-clicked
+            document delete costs one file; this one cascades away every chat, document,
+            note, flashcard and study plan item the student owns, permanently, with no
+            undo — so it gets a real dialog with a typed confirmation phrase, which is
+            proportionate to the consequence rather than to the pattern next door. */}
+        <section className="settings-section settings-section--last settings-section--danger">
+          <h3 className="settings-section-title">Danger zone</h3>
+          <p className="settings-plan-line">
+            Deleting your account permanently removes your chats, documents, notes, flashcards and study plan.
+            This can't be undone.
+          </p>
+          <button type="button" className="btn-danger" onClick={() => setDeleteConfirmOpen(true)}>
+            Delete account
+          </button>
+        </section>
       </div>
+
+      {deleteConfirmOpen && (
+        <div
+          className="modal-overlay modal-overlay--nested"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!deletingAccount) closeDeleteConfirm();
+          }}
+        >
+          <div
+            className="modal-panel modal-panel--confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 id="delete-account-title">Delete account</h2>
+            </div>
+            <p className="modal-subtitle">
+              This permanently deletes the account <strong>{username}</strong> and everything in it — every chat,
+              document, note, flashcard and study plan item. It cannot be undone, and there is no grace period.
+            </p>
+            <label className="settings-delete-confirm">
+              <span className="settings-toggle-label">
+                Type <strong>{DELETE_CONFIRM_PHRASE}</strong> to confirm
+              </span>
+              <input
+                type="text"
+                className="settings-delete-input"
+                value={deleteConfirmText}
+                autoFocus
+                spellCheck={false}
+                autoComplete="off"
+                aria-label={`Type ${DELETE_CONFIRM_PHRASE} to confirm`}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+              />
+            </label>
+            {deleteError && <div className="banner banner--error">{deleteError}</div>}
+            <div className="settings-delete-actions">
+              <button type="button" className="btn-secondary" onClick={closeDeleteConfirm} disabled={deletingAccount}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount || deleteConfirmText.trim() !== DELETE_CONFIRM_PHRASE}
+              >
+                {deletingAccount ? "Deleting…" : "Delete my account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
