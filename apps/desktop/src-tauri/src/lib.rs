@@ -185,13 +185,38 @@ fn show_notepad_window(app: &tauri::AppHandle) {
         let _ = window.set_focus();
         return;
     }
-    let _ = WebviewWindowBuilder::new(app, "notepad", WebviewUrl::App("index.html".into()))
+    let window = match WebviewWindowBuilder::new(app, "notepad", WebviewUrl::App("index.html".into()))
         .title("Newton Notepad")
         .inner_size(420.0, 580.0)
         .min_inner_size(320.0, 360.0)
-        .always_on_top(true)
         .decorations(false)
-        .build();
+        .build()
+    {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Failed to create Notepad window: {e}");
+            return;
+        }
+    };
+    // Applied after creation rather than as a builder flag -- see the reload comment
+    // below for why building with always_on_top(true) set inline is suspected to
+    // contribute to the exact bug that comment describes.
+    let _ = window.set_always_on_top(true);
+
+    // A real, reproduced WebView2 bug (confirmed via Chrome DevTools Protocol against
+    // a live repro, not a hunch): this second webview occasionally never completes its
+    // initial navigation and is left showing a solid blank window, its own devtools
+    // target stuck on about:blank indefinitely -- even an explicit CDP Page.navigate
+    // call to it afterward never completed either, so the underlying WebView2
+    // controller itself gets wedged during creation of a second webview in the same
+    // environment, not a JS-level or wrong-URL problem. A single forced reload shortly
+    // after creation reliably recovers it: harmless if the page already loaded fine
+    // (the note picker just re-renders in a blink), a real fix if it didn't.
+    let retry_window = window.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::sleep(Duration::from_millis(1200));
+        let _ = retry_window.eval("location.reload();");
+    });
 }
 
 /// The Home dashboard's "New note" quick action and its "Recent documents & notes"

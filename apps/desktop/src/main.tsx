@@ -22,6 +22,7 @@ import "highlight.js/styles/github-dark.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import NotepadWindow from "./NotepadWindow";
+import ErrorBoundary from "./ErrorBoundary";
 
 // The always-on-top Notepad is a second window loading this exact same bundle (see
 // src-tauri/src/lib.rs's `show_notepad_window`) — its window label, not its URL, is what
@@ -37,6 +38,6 @@ function isNotepadWindow(): boolean {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {isNotepadWindow() ? <NotepadWindow /> : <App />}
+    <ErrorBoundary>{isNotepadWindow() ? <NotepadWindow /> : <App />}</ErrorBoundary>
   </React.StrictMode>,
 );
