@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
+  createShareLink,
   deletePracticeExam,
   getPracticeExam,
   listPracticeExams,
+  revokeShareLink,
   submitPracticeExam,
 } from "../api";
 import type { PracticeExamDetail, PracticeExamSummary } from "../types";
@@ -36,6 +38,12 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
   const [activeLoading, setActiveLoading] = useState(false);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // Public share link for the exam currently open. Keyed by exam id so switching exams
+  // never shows one exam's "Stop sharing" state on another's.
+  const [sharing, setSharing] = useState(false);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareLinkByExam, setShareLinkByExam] = useState<Record<string, string>>({});
 
   async function refresh() {
     setLoading(true);
@@ -77,6 +85,52 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
     }
   }
 
+  /** Mints a public, read-only web page for one exam and copies its URL.
+   *
+   * The page is served by the Newton API itself and readable with no Newton account —
+   * that's the point — and authorized purely by an unguessable token in the path, so the
+   * link should be treated like a password.
+   *
+   * It preserves the app's own "don't leak answers before completion" rule: an exam that
+   * hasn't been submitted yet renders questions and choices only, with no answer key and
+   * no explanations (see services/api/app/routers/share.py). Sharing an un-taken exam with
+   * a classmate to study from is therefore safe by construction, not by remembering to. */
+  async function handleShare(examId: string) {
+    if (sharing) return;
+    setSharing(true);
+    setShareStatus(null);
+    setError(null);
+    try {
+      const link = await createShareLink(token, { kind: "practice_exam", exam_id: examId });
+      await navigator.clipboard.writeText(link.url);
+      setShareLinkByExam((prev) => ({ ...prev, [examId]: link.id }));
+      setShareStatus(`Link copied — anyone with it can view this exam. ${link.url}`);
+    } catch (err) {
+      setShareStatus(err instanceof ApiError ? err.message : "Couldn't create a share link.");
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function handleStopSharing(examId: string) {
+    const linkId = shareLinkByExam[examId];
+    if (sharing || !linkId) return;
+    setSharing(true);
+    try {
+      await revokeShareLink(token, linkId);
+      setShareLinkByExam((prev) => {
+        const next = { ...prev };
+        delete next[examId];
+        return next;
+      });
+      setShareStatus("Sharing stopped — that link no longer works.");
+    } catch (err) {
+      setShareStatus(err instanceof ApiError ? err.message : "Couldn't revoke this share link.");
+    } finally {
+      setSharing(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!active || submitting) return;
     setSubmitting(true);
@@ -111,6 +165,7 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
         </div>
 
         {error && <div className="banner banner--error">{error}</div>}
+        {shareStatus && <div className="item-status">{shareStatus}</div>}
 
         {!active ? (
           loading ? (
@@ -130,14 +185,38 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
                         {exam.difficulty} · {scoreLabel(exam)} · {formatDate(exam.created_at)}
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      className="btn-secondary-sm btn-secondary-sm--danger"
-                      onClick={() => handleDelete(exam.id)}
-                      aria-label={`Delete exam: ${exam.title}`}
-                    >
-                      Delete
-                    </button>
+                    <div className="item-row-actions">
+                      {shareLinkByExam[exam.id] ? (
+                        <button
+                          type="button"
+                          className="btn-secondary-sm"
+                          onClick={() => handleStopSharing(exam.id)}
+                          disabled={sharing}
+                          aria-label={`Stop sharing exam: ${exam.title}`}
+                        >
+                          Stop sharing
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-secondary-sm"
+                          onClick={() => handleShare(exam.id)}
+                          disabled={sharing}
+                          aria-label={`Share exam: ${exam.title}`}
+                          title="Copy a public, read-only web link anyone can open — no Newton account needed"
+                        >
+                          Share
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-secondary-sm btn-secondary-sm--danger"
+                        onClick={() => handleDelete(exam.id)}
+                        aria-label={`Delete exam: ${exam.title}`}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </li>
               ))}

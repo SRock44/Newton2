@@ -51,10 +51,20 @@ vi.mock("../../api", async () => {
     getPracticeExam: vi.fn(async () => examDetail),
     submitPracticeExam: vi.fn(async () => gradedDetail),
     deletePracticeExam: vi.fn(async () => undefined),
+    createShareLink: vi.fn(),
+    revokeShareLink: vi.fn(),
   };
 });
 
-import { deletePracticeExam, getPracticeExam, listPracticeExams, submitPracticeExam } from "../../api";
+import {
+  ApiError,
+  createShareLink,
+  deletePracticeExam,
+  getPracticeExam,
+  listPracticeExams,
+  revokeShareLink,
+  submitPracticeExam,
+} from "../../api";
 
 describe("PracticeExamsPanel", () => {
   beforeEach(() => {
@@ -62,6 +72,15 @@ describe("PracticeExamsPanel", () => {
     vi.mocked(getPracticeExam).mockClear();
     vi.mocked(submitPracticeExam).mockClear();
     vi.mocked(deletePracticeExam).mockClear();
+    vi.mocked(createShareLink).mockReset().mockResolvedValue({
+      id: "link-9",
+      kind: "practice_exam",
+      document_id: null,
+      exam_id: "exam-1",
+      url: "http://127.0.0.1:58001/s/tok987",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    vi.mocked(revokeShareLink).mockReset().mockResolvedValue(undefined);
   });
 
   it("lists exams with their score status", async () => {
@@ -125,5 +144,56 @@ describe("PracticeExamsPanel", () => {
 
     expect(await screen.findByText("physics-notes.txt")).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe("share link", () => {
+    it("mints a public link for one exam and copies its URL", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      render(<PracticeExamsPanel token="test-token" onClose={vi.fn()} />);
+      await screen.findByText("physics-notes.txt");
+
+      await user.click(screen.getByRole("button", { name: /share exam: physics-notes\.txt/i }));
+
+      await waitFor(() =>
+        expect(createShareLink).toHaveBeenCalledWith("test-token", {
+          kind: "practice_exam",
+          exam_id: "exam-1",
+        }),
+      );
+      expect(writeText).toHaveBeenCalledWith("http://127.0.0.1:58001/s/tok987");
+      expect(await screen.findByText(/anyone with it can view this exam/i)).toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
+
+    it("swaps to a revoke action once shared, and really revokes", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      render(<PracticeExamsPanel token="test-token" onClose={vi.fn()} />);
+      await screen.findByText("physics-notes.txt");
+
+      await user.click(screen.getByRole("button", { name: /share exam: physics-notes\.txt/i }));
+      const stop = await screen.findByRole("button", { name: /stop sharing exam/i });
+      await user.click(stop);
+
+      await waitFor(() => expect(revokeShareLink).toHaveBeenCalledWith("test-token", "link-9"));
+      expect(await screen.findByText(/that link no longer works/i)).toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
+
+    it("reports a failure rather than showing a revoke button for a link that was never made", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      vi.mocked(createShareLink).mockRejectedValueOnce(new ApiError("Couldn't create a share link."));
+      render(<PracticeExamsPanel token="test-token" onClose={vi.fn()} />);
+      await screen.findByText("physics-notes.txt");
+
+      await user.click(screen.getByRole("button", { name: /share exam: physics-notes\.txt/i }));
+
+      expect(await screen.findByText("Couldn't create a share link.")).toBeInTheDocument();
+      expect(writeText).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: /stop sharing exam/i })).not.toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
   });
 });

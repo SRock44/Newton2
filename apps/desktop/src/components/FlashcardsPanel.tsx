@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { ApiError, deleteFlashcard, flashcardsApkgUrl, listFlashcards, reviewFlashcard } from "../api";
+import {
+  ApiError,
+  createShareLink,
+  deleteFlashcard,
+  flashcardsApkgUrl,
+  listFlashcards,
+  reviewFlashcard,
+  revokeShareLink,
+} from "../api";
 import { fetchBytes, saveBytesToDisk } from "../lib/download";
 import type { Flashcard } from "../types";
 
@@ -53,6 +61,12 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
   // without either being mistaken for the panel-level error banner.
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+
+  // Public share link. `shareLinkId` is remembered so "Stop sharing" can revoke the exact
+  // link this session minted without a second round trip to look it up.
+  const [sharing, setSharing] = useState(false);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareLinkId, setShareLinkId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,6 +160,51 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
     }
   }
 
+  /** Mints a public, read-only web page for this deck and copies its URL.
+   *
+   * The URL points straight at the Newton API, not at this app: whoever receives it has no
+   * Newton account and no desktop app installed, which is the entire point of the feature.
+   * It's authorized by an unguessable random token in the path rather than any login (see
+   * services/api/app/services/share_tokens.py) — so treat it like a password: anyone with
+   * the link can read the deck.
+   *
+   * Idempotent server-side, so pressing this twice hands back the same URL instead of
+   * quietly orphaning one already sent to a classmate. */
+  async function handleShare() {
+    if (sharing) return;
+    setSharing(true);
+    setShareStatus(null);
+    setError(null);
+    try {
+      const accessToken = await getAccessToken();
+      const link = await createShareLink(accessToken, { kind: "flashcards" });
+      await navigator.clipboard.writeText(link.url);
+      setShareLinkId(link.id);
+      setShareStatus(`Link copied — anyone with it can view these cards. ${link.url}`);
+    } catch (err) {
+      setShareStatus(err instanceof ApiError ? err.message : "Couldn't create a share link.");
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  /** Revocation, for the case every URL-embedded secret needs: the link got forwarded
+   * somewhere it shouldn't have. A real DELETE server-side — the page 404s immediately. */
+  async function handleStopSharing() {
+    if (sharing || !shareLinkId) return;
+    setSharing(true);
+    try {
+      const accessToken = await getAccessToken();
+      await revokeShareLink(accessToken, shareLinkId);
+      setShareLinkId(null);
+      setShareStatus("Sharing stopped — that link no longer works.");
+    } catch (err) {
+      setShareStatus(err instanceof ApiError ? err.message : "Couldn't revoke this share link.");
+    } finally {
+      setSharing(false);
+    }
+  }
+
   async function handleDeleteFromBrowse(id: string) {
     try {
       const accessToken = await getAccessToken();
@@ -191,10 +250,32 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
           >
             {exporting ? "Exporting…" : "Export to Anki"}
           </button>
+          {shareLinkId ? (
+            <button
+              type="button"
+              className="btn-secondary-sm btn-secondary-sm--danger"
+              onClick={handleStopSharing}
+              disabled={sharing}
+              title="Revoke the public link — it stops working immediately"
+            >
+              {sharing ? "Working…" : "Stop sharing"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-secondary-sm"
+              onClick={handleShare}
+              disabled={sharing}
+              title="Copy a public, read-only web link anyone can open — no Newton account needed"
+            >
+              {sharing ? "Sharing…" : "Share"}
+            </button>
+          )}
         </div>
 
         {error && <div className="banner banner--error">{error}</div>}
         {exportStatus && <div className="item-status">{exportStatus}</div>}
+        {shareStatus && <div className="item-status">{shareStatus}</div>}
 
         {mode === "review" ? (
           queueLoading ? (

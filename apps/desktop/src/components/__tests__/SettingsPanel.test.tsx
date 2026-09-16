@@ -54,6 +54,8 @@ vi.mock("../../api", async () => {
     setFocusMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, focus_mode_enabled: enabled })),
     setLearnMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...freeStatus, learn_mode_enabled: enabled })),
     deleteAccount: vi.fn(async () => undefined),
+    getCalendarFeedUrl: vi.fn(),
+    regenerateCalendarFeedUrl: vi.fn(),
   };
 });
 
@@ -69,7 +71,9 @@ import {
   createTopupCheckoutSession,
   deleteAccount,
   getBillingStatus,
+  getCalendarFeedUrl,
   getProModels,
+  regenerateCalendarFeedUrl,
   setFocusMode,
   setLearnMode,
   setPreferredProModel,
@@ -93,6 +97,18 @@ describe("SettingsPanel", () => {
       .mockReset()
       .mockImplementation(async (_token, enabled) => ({ ...freeStatus, learn_mode_enabled: enabled }));
     vi.mocked(deleteAccount).mockReset().mockResolvedValue(undefined);
+    vi.mocked(getCalendarFeedUrl)
+      .mockReset()
+      .mockResolvedValue({
+        url: "http://127.0.0.1:58001/calendar/feed/user-1/secret-aaa.ics",
+        webcal_url: "webcal://127.0.0.1:58001/calendar/feed/user-1/secret-aaa.ics",
+      });
+    vi.mocked(regenerateCalendarFeedUrl)
+      .mockReset()
+      .mockResolvedValue({
+        url: "http://127.0.0.1:58001/calendar/feed/user-1/secret-bbb.ics",
+        webcal_url: "webcal://127.0.0.1:58001/calendar/feed/user-1/secret-bbb.ics",
+      });
     openUrl.mockClear();
     window.localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
@@ -519,6 +535,85 @@ describe("SettingsPanel", () => {
 
       expect(screen.getByRole("radio", { name: "Dark" })).toHaveAttribute("aria-checked", "true");
       expect(screen.getByRole("radio", { name: "Teal" })).toHaveAttribute("aria-checked", "true");
+    });
+  });
+
+  describe("calendar subscription", () => {
+    async function renderPanel() {
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("You're on the Free plan.");
+    }
+
+    it("explains that a subscribed link keeps itself up to date, which is the whole point", async () => {
+      await renderPanel();
+      expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
+      expect(screen.getByText(/re-checks the link every so often/i)).toBeInTheDocument();
+    });
+
+    it("doesn't mint a feed secret until the student actually asks for the link", async () => {
+      await renderPanel();
+      // Fetching the URL is what CREATES the per-user secret server-side, so merely
+      // opening Settings must not do it.
+      expect(getCalendarFeedUrl).not.toHaveBeenCalled();
+    });
+
+    it("copies the plain http(s) URL, not the webcal:// one", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      await renderPanel();
+
+      await user.click(screen.getByRole("button", { name: /copy calendar link/i }));
+
+      await waitFor(() => expect(getCalendarFeedUrl).toHaveBeenCalledWith("tok"));
+      // webcal:// needs an OS protocol handler; the plain URL always works when pasted.
+      expect(writeText).toHaveBeenCalledWith(
+        "http://127.0.0.1:58001/calendar/feed/user-1/secret-aaa.ics",
+      );
+      expect(await screen.findByText(/calendar link copied/i)).toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
+
+    it("confirms before regenerating, since the old link dies immediately", async () => {
+      const user = userEvent.setup();
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+      await renderPanel();
+
+      await user.click(screen.getByRole("button", { name: /regenerate link/i }));
+
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(regenerateCalendarFeedUrl).not.toHaveBeenCalled();
+      vi.restoreAllMocks();
+    });
+
+    it("rotates the secret and copies the new link when confirmed", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      await renderPanel();
+
+      await user.click(screen.getByRole("button", { name: /regenerate link/i }));
+
+      await waitFor(() => expect(regenerateCalendarFeedUrl).toHaveBeenCalledWith("tok"));
+      expect(writeText).toHaveBeenCalledWith(
+        "http://127.0.0.1:58001/calendar/feed/user-1/secret-bbb.ics",
+      );
+      expect(await screen.findByText(/the old one no longer works/i)).toBeInTheDocument();
+      vi.restoreAllMocks();
+    });
+
+    it("surfaces a failure instead of claiming a link was copied", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      vi.mocked(getCalendarFeedUrl).mockRejectedValueOnce(
+        new ApiError("Couldn't get your calendar link."),
+      );
+      await renderPanel();
+
+      await user.click(screen.getByRole("button", { name: /copy calendar link/i }));
+
+      expect(await screen.findByText("Couldn't get your calendar link.")).toBeInTheDocument();
+      expect(writeText).not.toHaveBeenCalled();
+      vi.restoreAllMocks();
     });
   });
 

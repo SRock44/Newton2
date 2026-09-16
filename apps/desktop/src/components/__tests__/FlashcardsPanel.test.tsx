@@ -56,10 +56,19 @@ vi.mock("../../api", async () => {
     listFlashcards: vi.fn(async (_token: string, dueOnly?: boolean) => (dueOnly ? dueCards : allCards)),
     reviewFlashcard: vi.fn(async (_token: string, cardId: string) => dueCards.find((c) => c.id === cardId)!),
     deleteFlashcard: vi.fn(async () => undefined),
+    createShareLink: vi.fn(),
+    revokeShareLink: vi.fn(),
   };
 });
 
-import { deleteFlashcard, listFlashcards, reviewFlashcard } from "../../api";
+import {
+  ApiError,
+  createShareLink,
+  deleteFlashcard,
+  listFlashcards,
+  reviewFlashcard,
+  revokeShareLink,
+} from "../../api";
 
 // A stand-in for App.tsx's `() => tokenManager.getValidAccessToken()` — always resolves
 // to "test-token" but, crucially, IS an async fetch of the token rather than a plain
@@ -80,6 +89,15 @@ describe("FlashcardsPanel", () => {
     saveDialog.mockReset();
     writeFileMock.mockReset();
     writeFileMock.mockResolvedValue(undefined);
+    vi.mocked(createShareLink).mockReset().mockResolvedValue({
+      id: "link-1",
+      kind: "flashcards",
+      document_id: null,
+      exam_id: null,
+      url: "http://127.0.0.1:58001/s/abc123",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    vi.mocked(revokeShareLink).mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -261,5 +279,55 @@ describe("FlashcardsPanel", () => {
 
     expect(await screen.findByText(/couldn't export your flashcards/i)).toBeInTheDocument();
     expect(saveDialog).not.toHaveBeenCalled();
+  });
+
+  describe("share link", () => {
+    it("mints a public link and copies its URL to the clipboard", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+      await screen.findByText("What is FSRS?");
+
+      await user.click(screen.getByRole("button", { name: "Share" }));
+
+      await waitFor(() =>
+        expect(createShareLink).toHaveBeenCalledWith("test-token", { kind: "flashcards" }),
+      );
+      // The copied value is a plain http(s) URL pointing at the API — whoever receives it
+      // has no desktop app, so it must never be an app deep link.
+      expect(writeText).toHaveBeenCalledWith("http://127.0.0.1:58001/s/abc123");
+      expect(await screen.findByText(/anyone with it can view these cards/i)).toBeInTheDocument();
+    });
+
+    it("offers revocation once a link exists, and really revokes it", async () => {
+      const user = userEvent.setup();
+      vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+      await screen.findByText("What is FSRS?");
+
+      expect(screen.queryByRole("button", { name: /stop sharing/i })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Share" }));
+
+      const stop = await screen.findByRole("button", { name: /stop sharing/i });
+      await user.click(stop);
+
+      await waitFor(() => expect(revokeShareLink).toHaveBeenCalledWith("test-token", "link-1"));
+      expect(await screen.findByText(/that link no longer works/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    });
+
+    it("reports a failure to mint a link instead of pretending it copied one", async () => {
+      const user = userEvent.setup();
+      const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+      vi.mocked(createShareLink).mockRejectedValueOnce(new ApiError("Couldn't create a share link."));
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+      await screen.findByText("What is FSRS?");
+
+      await user.click(screen.getByRole("button", { name: "Share" }));
+
+      expect(await screen.findByText("Couldn't create a share link.")).toBeInTheDocument();
+      expect(writeText).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: /stop sharing/i })).not.toBeInTheDocument();
+    });
   });
 });

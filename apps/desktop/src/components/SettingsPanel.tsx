@@ -7,7 +7,9 @@ import {
   createTopupCheckoutSession,
   deleteAccount,
   getBillingStatus,
+  getCalendarFeedUrl,
   getProModels,
+  regenerateCalendarFeedUrl,
   setFocusMode,
   setLearnMode,
   setPreferredProModel,
@@ -103,6 +105,14 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Calendar subscription. Fetched lazily on first click rather than on mount: asking for
+  // the URL is what MINTS the per-user secret server-side (see app/routers/calendar.py's
+  // _ensure_feed_token), so loading it eagerly would create a shareable credential for
+  // every student who ever opens Settings, including the ones who never use the feature.
+  const [feedBusy, setFeedBusy] = useState(false);
+  const [feedStatus, setFeedStatus] = useState<string | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
 
   const [savingFocusMode, setSavingFocusMode] = useState(false);
   const [focusModeError, setFocusModeError] = useState<string | null>(null);
@@ -338,6 +348,55 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
     }
   }
 
+  /** Copies the student's personal ICS SUBSCRIPTION url to the clipboard.
+   *
+   * Copies the plain http(s) form rather than the webcal:// one the backend also returns.
+   * webcal:// is the semantically-correct scheme, but it only does anything if the OS has
+   * a handler registered for it, whereas every calendar app that matters (Google, Apple,
+   * Outlook) accepts the plain URL in its own "add by URL" box — so the plain one is the
+   * form that always works when pasted, which is exactly what a copy button produces. */
+  async function handleCopyCalendarLink() {
+    if (feedBusy) return;
+    setFeedBusy(true);
+    setFeedError(null);
+    setFeedStatus(null);
+    try {
+      const urls = await getCalendarFeedUrl(token);
+      await navigator.clipboard.writeText(urls.url);
+      setFeedStatus("Calendar link copied — paste it into your calendar app's “add by URL” box.");
+    } catch (err) {
+      setFeedError(err instanceof ApiError ? err.message : "Couldn't copy your calendar link.");
+    } finally {
+      setFeedBusy(false);
+    }
+  }
+
+  /** Leak recovery, and destructive in a way worth confirming: rotating the secret breaks
+   * every copy of the old link immediately, including the subscription the student may
+   * already have set up on their own phone, which they then have to re-add. */
+  async function handleRegenerateCalendarLink() {
+    if (feedBusy) return;
+    if (
+      !window.confirm(
+        "Create a new calendar link?\n\nThe old link will stop working immediately — including any calendar you've already subscribed on your phone, which you'll need to re-add with the new link.",
+      )
+    ) {
+      return;
+    }
+    setFeedBusy(true);
+    setFeedError(null);
+    setFeedStatus(null);
+    try {
+      const urls = await regenerateCalendarFeedUrl(token);
+      await navigator.clipboard.writeText(urls.url);
+      setFeedStatus("New calendar link created and copied. The old one no longer works.");
+    } catch (err) {
+      setFeedError(err instanceof ApiError ? err.message : "Couldn't create a new calendar link.");
+    } finally {
+      setFeedBusy(false);
+    }
+  }
+
   /** Focus Mode (see types.ts's BillingStatus.focus_mode_enabled) is real, persisted,
    * server-side state -- not a local-only preference like study reminders -- since the
    * Tutor's own backend behavior (Socratic-only prompting, blocking write_research_paper)
@@ -565,6 +624,50 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
                 />
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* The one-time setup step for a feature that is then permanently automatic. The
+            copy here is deliberately explicit about that, because "does it update by
+            itself?" is the whole question a student has about calendar exports: an ICS
+            SUBSCRIPTION is refetched by the calendar app on its own schedule forever,
+            whereas an exported .ics FILE is a dead snapshot. See app/routers/calendar.py's
+            get_feed_url docstring for the same explanation on the backend. */}
+        <section className="settings-section">
+          <h3 className="settings-section-title">Calendar</h3>
+          <p className="settings-plan-line">
+            Subscribe to your Newton calendar from your phone or laptop — your own events plus
+            every study plan deadline, in one feed. Paste the link into Google Calendar ("Other
+            calendars → From URL"), Apple Calendar ("File → New Calendar Subscription") or Outlook
+            ("Add calendar → Subscribe from web").
+          </p>
+          <p className="settings-note">
+            It stays up to date on its own: your calendar app re-checks the link every so often
+            (usually every 12–24 hours), so anything you add or change in Newton shows up without
+            you doing anything again.
+          </p>
+
+          {feedError && <div className="banner banner--error">{feedError}</div>}
+          {feedStatus && <div className="item-status">{feedStatus}</div>}
+
+          <div className="settings-calendar-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleCopyCalendarLink}
+              disabled={feedBusy}
+            >
+              {feedBusy ? "Working…" : "Copy calendar link"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary-sm"
+              onClick={handleRegenerateCalendarLink}
+              disabled={feedBusy}
+              title="Use this if the link has leaked — it breaks every copy of the old one"
+            >
+              Regenerate link
+            </button>
           </div>
         </section>
 
