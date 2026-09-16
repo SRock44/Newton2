@@ -778,8 +778,10 @@ textarea:focus-visible,
 
 /* "Connecting" is a neutral in-progress state, not a problem — informational
    blue, not the same amber used for genuine warnings elsewhere in the app. */
-.live-dot--connecting {
+.live-dot--connecting,
+.live-dot--reconnecting {
   background-color: var(--color-info);
+  animation: live-blink 1s ease-in-out infinite;
 }
 
 .live-dot--closed {
@@ -3615,6 +3617,19 @@ textarea:focus-visible,
   font-size: var(--font-size-md);
   color: var(--color-text-muted);
   line-height: var(--line-height-relaxed);
+}
+
+/* Notepad "Waiting for sign-in" state with its "Sign in" fallback button (see
+   NotepadWindow.tsx's showSignInFallback) -- stacks the waiting text above the button
+   rather than the plain single-line centering .notepad-window__empty normally does. */
+.notepad-window__auth-wait {
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.notepad-window__auth-wait button {
+  font-family: var(--font-sans);
+  font-style: normal;
 }
 
 .notepad-window__error {

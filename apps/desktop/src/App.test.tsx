@@ -84,6 +84,7 @@ vi.mock("@tauri-apps/api/event", () => ({
       trayEventListeners[event] = (trayEventListeners[event] ?? []).filter((cb) => cb !== callback);
     });
   }),
+  emit: vi.fn(async () => undefined),
 }));
 
 function fireTrayEvent(event: string) {
@@ -117,6 +118,7 @@ import {
 } from "./api";
 import { notifyStudyReminders } from "./notifications";
 import { signInWithBrowser } from "./auth";
+import { emit } from "@tauri-apps/api/event";
 
 async function signIn() {
   const user = userEvent.setup();
@@ -144,6 +146,7 @@ describe("App", () => {
     vi.mocked(notifyStudyReminders).mockClear();
     vi.mocked(getAccountStatus).mockClear();
     vi.mocked(submitAgeConsent).mockClear();
+    vi.mocked(emit).mockClear();
     // Every render now calls the real TokenManager.tryRestoreSession() on mount (see
     // App.tsx's bootstrap effect), which reads real localStorage — clear it so one
     // test's sign-in never leaks a stale session into the next, which would otherwise
@@ -1000,5 +1003,147 @@ describe("App", () => {
       const editItem = await screen.findByRole("menuitem", { name: "Edit message" });
       expect(editItem).toBeDisabled();
     });
+  });
+
+  // Bug: "the chat WebSocket dies when the app is backgrounded and never reconnects"
+  // (ROADMAP.md). Confirmed root cause was ws.onclose just sitting in "closed" forever
+  // -- no keepalive, no reconnect logic at all. These test the fix: a periodic ping
+  // while connected, a real capped-backoff auto-reconnect after an UNEXPECTED close
+  // only (never for a deliberate teardown), and an immediate reconnect on regaining
+  // visibility/focus rather than waiting out the backoff.
+  describe("chat WebSocket keepalive and auto-reconnect", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("sends a keepalive ping frame on the socket at a steady interval while connected", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const user = userEvent.setup({ delay: null });
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /sign in/i }));
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(1));
+      const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
+        onopen: (() => void) | null;
+        send: (d: string) => void;
+      };
+
+      // The mock socket never fires this on its own -- simulate the real handshake
+      // completing, which is what actually starts the keepalive interval.
+      act(() => {
+        socket.onopen?.();
+      });
+
+      await vi.advanceTimersByTimeAsync(25_000);
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "ping" }));
+    });
+
+    it("auto-reconnects after an unexpected close with a capped exponential backoff, showing a reconnecting status meanwhile", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const user = userEvent.setup({ delay: null });
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /sign in/i }));
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(1));
+      const socket1 = vi.mocked(openChatSocket).mock.results[0]!.value as { onclose: (() => void) | null };
+
+      act(() => {
+        socket1.onclose?.(); // unexpected -- neither an unmount nor a session switch
+      });
+
+      expect(screen.getByText(/reconnecting/i)).toBeInTheDocument();
+      // 1st retry delay is ~1s -- must not have reconnected yet.
+      expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(2));
+
+      // A 2nd consecutive failure should back off further (~2s), not reset to ~1s.
+      const socket2 = vi.mocked(openChatSocket).mock.results[1]!.value as { onclose: (() => void) | null };
+      act(() => {
+        socket2.onclose?.();
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(2); // not yet after only ~1s
+      await vi.advanceTimersByTimeAsync(1_000); // total ~2s
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(3));
+    });
+
+    it("does not schedule a reconnect for a deliberate teardown (session switch), even if the old socket's close event arrives afterward", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const user = userEvent.setup({ delay: null });
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /sign in/i }));
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(1));
+      const firstSocket = vi.mocked(openChatSocket).mock.results[0]!.value as { onclose: (() => void) | null };
+
+      await user.click(screen.getByText("Physics review")); // deliberate: activeSessionId changes
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(2));
+
+      // Simulate the real world: closing a socket doesn't fire onclose synchronously --
+      // it can arrive well after this effect's own cleanup already ran and set torndown.
+      act(() => {
+        firstSocket.onclose?.();
+      });
+
+      // Well past even the capped backoff -- an erroneous reconnect would show by now.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(2);
+    });
+
+    it("reconnects immediately on regaining visibility, without waiting out the backoff delay", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const user = userEvent.setup({ delay: null });
+      render(<App />);
+      await user.click(await screen.findByRole("button", { name: /sign in/i }));
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(1));
+      const socket1 = vi.mocked(openChatSocket).mock.results[0]!.value as { onclose: (() => void) | null };
+
+      act(() => {
+        socket1.onclose?.();
+      });
+      expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(1); // backoff pending, not yet reconnected
+
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      // No timer advance needed -- this is the whole point of the immediate path.
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(2));
+    });
+  });
+
+  // Notepad auth race fix (ROADMAP.md "stuck on Waiting... even when signed in"): a
+  // Notepad window opened well after sign-in emits "notepad-ready" (see
+  // NotepadWindow.test.tsx for that side); this is App.tsx's half of the round trip --
+  // it must answer with the CURRENT token, not one captured when its own listener was
+  // first set up.
+  it("responds to the Notepad's notepad-ready request by immediately re-emitting the current token", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(trayEventListeners["notepad-ready"]?.length).toBeGreaterThan(0));
+    const notepadAuthEmitsBefore = vi
+      .mocked(emit)
+      .mock.calls.filter(([eventName]) => eventName === "notepad-auth").length;
+
+    act(() => {
+      fireTrayEvent("notepad-ready");
+    });
+
+    await waitFor(() => {
+      const calls = vi.mocked(emit).mock.calls.filter(([eventName]) => eventName === "notepad-auth");
+      expect(calls.length).toBeGreaterThan(notepadAuthEmitsBefore);
+    });
+    const lastNotepadAuthCall = vi
+      .mocked(emit)
+      .mock.calls.filter(([eventName]) => eventName === "notepad-auth")
+      .slice(-1)[0];
+    expect(lastNotepadAuthCall?.[1]).toEqual({ token: expect.any(String) });
   });
 });

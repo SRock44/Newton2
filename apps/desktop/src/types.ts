@@ -60,7 +60,12 @@ export interface ChatSession {
   created_at: string;
 }
 
-export type ConnectionStatus = "connecting" | "open" | "closed";
+// "reconnecting" (distinct from the initial "connecting") is shown while an
+// auto-reconnect attempt is in flight after an UNEXPECTED close -- see App.tsx's WS
+// effect. Kept distinct from plain "connecting" so the UI can (if it ever wants to)
+// tell "first connect" apart from "recovering from a drop", though today both render
+// via the same CONNECTION_LABEL/live-dot styling.
+export type ConnectionStatus = "connecting" | "reconnecting" | "open" | "closed";
 
 /** Which UI fills the main content area next to the always-visible sidebar/title bar
  * (see App.tsx) — "chat" is ChatPane+Composer, "documents" is the Documents drive page.

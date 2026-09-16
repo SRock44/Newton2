@@ -50,8 +50,33 @@ import ScreenSnipModal from "./components/ScreenSnipModal";
 const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
   open: "connected",
   connecting: "connecting…",
+  reconnecting: "reconnecting…",
   closed: "offline",
 };
+
+// Auto-reconnect (ROADMAP.md "chat WS dies when backgrounded"): a real exponential
+// backoff, capped, so an extended real outage doesn't hammer the server in a tight
+// loop -- 1s, 2s, 4s, 8s, 16s, then held at the cap until it reconnects.
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+
+// Application-level keepalive (ROADMAP.md): sent on an otherwise-idle socket so real
+// traffic keeps flowing and defeats any idle-timeout closure sitting on the real network
+// path (background-tab power throttling, an SSH tunnel's own idle timeout, a proxy, ...)
+// -- see services/api/app/routers/chat.py's chat_ws "ping"/"pong" handling.
+const PING_INTERVAL_MS = 25_000;
+
+// Tauri's event API is loaded via dynamic import (never a static one) purely so this
+// same component tree still renders under a bare jsdom test runner (Vitest), which has
+// no real Tauri IPC bridge -- every call site below is wrapped in a .catch() for exactly
+// that "no Tauri context" case. Cached in one shared promise (rather than each of the
+// several listener/emit call sites below issuing its own separate `import(...)`) so
+// they all resolve the SAME module instance.
+let tauriEventModulePromise: Promise<typeof import("@tauri-apps/api/event")> | null = null;
+function tauriEventModule() {
+  if (!tauriEventModulePromise) tauriEventModulePromise = import("@tauri-apps/api/event");
+  return tauriEventModulePromise;
+}
 
 // Auto-generated conversation titles (ROADMAP.md): how long to wait after the 2nd
 // assistant reply before re-fetching the session list once, giving app/jobs/titling.
@@ -174,6 +199,12 @@ function App() {
   >(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  // Always-current `token`, readable from the "notepad-ready" responder below (set up
+  // once, on mount) without making that listener's effect depend on -- and therefore
+  // re-subscribe on -- every token change. See the notepad-auth/notepad-ready effects
+  // below for why a ref (not the closed-over `token` value) is required here.
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = token;
   // Kept in sync with `sessions` (see the effect below) purely so the WebSocket
   // message handler -- set up once per socket in an effect keyed only on
   // activeSessionId, so it closes over a `sessions` value that can go stale the moment
@@ -289,7 +320,7 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
-    import("@tauri-apps/api/event")
+    tauriEventModule()
       .then(({ listen }) => listen("tray-open-flashcards", () => setShowFlashcards(true)))
       .then((fn) => {
         if (cancelled) fn();
@@ -311,7 +342,7 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
-    import("@tauri-apps/api/event")
+    tauriEventModule()
       .then(({ listen }) =>
         listen<{ dataUrl: string }>("newton-snip-captured", (event) => {
           setSnipError(null);
@@ -340,12 +371,45 @@ function App() {
   // goes stale either. A no-op (nothing listening on the other end) if the Notepad
   // window isn't currently open.
   useEffect(() => {
-    import("@tauri-apps/api/event")
+    tauriEventModule()
       .then(({ emit }) => emit("notepad-auth", { token }))
       .catch(() => {
         // No Tauri context — nothing listening on the other end.
       });
   }, [token]);
+
+  // Request/response fix for the Notepad's "stuck waiting" race (ROADMAP.md): the
+  // broadcast above only ever fires when `token` itself changes, which already happened
+  // — possibly up to an hour ago, on the last background refresh — by the time a student
+  // opens the Notepad window well after signing in (the normal case). Tauri events are
+  // not queued for late listeners, so a Notepad opened after the fact would otherwise
+  // wait for the next incidental broadcast. NotepadWindow.tsx emits "notepad-ready" the
+  // moment its own "notepad-auth" listener is set up; this responds with whatever the
+  // CURRENT token is *right now*, read via tokenRef (not the `token` this effect's own
+  // closure captured at setup time, which would go stale exactly like the bug this
+  // fixes) — so a late-mounting Notepad always gets an immediate, fresh answer instead
+  // of sitting on "waiting" for however long until the next unrelated broadcast.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    tauriEventModule()
+      .then(({ listen, emit }) =>
+        listen("notepad-ready", () => {
+          emit("notepad-auth", { token: tokenRef.current });
+        }),
+      )
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // No Tauri context — nothing listening on the other end.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   // Keeps the displayed/passed-down `token` fresh even when nothing is actively
   // fetching — otherwise a session left idle for over an hour would only discover
@@ -483,9 +547,19 @@ function App() {
   // user actually switched chats.
   useEffect(() => {
     if (!tokenManager.hasSession() || !activeSessionId) return;
-    let cancelled = false;
+    // Set the instant a deliberate teardown starts (component unmount, or this effect
+    // re-running because activeSessionId changed) -- checked by every reconnect/backoff
+    // callback below so a session switch or unmount NEVER triggers a reconnect attempt.
+    // This is what makes "unexpected close" the only thing that ever schedules one.
+    let torndown = false;
     let ws: WebSocket | null = null;
     let titleRefetchTimeout: ReturnType<typeof setTimeout> | null = null;
+    let pingInterval: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    // Resets to 0 on every successful open -- only a genuinely sustained outage climbs
+    // the backoff; a brief blip that reconnects fine doesn't leave the next blip starting
+    // from a slow delay.
+    let reconnectAttempt = 0;
     setWsStatus("connecting");
 
     // Auto-generated conversation titles (ROADMAP.md): the backend enqueues a real
@@ -497,11 +571,11 @@ function App() {
       if (titleRefetchTimeout) return; // already scheduled once for this turn
       titleRefetchTimeout = setTimeout(async () => {
         titleRefetchTimeout = null;
-        if (cancelled) return;
+        if (torndown) return;
         try {
           const freshToken = await tokenManager.getValidAccessToken();
           const list = await listSessions(freshToken);
-          if (!cancelled) setSessions(list);
+          if (!torndown) setSessions(list);
         } catch {
           // Best-effort only -- a missed refresh just means the sidebar keeps showing
           // the fallback title a little longer, nothing to surface to the student.
@@ -509,23 +583,97 @@ function App() {
       }, TITLE_REFETCH_DELAY_MS);
     };
 
-    (async () => {
+    const clearPing = () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+    };
+
+    // Auto-reconnect (ROADMAP.md "chat WS dies when backgrounded and never reconnects"):
+    // schedules the next connect() attempt at an exponential, capped delay. Never called
+    // for a deliberate teardown (see the `torndown` checks at every call site).
+    const scheduleReconnect = () => {
+      if (torndown) return;
+      setWsStatus("reconnecting");
+      const delay = Math.min(
+        RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt,
+        RECONNECT_MAX_DELAY_MS,
+      );
+      reconnectAttempt += 1;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      reconnectTimeout = setTimeout(() => {
+        reconnectTimeout = null;
+        connect();
+      }, delay);
+    };
+
+    // Reconnect right away instead of waiting out whatever's left of the current backoff
+    // delay -- called on regaining visibility/focus (see the listeners below) and is a
+    // no-op if a socket is already open.
+    const reconnectNow = () => {
+      if (torndown) return;
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+      connect();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") reconnectNow();
+    };
+    window.addEventListener("focus", reconnectNow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    async function connect() {
+      if (torndown) return;
       let accessToken: string;
       try {
+        // Always a fresh, guaranteed-valid token -- never a closed-over `token` value,
+        // which is exactly what could go stale across a real reconnect attempt minutes
+        // (or a failed-attempt cascade) after this effect first ran.
         accessToken = await tokenManager.getValidAccessToken();
       } catch {
-        if (!cancelled) setWsStatus("closed");
+        if (!torndown) setWsStatus("closed");
         return;
       }
-      if (cancelled) return;
+      if (torndown) return;
 
-      ws = openChatSocket(accessToken, activeSessionId);
-      wsRef.current = ws;
+      // Non-null by construction: this effect returns immediately above if
+      // activeSessionId is null, and it never changes for the life of this closure
+      // (a change is exactly what re-runs this whole effect from scratch).
+      const socket = openChatSocket(accessToken, activeSessionId as string);
+      ws = socket;
+      wsRef.current = socket;
 
-      ws.onopen = () => setWsStatus("open");
-      ws.onclose = () => setWsStatus("closed");
-      ws.onerror = () => setWsStatus("closed");
-      ws.onmessage = (event) => {
+      socket.onopen = () => {
+        if (torndown) return;
+        reconnectAttempt = 0;
+        setWsStatus("open");
+        clearPing();
+        pingInterval = setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "ping" }));
+          }
+        }, PING_INTERVAL_MS);
+      };
+      socket.onclose = () => {
+        clearPing();
+        if (wsRef.current === socket) wsRef.current = null;
+        // A deliberate teardown (unmount / activeSessionId change) already set
+        // `torndown` before calling ws.close() below -- never reconnect for that case,
+        // only for a real, unexpected close (idle timeout, network blip, server
+        // restart, ...).
+        if (torndown) return;
+        scheduleReconnect();
+      };
+      // onerror is always followed by a close event for a WebSocket per spec -- the
+      // actual status transition and reconnect scheduling both live in onclose above so
+      // there's exactly one place that decides that, not two racing to set it.
+      socket.onerror = () => {};
+      socket.onmessage = (event) => {
         let payload: {
           type?: string;
           content?: string;
@@ -666,11 +814,17 @@ function App() {
           });
         }
       };
-    })();
+    }
+
+    connect();
 
     return () => {
-      cancelled = true;
+      torndown = true;
+      window.removeEventListener("focus", reconnectNow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (titleRefetchTimeout) clearTimeout(titleRefetchTimeout);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      clearPing();
       ws?.close();
       if (wsRef.current === ws) wsRef.current = null;
     };
