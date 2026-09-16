@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest_asyncio
 from sqlalchemy import delete, select
@@ -62,8 +63,21 @@ async def throwaway_session(db_session):
 
 
 def _add_messages(db_session, session_id, pairs):
-    for role, content in pairs:
-        db_session.add(ChatMessage(session_id=session_id, role=role, content=content))
+    # Explicit, strictly-increasing created_at per message rather than letting
+    # Postgres' func.now() default apply -- messages added together and committed in
+    # ONE transaction (as every call here does) would otherwise all land on the exact
+    # same transaction-start timestamp, which app/memory/working.py's get_bundle
+    # rehydration now relies on created_at to order correctly (see its own docstring).
+    # Real production traffic never ties like this (app/routers/chat.py commits each
+    # message in its own separate transaction), so this only matters for this bulk-
+    # insert test helper's own artificial batching.
+    base = datetime.now(timezone.utc)
+    for i, (role, content) in enumerate(pairs):
+        db_session.add(
+            ChatMessage(
+                session_id=session_id, role=role, content=content, created_at=base + timedelta(microseconds=i)
+            )
+        )
 
 
 async def test_running_twice_on_a_growing_session_updates_the_summary_instead_of_crashing(
