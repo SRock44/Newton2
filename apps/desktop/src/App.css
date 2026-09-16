@@ -760,6 +760,113 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+/* A "you're here" indicator for the Home/Documents nav buttons — the rest of the
+   sidebar's footer buttons open a modal (no persistent "current" state to show),
+   these two switch mainView, so it's worth marking which one is currently showing. */
+.sidebar-nav-more--current {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+  background-color: var(--color-accent-tint);
+}
+
+.sidebar-home-link {
+  border-top: 1px solid var(--color-border-2);
+  margin-top: var(--space-1);
+  padding-top: 9px;
+}
+
+/* ---------- Collapsible sidebar ---------- */
+
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-toggle {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-2);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-collapse-toggle:hover,
+.sidebar-collapse-toggle:focus-visible {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.sidebar--collapsed {
+  width: 56px;
+  min-width: 56px;
+  align-items: center;
+}
+
+.sidebar-header--collapsed {
+  justify-content: center;
+  padding: var(--space-3) 0;
+}
+
+.sidebar-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sidebar-rail--footer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-3) 0;
+}
+
+.sidebar-rail-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-rail-btn:hover,
+.sidebar-rail-btn:focus-visible {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.sidebar-rail-btn--active {
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border-color: var(--color-accent);
+}
+
 /* ---------- Live status dot ---------- */
 
 .live-dot {
@@ -1001,29 +1108,33 @@ textarea:focus-visible,
   gap: var(--space-3);
 }
 
-.doc-row {
+/* ---------- RecentItemCard (shared by DocumentsPanel's file list, as
+   .recent-item-card--row, and HomeView's "Recent documents & notes" grid, as the
+   default .recent-item-card--card) — see components/RecentItemCard.tsx. ---------- */
+
+.recent-item-card {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   width: 100%;
   border: none;
   background: none;
   text-align: left;
 }
 
-.doc-row:hover {
+.recent-item-card:hover {
   background-color: var(--color-surface-2);
 }
 
-.doc-row--active {
+.recent-item-card--active {
   background-color: var(--color-accent-tint);
 }
 
-.doc-row-icon {
+.recent-item-card-icon {
   flex-shrink: 0;
   width: 28px;
   height: 28px;
@@ -1038,17 +1149,19 @@ textarea:focus-visible,
   justify-content: center;
 }
 
-.doc-row--active .doc-row-icon {
+.recent-item-card--active .recent-item-card-icon {
   background-color: var(--color-accent);
   color: var(--color-accent-contrast);
 }
 
-.doc-row-main {
+.recent-item-card-body {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
-.doc-row-title {
+.recent-item-card-title {
   font-size: var(--font-size-sm);
   color: var(--color-text);
   overflow: hidden;
@@ -1056,9 +1169,69 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
-.doc-row-meta {
+.recent-item-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.recent-item-card-date {
   font-size: var(--font-size-2xs);
   color: var(--color-text-faint);
+  flex-shrink: 0;
+}
+
+/* ---- Card variant (HomeView's recent-items grid) ---- */
+
+.recent-item-card--card {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-2);
+  background-color: var(--color-surface);
+  height: 100%;
+}
+
+.recent-item-card--card:hover {
+  border-color: var(--color-border);
+}
+
+.recent-item-card--card .recent-item-card-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 10px;
+}
+
+.recent-item-card--card .recent-item-card-title {
+  font-weight: var(--font-weight-medium);
+  white-space: normal;
+  overflow: visible;
+}
+
+.recent-item-card-snippet {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.recent-item-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recent-item-card-tag {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-muted);
+  background-color: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
 }
 
 .doc-detail-header {
@@ -4035,5 +4208,166 @@ textarea:focus-visible,
     flex-direction: row;
     align-items: baseline;
     gap: var(--space-2);
+  }
+}
+
+/* ---------- Home view (HomeView.tsx) — the default landing page ---------- */
+
+.home-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-6) var(--space-5);
+  overflow-y: auto;
+}
+
+.home-view-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.home-view-toolbar .modal-subtitle {
+  margin: 0;
+}
+
+.home-view-customize {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.home-customize-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 220px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.home-customize-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.home-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.home-widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.home-widget--quick-actions,
+.home-widget--recent {
+  grid-column: 1 / -1;
+}
+
+.home-widget-title {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+
+.home-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.home-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.home-conversation-list,
+.home-due-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-conversation-item,
+.home-due-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.home-conversation-item:hover,
+.home-due-item:hover {
+  background-color: var(--color-surface-2);
+}
+
+.home-conversation-title,
+.home-due-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-conversation-date,
+.home-due-date {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+}
+
+.home-due-badge {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-medium);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.home-due-badge--study {
+  background-color: var(--color-info-tint);
+  color: var(--color-info);
+}
+
+.home-due-badge--flashcard {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning);
+}
+
+@media (max-width: 720px) {
+  .home-widgets {
+    grid-template-columns: 1fr;
   }
 }

@@ -44,6 +44,15 @@ vi.mock("./api", () => ({
   listFlashcards: vi.fn(async () => []),
   listStudyPlan: vi.fn(async () => []),
   listDocuments: vi.fn(async () => []),
+  listNotes: vi.fn(async () => []),
+  getNote: vi.fn(async (_token: string, noteId: string) => ({
+    id: noteId,
+    title: "",
+    content: "",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    tags: [],
+  })),
   getDocumentContent: vi.fn(async () => ({ content: "", editable: true })),
   getBillingStatus: vi.fn(async () => ({
     plan: "free",
@@ -127,7 +136,23 @@ async function signIn() {
   return user;
 }
 
+// Home (HomeView.tsx) is now the default landing view (see App.tsx's mainView) — every
+// test in this file below was written back when "chat" was that default and reaches
+// for the chat pane via this same helper, so it transparently lands there first,
+// exactly the way a student would: picking the already-active session from the
+// sidebar's own list, which is always visible regardless of mainView. Scoped to the
+// active session's own row (found via its stable data-session-id, not display text,
+// since that text depends on data that may not have finished loading yet) so this
+// never risks switching to the WRONG chat.
 async function messageList() {
+  if (!document.querySelector('[data-testid="message-list"]')) {
+    const activeItem = await waitFor(() => {
+      const el = document.querySelector(".session-item--active .session-item-main");
+      if (!el) throw new Error("no active session item to click into chat with yet");
+      return el as HTMLElement;
+    });
+    fireEvent.click(activeItem);
+  }
   return within(await screen.findByTestId("message-list"));
 }
 
@@ -511,8 +536,11 @@ describe("App", () => {
     const user = userEvent.setup({ delay: null });
     render(<App />);
     await user.click(await screen.findByRole("button", { name: /sign in/i }));
-    // "Physics review" (s2) already has a real title.
-    await user.click(await screen.findByText("Physics review"));
+    // "Physics review" (s2) already has a real title — Home's own "Continue a
+    // conversation" widget shows it too now, so this is scoped to the sidebar's own
+    // session row (by its stable data-session-id) rather than an ambiguous text query.
+    await waitFor(() => expect(document.querySelector('[data-session-id="s2"] .session-item-main')).not.toBeNull());
+    await user.click(document.querySelector('[data-session-id="s2"] .session-item-main') as HTMLElement);
     await (await messageList()).findByText("Reply in s2");
 
     await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
@@ -586,10 +614,13 @@ describe("App", () => {
   });
 
   it("checks for due flashcards and upcoming deadlines once per sign-in and notifies about them", async () => {
-    vi.mocked(listFlashcards).mockResolvedValueOnce([
-      { id: "c1", document_id: null, front: "Q", back: "A", due: "2020-01-01T00:00:00Z", state: "review", last_review: null, created_at: "2020-01-01T00:00:00Z" },
-    ]);
-    vi.mocked(listStudyPlan).mockResolvedValueOnce([
+    // Queued twice (not a single ...Once): Home's own "Due soon" widget (see
+    // HomeView.tsx) also calls listFlashcards/listStudyPlan as soon as the app signs
+    // in, so there are two consumers of this fixture data now, not one — queuing it
+    // twice covers both without leaking a persistent mock into later tests.
+    const dueFlashcard = { id: "c1", document_id: null, front: "Q", back: "A", due: "2020-01-01T00:00:00Z", state: "review", last_review: null, created_at: "2020-01-01T00:00:00Z" };
+    vi.mocked(listFlashcards).mockResolvedValueOnce([dueFlashcard]).mockResolvedValueOnce([dueFlashcard]);
+    const dueSoonItems = [
       {
         id: "i1",
         document_id: null,
@@ -610,7 +641,8 @@ describe("App", () => {
         source: "syllabus_upload",
         created_at: "2020-01-01T00:00:00Z",
       },
-    ]);
+    ];
+    vi.mocked(listStudyPlan).mockResolvedValueOnce(dueSoonItems).mockResolvedValueOnce(dueSoonItems);
 
     await signIn();
     await (await messageList()).findByText("Hello from s1");
@@ -723,9 +755,12 @@ describe("App", () => {
   // pending attachment in the composer, ready for the student to write and send their
   // own opening message. It must NOT auto-send anything on their behalf.
   it("'Chat about this document' pre-attaches the document to the composer without sending anything", async () => {
-    vi.mocked(listDocuments).mockResolvedValueOnce([
-      { id: "doc-42", filename: "resume (4).pdf", mime_type: "application/pdf", created_at: new Date().toISOString() },
-    ]);
+    // Queued twice (not a single ...Once): Home's own "Recent documents & notes"
+    // widget (see HomeView.tsx) also calls listDocuments as soon as the app signs in,
+    // so there are two consumers of this fixture now, not one — queuing it twice
+    // covers both without leaking a persistent mockResolvedValue into later tests.
+    const resumeDoc = { id: "doc-42", filename: "resume (4).pdf", mime_type: "application/pdf", created_at: new Date().toISOString() };
+    vi.mocked(listDocuments).mockResolvedValueOnce([resumeDoc]).mockResolvedValueOnce([resumeDoc]);
 
     const user = await signIn();
     await (await messageList()).findByText("Hello from s1");

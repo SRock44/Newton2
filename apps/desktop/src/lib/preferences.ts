@@ -19,3 +19,25 @@ export function setStudyRemindersEnabled(enabled: boolean): void {
     // Best-effort only — worst case the preference doesn't stick across launches.
   }
 }
+
+const SIDEBAR_COLLAPSED_KEY = "newton:prefs:sidebarCollapsed";
+
+/** Whether Sidebar.tsx is collapsed to its slim icon-only rail. Same "local preference,
+ * not account data" pattern as getStudyRemindersEnabled above — this is window chrome,
+ * not per-student data, so it's deliberately not keyed by user id (unlike
+ * lib/homeWidgets.ts's per-account widget visibility). Defaults to expanded. */
+export function getSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function setSidebarCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+  } catch {
+    // Best-effort only — worst case the preference doesn't stick across launches.
+  }
+}

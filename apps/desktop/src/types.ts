@@ -68,11 +68,12 @@ export interface ChatSession {
 export type ConnectionStatus = "connecting" | "reconnecting" | "open" | "closed";
 
 /** Which UI fills the main content area next to the always-visible sidebar/title bar
- * (see App.tsx) — "chat" is ChatPane+Composer, "documents" is the Documents drive page.
- * Deliberately a general union rather than a documents-specific boolean: Documents is
- * the first panel to get the "real page, not a modal" treatment, but not meant to be
- * the last. */
-export type MainView = "chat" | "documents";
+ * (see App.tsx) — "chat" is ChatPane+Composer, "documents" is the Documents drive page,
+ * "home" is the dashboard landing view (see HomeView.tsx) and is the default a student
+ * lands on. Deliberately a general union rather than a documents-specific boolean:
+ * Documents was the first panel to get the "real page, not a modal" treatment, and
+ * Home is the second. */
+export type MainView = "chat" | "documents" | "home";
 
 export interface UploadedDocument {
   id: string;

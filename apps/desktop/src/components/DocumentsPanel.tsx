@@ -15,6 +15,8 @@ import {
 } from "../api";
 import type { BillingStatus, DocumentContent, UploadedDocument } from "../types";
 import MessageContent from "./MessageContent";
+import RecentItemCard from "./RecentItemCard";
+import { documentTypeLabel } from "../lib/fileType";
 
 interface DocumentsPanelProps {
   token: string;
@@ -31,21 +33,6 @@ interface DocumentsPanelProps {
    * — selects it as soon as the drive mounts. Undefined/null just lands on the drive
    * with nothing selected, same as opening it any other way. */
   initialSelectedDocumentId?: string | null;
-}
-
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
-}
-
-/** Short type badge for the file-list row — PDF is view-only everywhere else in this
- * panel, so it's worth surfacing at a glance before the student even opens it. */
-function docTypeLabel(doc: UploadedDocument): string {
-  const name = doc.filename.toLowerCase();
-  if (name.endsWith(".pdf") || doc.mime_type === "application/pdf") return "PDF";
-  if (name.endsWith(".md") || name.endsWith(".markdown") || doc.mime_type === "text/markdown") return "MD";
-  if (name.endsWith(".txt") || doc.mime_type === "text/plain") return "TXT";
-  return "DOC";
 }
 
 interface ContentState {
@@ -335,19 +322,14 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
               <ul className="item-list">
                 {documents.map((doc) => (
                   <li key={doc.id}>
-                    <button
-                      type="button"
-                      className={`doc-row${doc.id === selectedId ? " doc-row--active" : ""}`}
+                    <RecentItemCard
+                      variant="row"
+                      typeLabel={documentTypeLabel(doc)}
+                      title={doc.filename}
+                      timestamp={doc.created_at}
+                      active={doc.id === selectedId}
                       onClick={() => setSelectedId(doc.id)}
-                    >
-                      <span className="doc-row-icon" aria-hidden="true">
-                        {docTypeLabel(doc)}
-                      </span>
-                      <span className="doc-row-main">
-                        <div className="doc-row-title">{doc.filename}</div>
-                        <div className="doc-row-meta">{formatDate(doc.created_at)}</div>
-                      </span>
-                    </button>
+                    />
                   </li>
                 ))}
               </ul>

@@ -38,6 +38,7 @@ import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
 import type { ComposerHandle } from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
+import HomeView from "./components/HomeView";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import FlashcardsPanel from "./components/FlashcardsPanel";
 import PracticeExamsPanel from "./components/PracticeExamsPanel";
@@ -172,11 +173,14 @@ function App() {
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>("closed");
   // Which UI fills the main content area next to the always-visible sidebar/title bar
   // — a general mechanism (see types.ts's MainView) rather than a Documents-specific
-  // boolean, since Documents is likely the first of more panels to get this "real page,
-  // not a modal" treatment. Going back to "chat" happens from several obvious places:
-  // toggling the sidebar's Documents button again, picking any chat session, starting a
-  // new one, or finishing "Chat about this document" (see the handlers below).
-  const [mainView, setMainView] = useState<MainView>("chat");
+  // boolean. "home" (HomeView.tsx) is the default landing view a student sees instead
+  // of an empty chat — see the sessions-loading effect below for the one deliberate
+  // exception (a genuinely brand-new account lands straight in chat instead, so its
+  // first-run onboarding welcome card still shows). Going back to "chat" happens from
+  // several obvious places: the sidebar's own "New chat"/session list, Home's own
+  // quick-actions/"Continue a conversation" widgets, or finishing "Chat about this
+  // document" (see the handlers below).
+  const [mainView, setMainView] = useState<MainView>("home");
   // Set when an attached-document chip in a chat message (see MessageBubble /
   // AttachedDocumentChip) sends the student to a specific document — read once by
   // DocumentsPanel as its initial selection when it mounts fresh into the "documents"
@@ -282,7 +286,7 @@ function App() {
     setFirstMessageBySession({});
     setIsStreaming(false);
     setWsStatus("closed");
-    setMainView("chat");
+    setMainView("home");
     setOpenDocumentId(null);
     setShowStudyPlan(false);
     setShowFlashcards(false);
@@ -463,7 +467,13 @@ function App() {
       try {
         const accessToken = await tokenManager.getValidAccessToken();
         let list = await listSessions(accessToken);
-        if (!cancelled && list.length === 0) {
+        // A genuinely brand-new account (no chats at all) skips the new Home landing
+        // view and goes straight into the fresh chat this branch creates — Home would
+        // have nothing to show yet, and this is exactly the first-run onboarding
+        // welcome card's own trigger (see ChatPane's firstRun prop below), which only
+        // ever renders inside the chat view.
+        const brandNewAccount = !cancelled && list.length === 0;
+        if (brandNewAccount) {
           const newId = await createSession(accessToken);
           list = await listSessions(accessToken);
           if (list.length === 0) {
@@ -473,6 +483,7 @@ function App() {
         if (cancelled) return;
         setSessions(list);
         setActiveSessionId((current) => current ?? list[0]?.id ?? null);
+        if (brandNewAccount) setMainView("chat");
       } catch (err) {
         if (!cancelled) setSessionsError(errorMessage(err, "Couldn't load your chats."));
       } finally {
@@ -965,6 +976,13 @@ function App() {
     setMainView((v) => (v === "documents" ? "chat" : "documents"));
   }
 
+  // Sidebar's (and the collapsed rail's) "Home" nav button, and the titlebar/main
+  // header's implicit "you're on Home" state — the explicit way back to the dashboard
+  // once a student has navigated away from it.
+  function handleOpenHome() {
+    setMainView("home");
+  }
+
   // An attached-document chip in a chat message (see MessageBubble/AttachedDocumentChip)
   // was clicked: jump to the Documents page with that exact document selected.
   function handleOpenDocument(documentId: string) {
@@ -1062,8 +1080,9 @@ function App() {
     ? sessionDisplayTitle(activeSession, activeSessionId ? firstMessageBySession[activeSessionId] : undefined)
     : "Newton";
   // The window title bar and main-pane header both track whichever view is actually
-  // showing, not always the chat title — "Documents" while browsing the drive.
-  const pageTitle = mainView === "documents" ? "Documents" : headerTitle;
+  // showing, not always the chat title — "Documents" while browsing the drive, "Home"
+  // on the dashboard landing view.
+  const pageTitle = mainView === "documents" ? "Documents" : mainView === "home" ? "Home" : headerTitle;
 
   return (
     <div className="app-root">
@@ -1079,12 +1098,14 @@ function App() {
           creatingChat={creatingChat}
           username={username || "student"}
           onSignOut={handleSignOut}
+          onOpenHome={handleOpenHome}
           onOpenDocuments={handleToggleDocuments}
           onOpenStudyPlan={() => setShowStudyPlan(true)}
           onOpenFlashcards={() => setShowFlashcards(true)}
           onOpenPracticeExams={() => setShowPracticeExams(true)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenHelp={() => setShowHelp(true)}
+          mainView={mainView}
         />
 
         <main className="main-pane">
@@ -1108,6 +1129,23 @@ function App() {
               onClose={() => setMainView("chat")}
               onChatAboutDocument={handleChatAboutDocument}
               initialSelectedDocumentId={openDocumentId}
+            />
+          ) : mainView === "home" ? (
+            // The default landing view (see the mainView comment above) — same "real
+            // page in the main pane, not a modal" treatment as Documents.
+            <HomeView
+              token={token}
+              userId={userId}
+              sessions={sessions}
+              firstMessageBySession={firstMessageBySession}
+              onSelectSession={handleSelectSession}
+              onNewChat={handleNewChat}
+              creatingChat={creatingChat}
+              onOpenDocument={handleOpenDocument}
+              onOpenDocuments={handleToggleDocuments}
+              onOpenStudyPlan={() => setShowStudyPlan(true)}
+              onOpenFlashcards={() => setShowFlashcards(true)}
+              onOpenPracticeExams={() => setShowPracticeExams(true)}
             />
           ) : (
             <>
