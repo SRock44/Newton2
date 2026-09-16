@@ -3648,8 +3648,17 @@ textarea:focus-visible,
   gap: var(--space-2);
 }
 
+.notepad-window__note-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  position: relative;
+  flex-wrap: wrap;
+}
+
 .notepad-window__note-item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -3670,6 +3679,23 @@ textarea:focus-visible,
   background-color: var(--color-accent-tint);
 }
 
+.notepad-window__note-rename-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: inherit;
+  font-family: inherit;
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-2) var(--space-3);
+}
+
+.notepad-window__note-rename-input:focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .notepad-window__note-title {
   font-weight: var(--font-weight-medium);
 }
@@ -3677,6 +3703,102 @@ textarea:focus-visible,
 .notepad-window__note-updated {
   font-size: var(--font-size-xs);
   color: var(--color-text-faint);
+}
+
+/* ---------- Tags (note-list row + editor header, small tag-icon button) ---------- */
+
+.notepad-window__tag-icon-btn {
+  flex-shrink: 0;
+  align-self: flex-start;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: var(--space-1);
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.notepad-window__tag-icon-btn:hover {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.notepad-window__tag-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.notepad-window__tag-pills--header {
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.notepad-window__tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-full);
+  padding: 1px var(--space-2);
+}
+
+.notepad-window__tag-pill--readonly {
+  color: var(--color-text-muted);
+  background-color: var(--color-surface-2);
+}
+
+.notepad-window__tag-remove {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.9em;
+  line-height: 1;
+  padding: 0;
+}
+
+.notepad-window__tag-empty {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+}
+
+.notepad-window__tag-popover {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-1) var(--space-3) var(--space-2);
+}
+
+.notepad-window__tag-add {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.notepad-window__tag-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg);
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.notepad-window__tag-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
 }
 
 /* ---------- Note editor (Write/Preview + highlight-to-act) ---------- */
@@ -3754,9 +3876,42 @@ textarea:focus-visible,
   color: var(--color-accent-contrast);
 }
 
+.notepad-window__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .notepad-window__save-status {
   font-size: var(--font-size-2xs);
   color: var(--color-text-faint);
+}
+
+/* ---------- Lecture capture (voice recording) ---------- */
+
+.notepad-window__record-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  padding: 3px var(--space-3);
+  cursor: pointer;
+}
+
+.notepad-window__record-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.notepad-window__record-btn--active {
+  border-color: var(--color-danger);
+  background-color: var(--color-danger-tint);
+  color: var(--color-danger);
 }
 
 .notepad-window__textarea {

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { NoteAnnotateAction } from "../types";
 
 interface ContextMenuItem {
   label: string;
@@ -24,6 +25,42 @@ interface ContextMenuProps {
    * race the in-flight generation, so the "Edit message" item is offered but disabled,
    * same as Composer already disables sending a new message while `isStreaming`. */
   editDisabled?: boolean;
+  /** Newton Notepad (ROADMAP.md): renames the note right-clicked in the note picker
+   * (`data-context-menu="note-item"`). Optional — only NotepadWindow's mount passes it. */
+  onRenameNote?: (noteId: string, currentTitle: string) => void;
+  /** Newton Notepad: deletes the note right-clicked in the note picker. Optional, same
+   * as onRenameNote. */
+  onDeleteNote?: (noteId: string, currentTitle: string) => void;
+  /** Newton Notepad's highlight-to-act (explain/define/summarize), reachable via
+   * right-click in BOTH the Write-mode `<textarea>` (`data-context-menu="note-editable"`,
+   * selection read from `.selectionStart`/`.selectionEnd`) and the Preview-mode
+   * rendered `<div>` (`data-context-menu="note-text"`, selection read from
+   * `window.getSelection()`) — the same underlying action, generalized over both
+   * triggers rather than duplicated. Optional, same as the note item callbacks above. */
+  onAnnotateNoteSelection?: (selectedText: string, action: NoteAnnotateAction) => void;
+  /** True while a previous annotate call is still in flight — disables the new
+   * Explain/Define/Summarize items so a second one can't be fired mid-request, same
+   * spirit as editDisabled above. */
+  annotateDisabled?: boolean;
+}
+
+const ANNOTATE_LABELS: Record<NoteAnnotateAction, string> = {
+  explain: "Explain",
+  define: "Define",
+  summarize: "Summarize",
+};
+
+function annotateItems(
+  selectedText: string,
+  onAnnotateNoteSelection: ((selectedText: string, action: NoteAnnotateAction) => void) | undefined,
+  annotateDisabled: boolean | undefined,
+): ContextMenuItem[] {
+  if (!selectedText || !onAnnotateNoteSelection) return [];
+  return (Object.keys(ANNOTATE_LABELS) as NoteAnnotateAction[]).map((action) => ({
+    label: ANNOTATE_LABELS[action],
+    disabled: Boolean(annotateDisabled),
+    onSelect: () => onAnnotateNoteSelection(selectedText, action),
+  }));
 }
 
 /** Replaces the WebView's default right-click menu (Reload/Print/Inspect — none of it
@@ -31,11 +68,25 @@ interface ContextMenuProps {
  * right-clicked, found via the nearest ancestor's `data-context-menu` attribute: a chat
  * session in the sidebar gets "Delete chat", a message bubble gets "Copy message", a text
  * input gets Cut/Copy/Paste/Select all (re-implemented on top of `document.execCommand`
- * since suppressing the native menu also suppresses the browser's own edit commands).
- * Falls back to a plain "Copy" when there's a text selection but no recognized target, and
- * to no menu at all otherwise — the native menu is still gone, but there's nothing useful
- * to offer. Mounted once near the root; listens on `document`, so it works everywhere. */
-function ContextMenu({ onDeleteSession, onEditMessage, editDisabled }: ContextMenuProps) {
+ * since suppressing the native menu also suppresses the browser's own edit commands),
+ * a Newton Notepad note-picker row gets "Rename"/"Delete", and the Notepad's own
+ * Write-mode textarea / Preview-mode rendered text get highlight-to-act
+ * Explain/Define/Summarize on top of (Write mode) or instead of (Preview mode) the
+ * usual edit commands. Falls back to a plain "Copy" when there's a text selection but no
+ * recognized target, and to no menu at all otherwise — the native menu is still gone,
+ * but there's nothing useful to offer. Mounted once near the root of EACH real DOM tree
+ * that needs it — the main window's <App> and the separate Notepad webview's
+ * <NotepadWindow> each mount their own instance (see NotepadWindow.tsx); it listens on
+ * `document`, so each instance only ever sees events from its own window. */
+function ContextMenu({
+  onDeleteSession,
+  onEditMessage,
+  editDisabled,
+  onRenameNote,
+  onDeleteNote,
+  onAnnotateNoteSelection,
+  annotateDisabled,
+}: ContextMenuProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +134,54 @@ function ContextMenu({ onDeleteSession, onEditMessage, editDisabled }: ContextMe
           { label: "Paste", onSelect: () => document.execCommand("paste") },
           { label: "Select all", onSelect: () => document.execCommand("selectAll") },
         ];
+      } else if (kind === "note-item") {
+        const noteId = menuTarget?.dataset.noteId;
+        const noteTitle = menuTarget?.dataset.noteTitle ?? "";
+        if (noteId) {
+          items = [
+            {
+              label: "Rename",
+              disabled: !onRenameNote,
+              onSelect: () => onRenameNote?.(noteId, noteTitle),
+            },
+            {
+              label: "Delete",
+              danger: true,
+              disabled: !onDeleteNote,
+              onSelect: () => onDeleteNote?.(noteId, noteTitle),
+            },
+          ];
+        }
+      } else if (kind === "note-editable") {
+        // A real editable text field (the Notepad's Write-mode textarea) that ALSO
+        // supports highlight-to-act: standard edit commands plus, when there's an
+        // active selection, Explain/Define/Summarize on that selection -- combined in
+        // one menu since it's still a plain editable field (see onAnnotateNoteSelection
+        // doc comment above for why this is a separate kind from plain "editable").
+        const field = menuTarget as HTMLTextAreaElement;
+        const hasSelection = field.selectionStart !== field.selectionEnd;
+        const selectedText = hasSelection ? field.value.slice(field.selectionStart, field.selectionEnd).trim() : "";
+        items = [
+          { label: "Cut", disabled: !hasSelection, onSelect: () => document.execCommand("cut") },
+          { label: "Copy", disabled: !hasSelection, onSelect: () => document.execCommand("copy") },
+          { label: "Paste", onSelect: () => document.execCommand("paste") },
+          { label: "Select all", onSelect: () => document.execCommand("selectAll") },
+          ...annotateItems(selectedText, onAnnotateNoteSelection, annotateDisabled),
+        ];
+      } else if (kind === "note-text") {
+        // Read-only rendered text (the Notepad's Preview pane) -- no edit commands,
+        // just Copy plus highlight-to-act when there's an active selection inside it.
+        const selection = window.getSelection();
+        const selectedText =
+          selection && !selection.isCollapsed && menuTarget?.contains(selection.anchorNode)
+            ? selection.toString().trim()
+            : "";
+        if (selectedText) {
+          items = [
+            { label: "Copy", onSelect: () => void navigator.clipboard.writeText(selectedText) },
+            ...annotateItems(selectedText, onAnnotateNoteSelection, annotateDisabled),
+          ];
+        }
       }
 
       if (items.length === 0) {
@@ -97,7 +196,15 @@ function ContextMenu({ onDeleteSession, onEditMessage, editDisabled }: ContextMe
 
     document.addEventListener("contextmenu", handleContextMenu);
     return () => document.removeEventListener("contextmenu", handleContextMenu);
-  }, [onDeleteSession, onEditMessage, editDisabled]);
+  }, [
+    onDeleteSession,
+    onEditMessage,
+    editDisabled,
+    onRenameNote,
+    onDeleteNote,
+    onAnnotateNoteSelection,
+    annotateDisabled,
+  ]);
 
   useLayoutEffect(() => {
     if (!menu || !menuRef.current) return;

@@ -260,6 +260,19 @@ export async function deleteNote(token: string, noteId: string): Promise<void> {
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete this note."));
 }
 
+/** Sets a note's user-created, optional course tags — a dedicated endpoint separate
+ * from updateNote's content-autosave PATCH above, so a click to add/remove a tag is
+ * reflected immediately rather than waiting on that multi-second debounce. */
+export async function updateNoteTags(token: string, noteId: string, tags: string[]): Promise<NoteSummary> {
+  const res = await fetch(`${API_URL}/notes/${noteId}/tags`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ tags }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save these tags."));
+  return (await res.json()) as NoteSummary;
+}
+
 /** Highlight-to-act: explain/define/summarize a selection from within a note. Returns
  * the generated text for the caller to insert inline into the note's raw markdown —
  * never routed to the main chat window (see app/routers/notes.py's own docstring). */
@@ -528,6 +541,28 @@ export async function createTopupCheckoutSession(token: string, amountCents: num
   }
   const data = await res.json();
   return data.checkout_url as string;
+}
+
+/** Transcribes a recorded audio chunk via the existing POST /voice/transcribe (see
+ * app/routers/voice.py) — Pro-gated server-side (402 if the caller isn't on Newton
+ * Pro), exactly as it already is for every other caller of this endpoint; the Notepad's
+ * lecture-recording feature does not change or bypass that gate, it just calls the
+ * endpoint as it exists today. Newton Notepad's recorder calls this once per chunk
+ * (see NotepadWindow.tsx) rather than uploading one long recording at the end. */
+export async function transcribeAudio(token: string, blob: Blob): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", blob, "notepad-recording.webm");
+  const res = await fetch(`${API_URL}/voice/transcribe`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: formData,
+  });
+  if (!res.ok) {
+    const fallback = res.status === 402 ? "Voice recording is a Pro feature." : "Couldn't transcribe that recording.";
+    throw new ApiError(await detailOrFallback(res, fallback));
+  }
+  const data = await res.json();
+  return data.text as string;
 }
 
 /** Returns a Stripe-hosted billing portal URL (manage payment method, cancel) to open

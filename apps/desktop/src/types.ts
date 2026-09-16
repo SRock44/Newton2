@@ -87,12 +87,15 @@ export interface ToolInfo {
 }
 
 /** A Newton Notepad note — a first-class, listable Document (kind="note") on the
- * backend, see app/routers/notes.py. Summary shape (no content) for the note picker. */
+ * backend, see app/routers/notes.py. Summary shape (no content) for the note picker.
+ * `tags`: user-created, optional, free-text course labels (e.g. "Bio 101") — set via
+ * the dedicated PATCH /notes/{id}/tags, never the content-autosave PATCH /notes/{id}. */
 export interface NoteSummary {
   id: string;
   title: string;
   created_at: string;
   updated_at: string;
+  tags: string[];
 }
 
 /** Full note shape (NoteSummary + raw content) — GET /notes/{id}. */

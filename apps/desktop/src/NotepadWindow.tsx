@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import TitleBar from "./components/TitleBar";
 import MessageContent from "./components/MessageContent";
+import ContextMenu from "./components/ContextMenu";
 import {
   ApiError,
   annotateNoteSelection,
   createNote,
+  deleteNote,
   getNote,
   listNotes,
+  transcribeAudio,
   updateNote,
+  updateNoteTags,
 } from "./api";
 import type { Note, NoteAnnotateAction, NoteSummary } from "./types";
 import { clearNoteDraft, loadNoteDraft, saveNoteDraft } from "./lib/noteDraft";
@@ -29,6 +33,15 @@ const AUTOSAVE_DEBOUNCE_MS = 2500;
 // (app/services/notes.py) exactly: sending more than the backend will ever look at
 // would just waste bandwidth on a long note.
 const ANNOTATE_CONTEXT_CHARS = 4000;
+
+// Lecture capture (voice recording): rather than recording a whole lecture as one long
+// blob and transcribing it all at the end (one failure near the end would risk losing
+// everything), the recorder is stopped and restarted on this interval, each finished
+// segment transcribed and appended to the note as soon as it's ready. 45s is a
+// reasonable middle ground -- short enough that a mid-lecture failure loses at most
+// under a minute, long enough that whisper-asr isn't called on a constant stream of
+// tiny near-silent clips.
+const RECORDING_SEGMENT_MS = 45_000;
 
 type EditorMode = "write" | "preview";
 
@@ -56,11 +69,37 @@ function NotepadWindow() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [mode, setMode] = useState<EditorMode>("write");
   const [loadingNote, setLoadingNote] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbarState | null>(null);
   const [annotating, setAnnotating] = useState(false);
+
+  // Right-click rename (ContextMenu's "note-item" kind, see ContextMenu.tsx) — an
+  // inline text input replaces the note-list row's title while renamingNoteId matches
+  // it, rather than a separate modal/prompt.
+  const [renamingNoteId, setRenamingNoteId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  // Tag popover (list row's or editor header's small tag icon button) — a compact
+  // inline panel, not a floating overlay, so there's no positioning math to get wrong
+  // in a small always-on-top window. `tagPopoverTags` is a live, server-confirmed copy
+  // of whichever note's tags are open, kept in sync on every add/remove.
+  const [tagPopoverNoteId, setTagPopoverNoteId] = useState<string | null>(null);
+  const [tagPopoverTags, setTagPopoverTags] = useState<string[]>([]);
+  const [tagDraft, setTagDraft] = useState("");
+
+  // Lecture capture (voice recording) — see RECORDING_SEGMENT_MS above.
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [transcribing, setTranscribing] = useState(false);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
+  const recordingActiveRef = useRef(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const segmentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingClockRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -105,6 +144,21 @@ function NotepadWindow() {
     refreshNotes();
   }, [refreshNotes]);
 
+  // Releases the microphone and clears any in-flight recording timers if the whole
+  // Notepad window closes mid-recording -- stopRecording() itself already handles
+  // switching notes/going back to the picker (see openNote/backToPicker above), this
+  // just covers the window unmounting entirely.
+  useEffect(() => {
+    return () => {
+      if (recordingClockRef.current) clearInterval(recordingClockRef.current);
+      if (segmentTimeoutRef.current) clearTimeout(segmentTimeoutRef.current);
+      recordingActiveRef.current = false;
+      mediaRecorderRef.current?.stop();
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function openNote(noteId: string) {
     if (!token) return;
     // Flush any pending debounced save for whatever note was open before switching.
@@ -112,6 +166,8 @@ function NotepadWindow() {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
+    stopRecording();
+    setTagPopoverNoteId(null);
     setLoadingNote(true);
     setSelectionToolbar(null);
     try {
@@ -123,6 +179,7 @@ function NotepadWindow() {
       setActiveNoteId(noteId);
       setTitle(draft?.title ?? note.title);
       setContent(draft?.content ?? note.content);
+      setTags(note.tags);
       setMode("write");
       setSaveState("idle");
     } catch (err) {
@@ -148,6 +205,8 @@ function NotepadWindow() {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
+    stopRecording();
+    setTagPopoverNoteId(null);
     setActiveNoteId(null);
     setSelectionToolbar(null);
     refreshNotes();
@@ -205,17 +264,24 @@ function NotepadWindow() {
     setSelectionToolbar({ text, top: rect.top, left: rect.left });
   }
 
-  async function handleAnnotate(action: NoteAnnotateAction) {
-    if (!activeNoteId || !token || !selectionToolbar) return;
-    const selectedText = selectionToolbar.text;
+  // Shared by BOTH the Preview-mode floating toolbar (handleAnnotate below) and
+  // ContextMenu's right-click "Explain"/"Define"/"Summarize" (see
+  // onAnnotateNoteSelection below) — one implementation of "highlight-to-act", called
+  // from either trigger with whatever text was actually selected in whichever mode
+  // (Write's `<textarea>` via `.selectionStart`/`.selectionEnd`, or Preview's rendered
+  // `<div>` via `window.getSelection()` — see ContextMenu.tsx's "note-editable"/
+  // "note-text" kinds for where that text comes from).
+  async function insertAnnotation(selectedText: string, action: NoteAnnotateAction) {
+    if (!activeNoteId || !token) return;
     setAnnotating(true);
     setSelectionToolbar(null);
     try {
+      const currentContent = latestRef.current.content;
       const generated = await annotateNoteSelection(
         token,
         activeNoteId,
         selectedText,
-        content.slice(0, ANNOTATE_CONTEXT_CHARS),
+        currentContent.slice(0, ANNOTATE_CONTEXT_CHARS),
         action,
       );
       const insertion = "\n\n```newton-note\n" + JSON.stringify({ action, text: generated }) + "\n```\n";
@@ -223,16 +289,228 @@ function NotepadWindow() {
       // exact selected text can't be found verbatim (e.g. it spanned rendered
       // formatting that doesn't match the raw source 1:1), fall back to appending at
       // the end rather than silently dropping the response.
-      const index = content.indexOf(selectedText);
+      const index = currentContent.indexOf(selectedText);
       const next =
         index === -1
-          ? content + insertion
-          : content.slice(0, index + selectedText.length) + insertion + content.slice(index + selectedText.length);
+          ? currentContent + insertion
+          : currentContent.slice(0, index + selectedText.length) +
+            insertion +
+            currentContent.slice(index + selectedText.length);
       handleContentChange(next);
     } catch {
       setListError("Couldn't get a response for that selection.");
     } finally {
       setAnnotating(false);
+    }
+  }
+
+  async function handleAnnotate(action: NoteAnnotateAction) {
+    if (!selectionToolbar) return;
+    await insertAnnotation(selectionToolbar.text, action);
+  }
+
+  // ContextMenu's right-click Explain/Define/Summarize, from either the Write-mode
+  // textarea or the Preview-mode rendered div (see ContextMenu.tsx's onSelect calls for
+  // its "note-editable"/"note-text" kinds) — the selected text is already known at
+  // call time (read from the field/window selection at right-click time), so this is a
+  // thin, synchronous-looking wrapper around the same insertAnnotation used above.
+  function handleContextMenuAnnotate(selectedText: string, action: NoteAnnotateAction) {
+    void insertAnnotation(selectedText, action);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Note management (right-click on a note-picker row, ContextMenu's "note-item" kind):
+  // rename (inline input) and delete (confirm, then remove).
+  // ---------------------------------------------------------------------------
+
+  function startRenameNote(noteId: string, currentTitle: string) {
+    setRenamingNoteId(noteId);
+    setRenameValue(currentTitle);
+  }
+
+  function cancelRenameNote() {
+    setRenamingNoteId(null);
+    setRenameValue("");
+  }
+
+  async function commitRenameNote(noteId: string) {
+    if (!token) return;
+    const newTitle = renameValue.trim();
+    setRenamingNoteId(null);
+    if (!newTitle) return; // Empty input: leave the existing title alone rather than blanking it.
+    try {
+      // PATCH /notes/{id} is a full title+content replace (see updateNote's own doc
+      // comment) -- this fires from the picker, before the note is ever opened, so its
+      // content isn't in memory yet and has to be fetched fresh. If it's the currently
+      // open note (e.g. renamed once already open elsewhere), reuse the in-memory copy
+      // instead of an extra round trip.
+      const existingContent = noteId === activeNoteId ? latestRef.current.content : (await getNote(token, noteId)).content;
+      await updateNote(token, noteId, newTitle, existingContent);
+      if (noteId === activeNoteId) setTitle(newTitle);
+      await refreshNotes();
+    } catch (err) {
+      setListError(err instanceof ApiError ? err.message : "Couldn't rename this note.");
+    }
+  }
+
+  function handleRenameKeyDown(e: ReactKeyboardEvent<HTMLInputElement>, noteId: string) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void commitRenameNote(noteId);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelRenameNote();
+    }
+  }
+
+  async function handleDeleteNote(noteId: string, noteTitle: string) {
+    if (!token) return;
+    // This codebase has no existing confirm-before-delete convention to match --
+    // deleting a chat session or an uploaded document both fire immediately today (see
+    // Sidebar.tsx / DocumentsPanel.tsx) -- but the product owner explicitly asked for a
+    // confirmation step here, so this introduces one via the standard browser dialog
+    // rather than a new bespoke modal for a single call site.
+    if (!window.confirm(`Delete "${noteTitle}"? This can't be undone.`)) return;
+    try {
+      await deleteNote(token, noteId);
+    } catch (err) {
+      setListError(err instanceof ApiError ? err.message : "Couldn't delete this note.");
+      return;
+    }
+    if (noteId === activeNoteId) {
+      stopRecording();
+      setTagPopoverNoteId(null);
+      setActiveNoteId(null);
+      setSelectionToolbar(null);
+    }
+    await refreshNotes();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tags (small tag-icon button on a note-list row and in the open editor's header) --
+  // a compact inline popover, saved immediately via PATCH /notes/{id}/tags (never the
+  // debounced content autosave).
+  // ---------------------------------------------------------------------------
+
+  function openTagPopover(noteId: string, currentTags: string[]) {
+    setTagPopoverNoteId(noteId);
+    setTagPopoverTags(currentTags);
+    setTagDraft("");
+  }
+
+  function closeTagPopover() {
+    setTagPopoverNoteId(null);
+    setTagDraft("");
+  }
+
+  async function commitTags(noteId: string, nextTags: string[]) {
+    if (!token) return;
+    try {
+      const updated = await updateNoteTags(token, noteId, nextTags);
+      setTagPopoverTags(updated.tags);
+      setNotes((prev) => prev?.map((n) => (n.id === noteId ? { ...n, tags: updated.tags } : n)) ?? prev);
+      if (noteId === activeNoteId) setTags(updated.tags);
+    } catch (err) {
+      setListError(err instanceof ApiError ? err.message : "Couldn't save these tags.");
+    }
+  }
+
+  function handleAddTag() {
+    const value = tagDraft.trim();
+    if (!value || !tagPopoverNoteId || tagPopoverTags.includes(value)) {
+      setTagDraft("");
+      return;
+    }
+    setTagDraft("");
+    void commitTags(tagPopoverNoteId, [...tagPopoverTags, value]);
+  }
+
+  function handleRemoveTag(tag: string) {
+    if (!tagPopoverNoteId) return;
+    void commitTags(
+      tagPopoverNoteId,
+      tagPopoverTags.filter((t) => t !== tag),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lecture capture (voice recording) — a real MediaRecorder, chunked into
+  // RECORDING_SEGMENT_MS segments rather than one long recording, each segment
+  // transcribed (via the existing, Pro-gated POST /voice/transcribe) and appended to
+  // the note as soon as it's ready. Inserted as plain, directly-editable content —
+  // unlike the read-only newton-note Explain/Define/Summarize blocks above, this is
+  // the student's own captured material.
+  // ---------------------------------------------------------------------------
+
+  function stopRecording() {
+    recordingActiveRef.current = false;
+    if (segmentTimeoutRef.current) {
+      clearTimeout(segmentTimeoutRef.current);
+      segmentTimeoutRef.current = null;
+    }
+    if (recordingClockRef.current) {
+      clearInterval(recordingClockRef.current);
+      recordingClockRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+    setRecording(false);
+  }
+
+  async function transcribeAndAppend(blob: Blob) {
+    if (!token || !activeNoteId || blob.size === 0) return;
+    setTranscribing(true);
+    try {
+      const text = (await transcribeAudio(token, blob)).trim();
+      if (text) {
+        const currentContent = latestRef.current.content;
+        handleContentChange(currentContent ? `${currentContent}\n\n${text}` : text);
+      }
+    } catch (err) {
+      setRecordingError(err instanceof ApiError ? err.message : "Couldn't transcribe that segment.");
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  function startSegment(stream: MediaStream) {
+    const recorder = new MediaRecorder(stream);
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      void transcribeAndAppend(blob);
+      // Still recording (this wasn't triggered by stopRecording): immediately start
+      // the next segment on the same stream, so nothing of the lecture is missed
+      // between segments.
+      if (recordingActiveRef.current) startSegment(stream);
+    };
+    recorder.start();
+    mediaRecorderRef.current = recorder;
+    segmentTimeoutRef.current = setTimeout(() => recorder.stop(), RECORDING_SEGMENT_MS);
+  }
+
+  async function startRecording() {
+    if (!activeNoteId || recording) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setRecordingError("Voice recording isn't supported in this browser/environment.");
+      return;
+    }
+    setRecordingError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+      recordingActiveRef.current = true;
+      setRecording(true);
+      setRecordingSeconds(0);
+      recordingClockRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+      startSegment(stream);
+    } catch {
+      setRecordingError("Couldn't access the microphone.");
     }
   }
 
@@ -257,17 +535,66 @@ function NotepadWindow() {
             ) : (
               <ul className="notepad-window__note-list">
                 {notes.map((note) => (
-                  <li key={note.id}>
+                  <li
+                    key={note.id}
+                    className="notepad-window__note-row"
+                    data-context-menu="note-item"
+                    data-note-id={note.id}
+                    data-note-title={note.title}
+                  >
+                    {renamingNoteId === note.id ? (
+                      <input
+                        type="text"
+                        className="notepad-window__note-rename-input"
+                        value={renameValue}
+                        autoFocus
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => handleRenameKeyDown(e, note.id)}
+                        onBlur={() => commitRenameNote(note.id)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="notepad-window__note-item"
+                        onClick={() => openNote(note.id)}
+                      >
+                        <span className="notepad-window__note-title">{note.title}</span>
+                        {tagPopoverNoteId !== note.id && note.tags.length > 0 && (
+                          <span className="notepad-window__tag-pills">
+                            {note.tags.map((tag) => (
+                              <span key={tag} className="notepad-window__tag-pill notepad-window__tag-pill--readonly">
+                                {tag}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                        <span className="notepad-window__note-updated">
+                          {new Date(note.updated_at).toLocaleString()}
+                        </span>
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="notepad-window__note-item"
-                      onClick={() => openNote(note.id)}
+                      className="notepad-window__tag-icon-btn"
+                      aria-label={`Tags for ${note.title}`}
+                      title="Tags"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        tagPopoverNoteId === note.id ? closeTagPopover() : openTagPopover(note.id, note.tags);
+                      }}
                     >
-                      <span className="notepad-window__note-title">{note.title}</span>
-                      <span className="notepad-window__note-updated">
-                        {new Date(note.updated_at).toLocaleString()}
-                      </span>
+                      🏷
                     </button>
+                    {tagPopoverNoteId === note.id && (
+                      <TagPopover
+                        tags={tagPopoverTags}
+                        draft={tagDraft}
+                        onDraftChange={setTagDraft}
+                        onAdd={handleAddTag}
+                        onRemove={handleRemoveTag}
+                        onClose={closeTagPopover}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -287,7 +614,37 @@ function NotepadWindow() {
                 placeholder="Untitled"
                 disabled={loadingNote}
               />
+              <button
+                type="button"
+                className="notepad-window__tag-icon-btn"
+                aria-label="Tags for this note"
+                title="Tags"
+                onClick={() =>
+                  tagPopoverNoteId === activeNoteId ? closeTagPopover() : openTagPopover(activeNoteId!, tags)
+                }
+              >
+                🏷
+              </button>
             </div>
+            {tagPopoverNoteId === activeNoteId && (
+              <TagPopover
+                tags={tagPopoverTags}
+                draft={tagDraft}
+                onDraftChange={setTagDraft}
+                onAdd={handleAddTag}
+                onRemove={handleRemoveTag}
+                onClose={closeTagPopover}
+              />
+            )}
+            {tagPopoverNoteId !== activeNoteId && tags.length > 0 && (
+              <div className="notepad-window__tag-pills notepad-window__tag-pills--header">
+                {tags.map((tag) => (
+                  <span key={tag} className="notepad-window__tag-pill notepad-window__tag-pill--readonly">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="notepad-window__toolbar">
               <div className="notepad-window__mode-toggle">
                 <button
@@ -305,12 +662,25 @@ function NotepadWindow() {
                   Preview
                 </button>
               </div>
-              <span className="notepad-window__save-status">
-                {saveState === "saving" && "Saving…"}
-                {saveState === "saved" && "Saved"}
-                {saveState === "error" && "Couldn't save — kept locally"}
-              </span>
+              <div className="notepad-window__toolbar-right">
+                {recording ? (
+                  <button type="button" className="notepad-window__record-btn notepad-window__record-btn--active" onClick={stopRecording}>
+                    ● {formatElapsed(recordingSeconds)} — Stop
+                  </button>
+                ) : (
+                  <button type="button" className="notepad-window__record-btn" onClick={startRecording} title="Record lecture audio">
+                    🎙 Record
+                  </button>
+                )}
+                {transcribing && <span className="notepad-window__save-status">Transcribing…</span>}
+                <span className="notepad-window__save-status">
+                  {saveState === "saving" && "Saving…"}
+                  {saveState === "saved" && "Saved"}
+                  {saveState === "error" && "Couldn't save — kept locally"}
+                </span>
+              </div>
             </div>
+            {recordingError && <div className="notepad-window__error">{recordingError}</div>}
             <div className="notepad-window__body">
               {loadingNote ? (
                 <div className="notepad-window__empty">Loading…</div>
@@ -320,9 +690,15 @@ function NotepadWindow() {
                   value={content}
                   onChange={(e) => handleContentChange(e.target.value)}
                   placeholder="Start writing…"
+                  data-context-menu="note-editable"
                 />
               ) : (
-                <div className="notepad-window__preview" ref={previewRef} onMouseUp={handlePreviewMouseUp}>
+                <div
+                  className="notepad-window__preview"
+                  ref={previewRef}
+                  onMouseUp={handlePreviewMouseUp}
+                  data-context-menu="note-text"
+                >
                   {content.trim() ? (
                     <MessageContent content={content} />
                   ) : (
@@ -350,8 +726,87 @@ function NotepadWindow() {
           </div>
         )}
       </div>
+      <ContextMenu
+        // The Notepad window has no chat sessions of its own -- this mount only ever
+        // needs the note-item/note-editable/note-text kinds below; see ContextMenu.tsx's
+        // module doc comment on why each real window mounts its own instance.
+        onDeleteSession={() => {}}
+        onRenameNote={startRenameNote}
+        onDeleteNote={handleDeleteNote}
+        onAnnotateNoteSelection={handleContextMenuAnnotate}
+        annotateDisabled={annotating}
+      />
     </div>
   );
+}
+
+/** Compact inline tags popover (list row's or editor header's small tag-icon button) --
+ * existing tags as removable pills, a text input to add a new one. Deliberately not a
+ * floating/absolutely-positioned overlay -- this is a small always-on-top window, and
+ * an inline panel has no clipping/positioning math to get wrong. */
+function TagPopover({
+  tags,
+  draft,
+  onDraftChange,
+  onAdd,
+  onRemove,
+  onClose,
+}: {
+  tags: string[];
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onAdd: () => void;
+  onRemove: (tag: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="notepad-window__tag-popover" onClick={(e) => e.stopPropagation()}>
+      <div className="notepad-window__tag-pills">
+        {tags.length === 0 && <span className="notepad-window__tag-empty">No tags yet</span>}
+        {tags.map((tag) => (
+          <span key={tag} className="notepad-window__tag-pill">
+            {tag}
+            <button
+              type="button"
+              className="notepad-window__tag-remove"
+              aria-label={`Remove tag ${tag}`}
+              onClick={() => onRemove(tag)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="notepad-window__tag-add">
+        <input
+          type="text"
+          className="notepad-window__tag-input"
+          placeholder="Add a tag…"
+          value={draft}
+          autoFocus
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onAdd();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
+          }}
+        />
+        <button type="button" className="btn-secondary-sm" onClick={onClose}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatElapsed(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 export default NotepadWindow;
