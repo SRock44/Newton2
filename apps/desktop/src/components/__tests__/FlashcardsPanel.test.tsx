@@ -1,8 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import FlashcardsPanel from "../FlashcardsPanel";
 import type { Flashcard } from "../../types";
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
+vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile: vi.fn() }));
+
+const saveDialog = save as unknown as ReturnType<typeof vi.fn>;
+const writeFileMock = writeFile as unknown as ReturnType<typeof vi.fn>;
 
 const dueCards: Flashcard[] = [
   {
@@ -69,6 +77,13 @@ describe("FlashcardsPanel", () => {
     );
     vi.mocked(reviewFlashcard).mockClear();
     vi.mocked(deleteFlashcard).mockClear();
+    saveDialog.mockReset();
+    writeFileMock.mockReset();
+    writeFileMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("shows the front of the first due card, then the back on click, then rating buttons", async () => {
@@ -176,5 +191,75 @@ describe("FlashcardsPanel", () => {
 
     expect(await screen.findByText(/couldn't check for due flashcards/i)).toBeInTheDocument();
     expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Anki export — the cards leaving the app as a real .apkg.
+  // ---------------------------------------------------------------------------
+
+  it("exports every card as a real .apkg through the native save dialog", async () => {
+    const user = userEvent.setup();
+    // A real .apkg is a zip; "PK\x03\x04" is the zip magic number, and the 0x00/0xFF
+    // bytes here would be destroyed by any text round-trip.
+    const apkg = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0x14]);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(apkg.slice().buffer as ArrayBuffer, { status: 200 }));
+    saveDialog.mockResolvedValue("C:\\Users\\student\\Downloads\\newton-flashcards.apkg");
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+    await screen.findByText("What is FSRS?");
+
+    await user.click(screen.getByRole("button", { name: /export to anki/i }));
+
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining("/flashcards/export.apkg"), {
+        headers: { Authorization: "Bearer test-token" },
+      }),
+    );
+    expect(saveDialog).toHaveBeenCalledWith({
+      defaultPath: "newton-flashcards.apkg",
+      filters: [{ name: "Anki deck", extensions: ["apkg"] }],
+    });
+    await waitFor(() => expect(writeFileMock).toHaveBeenCalled());
+    expect(Array.from(writeFileMock.mock.calls[0][1] as Uint8Array)).toEqual(Array.from(apkg));
+    expect(
+      await screen.findByText(/saved to c:\\users\\student\\downloads\\newton-flashcards\.apkg/i),
+    ).toBeInTheDocument();
+  });
+
+  it("is reachable straight from the panel toolbar, not from inside a card", async () => {
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+    await screen.findByText("What is FSRS?");
+
+    const button = screen.getByRole("button", { name: /export to anki/i });
+    expect(button).toBeInTheDocument();
+    // Sits on the same row as the Review / All cards tabs.
+    expect(button.closest(".flashcards-tabs")).not.toBeNull();
+  });
+
+  it("writes nothing when the save dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Uint8Array([1, 2]), { status: 200 }));
+    saveDialog.mockResolvedValue(null);
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+    await screen.findByText("What is FSRS?");
+
+    await user.click(screen.getByRole("button", { name: /export to anki/i }));
+
+    await waitFor(() => expect(saveDialog).toHaveBeenCalled());
+    expect(writeFileMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/saved to/i)).not.toBeInTheDocument();
+  });
+
+  it("reports an export failure instead of silently doing nothing", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("no cards", { status: 404 }));
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+    await screen.findByText("What is FSRS?");
+
+    await user.click(screen.getByRole("button", { name: /export to anki/i }));
+
+    expect(await screen.findByText(/couldn't export your flashcards/i)).toBeInTheDocument();
+    expect(saveDialog).not.toHaveBeenCalled();
   });
 });

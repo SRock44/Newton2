@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ApiError, deleteFlashcard, listFlashcards, reviewFlashcard } from "../api";
+import { ApiError, deleteFlashcard, flashcardsApkgUrl, listFlashcards, reviewFlashcard } from "../api";
+import { fetchBytes, saveBytesToDisk } from "../lib/download";
 import type { Flashcard } from "../types";
 
 interface FlashcardsPanelProps {
@@ -46,6 +47,12 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
   const [allFailed, setAllFailed] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Anki export — a real .apkg written to the student's disk (see lib/download.ts).
+  // Held separately from `error` so "saved to …" and a failure can use the same line
+  // without either being mistaken for the panel-level error banner.
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +121,31 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
     }
   }
 
+  /** Exports every one of this student's cards as a real Anki `.apkg` (decks grouped by
+   * the document each card came from, built server-side with genanki) and writes it
+   * wherever they choose. The point is that Newton's FSRS-scheduled cards can be
+   * reviewed on a phone — so this is a first-class toolbar action here, not something
+   * buried in a submenu. */
+  async function handleExportToAnki() {
+    if (exporting) return;
+    setExporting(true);
+    setExportStatus("Building your Anki deck…");
+    setError(null);
+    try {
+      const accessToken = await getAccessToken();
+      const bytes = await fetchBytes(flashcardsApkgUrl(), accessToken);
+      const result = await saveBytesToDisk("newton-flashcards.apkg", bytes, [
+        { name: "Anki deck", extensions: ["apkg"] },
+      ]);
+      // A cancelled save dialog is a normal outcome, not a failure.
+      setExportStatus(result.path ? `Saved to ${result.path}` : null);
+    } catch (err) {
+      setExportStatus(err instanceof ApiError ? err.message : "Couldn't export your flashcards.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleDeleteFromBrowse(id: string) {
     try {
       const accessToken = await getAccessToken();
@@ -150,9 +182,19 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
           >
             All cards
           </button>
+          <button
+            type="button"
+            className="btn-secondary-sm flashcards-export-btn"
+            onClick={handleExportToAnki}
+            disabled={exporting}
+            title="Save these cards as a real Anki deck you can review on your phone"
+          >
+            {exporting ? "Exporting…" : "Export to Anki"}
+          </button>
         </div>
 
         {error && <div className="banner banner--error">{error}</div>}
+        {exportStatus && <div className="item-status">{exportStatus}</div>}
 
         {mode === "review" ? (
           queueLoading ? (
