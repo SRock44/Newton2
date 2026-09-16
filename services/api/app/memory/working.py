@@ -102,10 +102,11 @@ async def _rehydrate_from_postgres(session_id: str) -> dict | None:
     }
 
 
-async def get_bundle(session_id: str) -> dict:
-    """Tier 1: the assembled context bundle for an active session — recent turns plus
-    retrieved profile facts and retrieved document chunks, cached in Redis and reused
-    across turns instead of being rebuilt from Postgres on every message.
+async def _get_bundle(session_id: str) -> tuple[dict, bool]:
+    """Real implementation behind get_bundle below, plus a second return value --
+    `just_rehydrated` -- that ONLY append_turn needs (see its own comment on why) to
+    avoid double-counting a turn on a cold cache. Every other caller (get_bundle itself,
+    set_profile_facts, set_retrieved_chunks, mark_consolidated) just ignores it.
 
     On a cold cache (missing/expired Redis key), rehydrates from Postgres -- see
     _rehydrate_from_postgres above -- rather than silently returning an empty bundle
@@ -115,11 +116,20 @@ async def get_bundle(session_id: str) -> dict:
     session still gets the plain empty default with no Redis write, exactly as before."""
     raw = await get_redis().get(_bundle_key(session_id))
     if raw:
-        return json.loads(raw)
+        return json.loads(raw), False
     bundle = await _rehydrate_from_postgres(session_id)
     if bundle is None:
-        return {"turns": [], "profile_facts": [], "retrieved_chunks": [], "updated_at": None}
+        return {"turns": [], "profile_facts": [], "retrieved_chunks": [], "updated_at": None}, False
     await _save(session_id, bundle)
+    return bundle, True
+
+
+async def get_bundle(session_id: str) -> dict:
+    """Tier 1: the assembled context bundle for an active session — recent turns plus
+    retrieved profile facts and retrieved document chunks, cached in Redis and reused
+    across turns instead of being rebuilt from Postgres on every message. See
+    _get_bundle above for the real cache/rehydration logic."""
+    bundle, _just_rehydrated = await _get_bundle(session_id)
     return bundle
 
 
@@ -129,7 +139,23 @@ async def _save(session_id: str, bundle: dict) -> None:
 
 
 async def append_turn(session_id: str, role: str, content: str) -> dict:
-    bundle = await get_bundle(session_id)
+    bundle, just_rehydrated = await _get_bundle(session_id)
+    if (
+        just_rehydrated
+        and bundle["turns"]
+        and bundle["turns"][-1]["role"] == role
+        and bundle["turns"][-1]["content"] == content
+    ):
+        # Every real call site (app/routers/chat.py's WS handler, in all three places
+        # it calls append_turn) always persists the ChatMessage row to Postgres and
+        # commits it BEFORE calling append_turn for that same turn. On a cold cache,
+        # _rehydrate_from_postgres's query therefore already picks up THIS turn's own
+        # row as the newest message in Postgres -- appending it again below would
+        # silently duplicate the tail of `turns`. Drop that duplicate: it's this call's
+        # own row, not a coincidental unrelated repeat (just_rehydrated is only True
+        # right when the cache was genuinely cold, never on the steady-state warm
+        # path this same equality check would otherwise risk false-matching on).
+        bundle["turns"] = bundle["turns"][:-1]
     bundle["turns"].append({"role": role, "content": content})
     bundle["turns"] = bundle["turns"][-MAX_TURNS:]
     # Deliberately NOT capped like "turns" above -- this counts every turn ever

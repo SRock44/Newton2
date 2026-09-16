@@ -225,3 +225,34 @@ async def test_rehydrated_bundle_is_cached_so_a_second_call_does_not_requery_pos
     second = await working.get_bundle(str(session.id))
     assert len(calls) == 1, "a warm (just-rehydrated) cache must not trigger a second Postgres query"
     assert second["turns"] == first["turns"]
+
+
+async def test_append_turn_on_a_cold_cache_does_not_duplicate_the_just_persisted_message(
+    db_session, throwaway_session
+):
+    """The exact sequence app/routers/chat.py's WS handler always follows for every
+    turn: persist the ChatMessage to Postgres and commit it, THEN call append_turn for
+    that same turn. On a cold cache, get_bundle's rehydration (fired from inside
+    append_turn's own internal get_bundle call) would otherwise already pick up that
+    just-committed row as the newest message in Postgres, and append_turn appending it
+    again on top would duplicate the tail of `turns`. This is the regression a first
+    draft of the rehydration fix actually shipped with (caught by CI) before this dedup
+    guard was added."""
+    session = throwaway_session
+
+    # Turn 1, cold cache (session has zero prior Redis or Postgres activity): persist
+    # then append_turn, exactly like chat.py's WS handler does for the user's message.
+    db_session.add(ChatMessage(session_id=session.id, role="user", content="hi"))
+    await db_session.commit()
+    bundle = await working.append_turn(str(session.id), "user", "hi")
+    assert bundle["turns"] == [{"role": "user", "content": "hi"}]
+
+    # Turn 2, same pattern, same turn of the conversation, now warm -- must not
+    # duplicate either (the dedup guard should never fire here; ordinary append).
+    db_session.add(ChatMessage(session_id=session.id, role="assistant", content="hello"))
+    await db_session.commit()
+    bundle = await working.append_turn(str(session.id), "assistant", "hello")
+    assert bundle["turns"] == [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "hello"},
+    ]
