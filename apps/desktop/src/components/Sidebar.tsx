@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ChatSession } from "../types";
+import type { ChatSession, MainView } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
+import { getSidebarCollapsed, setSidebarCollapsed } from "../lib/preferences";
 import NewtonMark from "./NewtonMark";
 
 interface SidebarProps {
@@ -13,12 +14,42 @@ interface SidebarProps {
   creatingChat: boolean;
   username: string;
   onSignOut: () => void;
+  onOpenHome: () => void;
   onOpenDocuments: () => void;
   onOpenStudyPlan: () => void;
   onOpenFlashcards: () => void;
   onOpenPracticeExams: () => void;
   onOpenSettings: () => void;
   onOpenHelp: () => void;
+  /** Which page is currently showing (see App.tsx's mainView) — used only to highlight
+   * the matching nav button; the sidebar's own session-list/navigation logic doesn't
+   * otherwise depend on it. */
+  mainView: MainView;
+}
+
+/** A compact icon-only label for the collapsed rail's nav buttons — first letter of
+ * the full label, same idea as the existing "?" help button's single-glyph circle
+ * (see .sidebar-help-btn), not a new icon set. */
+function CollapsedNavButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`sidebar-rail-btn${active ? " sidebar-rail-btn--active" : ""}`}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+    >
+      {label.charAt(0)}
+    </button>
+  );
 }
 
 function formatSessionDate(iso: string): string {
@@ -37,19 +68,66 @@ function Sidebar({
   creatingChat,
   username,
   onSignOut,
+  onOpenHome,
   onOpenDocuments,
   onOpenStudyPlan,
   onOpenFlashcards,
   onOpenPracticeExams,
   onOpenSettings,
   onOpenHelp,
+  mainView,
 }: SidebarProps) {
   const [now, setNow] = useState(new Date());
+  // Collapsible sidebar: a slim icon-only rail when true. Persisted locally (see
+  // lib/preferences.ts) so it survives a restart — a window-chrome preference, same
+  // pattern as the existing study-reminders toggle.
+  const [collapsed, setCollapsed] = useState(() => getSidebarCollapsed());
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      setSidebarCollapsed(next);
+      return next;
+    });
+  }
+
+  if (collapsed) {
+    return (
+      <aside className="sidebar sidebar--collapsed">
+        <div className="sidebar-header sidebar-header--collapsed">
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={toggleCollapsed}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            »
+          </button>
+        </div>
+
+        <div className="sidebar-rail">
+          <CollapsedNavButton label="New chat" onClick={onNewChat} />
+          <CollapsedNavButton label="Home" active={mainView === "home"} onClick={onOpenHome} />
+          <CollapsedNavButton label="Documents" active={mainView === "documents"} onClick={onOpenDocuments} />
+          <CollapsedNavButton label="Study plan" onClick={onOpenStudyPlan} />
+          <CollapsedNavButton label="Flashcards" onClick={onOpenFlashcards} />
+          <CollapsedNavButton label="Practice exams" onClick={onOpenPracticeExams} />
+          <CollapsedNavButton label="Settings" onClick={onOpenSettings} />
+          <CollapsedNavButton label="What Newton can do" onClick={onOpenHelp} />
+        </div>
+
+        <div className="sidebar-rail sidebar-rail--footer">
+          <CollapsedNavButton label="Sign out" onClick={onSignOut} />
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="sidebar">
@@ -60,15 +138,26 @@ function Sidebar({
           </span>
           <span className="sidebar-brand-name">Newton</span>
         </div>
-        <button
-          type="button"
-          className="sidebar-help-btn"
-          onClick={onOpenHelp}
-          aria-label="What Newton can do"
-          title="What Newton can do"
-        >
-          ?
-        </button>
+        <div className="sidebar-header-actions">
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={toggleCollapsed}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            «
+          </button>
+          <button
+            type="button"
+            className="sidebar-help-btn"
+            onClick={onOpenHelp}
+            aria-label="What Newton can do"
+            title="What Newton can do"
+          >
+            ?
+          </button>
+        </div>
       </div>
 
       <div className="sidebar-clock">
@@ -84,6 +173,14 @@ function Sidebar({
       <div className="sidebar-nav">
         <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
           <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
+        </button>
+
+        <button
+          type="button"
+          className={`sidebar-nav-more sidebar-nav-more--active sidebar-home-link${mainView === "home" ? " sidebar-nav-more--current" : ""}`}
+          onClick={onOpenHome}
+        >
+          Home
         </button>
 
         <nav className="session-list" aria-label="Chat sessions">
@@ -128,7 +225,11 @@ function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenDocuments}>
+        <button
+          type="button"
+          className={`sidebar-nav-more sidebar-nav-more--active${mainView === "documents" ? " sidebar-nav-more--current" : ""}`}
+          onClick={onOpenDocuments}
+        >
           Documents
         </button>
         <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenStudyPlan}>
