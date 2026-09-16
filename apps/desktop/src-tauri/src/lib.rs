@@ -6,7 +6,15 @@ use base64::Engine;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, ShortcutState};
+
+/// Frontend event carrying a `newton://...` URL the OS handed us. Nothing consumes it
+/// yet -- it exists so the Stripe checkout-complete page (see services/api's
+/// billing.py `/billing/checkout-complete`, which currently dead-ends in a static
+/// "you're all set" browser page) and other out-of-app round trips can eventually
+/// redirect straight back into the app instead of asking the user to switch windows.
+const DEEP_LINK_EVENT: &str = "deep-link-received";
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -231,6 +239,19 @@ fn open_notepad_window(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be the FIRST plugin registered (tauri-plugin-single-instance's own
+        // requirement). On Windows a `newton://...` link makes the OS spawn a *second*
+        // desktop.exe with the URL as a CLI argument rather than notifying the running
+        // one; single-instance (built with its `deep-link` feature) forwards that
+        // argument into the already-running process and exits the new one, which is what
+        // makes deep links reach the live window instead of opening a duplicate app.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            focus_main_window(app.clone());
+        }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(
@@ -251,6 +272,31 @@ pub fn run() {
             open_notepad_window
         ])
         .setup(|app| {
+            // Windows/Linux only associate the `newton://` scheme with the app at
+            // *install* time, from the bundle config -- an unbundled `tauri dev` binary
+            // has never been installed, so nothing would route the scheme to it. Doing
+            // the registration at runtime in debug builds points the scheme at whatever
+            // target/debug/desktop.exe is currently running, which is what makes
+            // `start newton://...` testable without cutting a release. Release builds
+            // deliberately leave this to the installer.
+            #[cfg(debug_assertions)]
+            {
+                if let Err(err) = app.deep_link().register_all() {
+                    eprintln!("[deep-link] dev-mode scheme registration failed: {err}");
+                }
+            }
+
+            // Hand the URL to the frontend rather than acting on it here: which panel a
+            // `newton://...` link should land on is a UI decision, and the app may have
+            // been cold-started by the link (so focus it first, or the event arrives at
+            // a window that's still hidden behind the browser the link came from).
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
+                focus_main_window(handle.clone());
+                let _ = handle.emit(DEEP_LINK_EVENT, urls);
+            });
+
             // "Newton Snip": Ctrl+Alt+N from anywhere captures the screen and hands it to
             // the frontend's crop UI. Deliberately not Win+Shift+S / Ctrl+Shift+N, which
             // collide with the OS snipping tool and browser incognito shortcuts.
