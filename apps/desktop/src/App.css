@@ -4261,9 +4261,17 @@ body.is-resizing-panel * {
 
 .flashcards-tabs {
   display: flex;
+  align-items: center;
   gap: var(--space-1);
   margin-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Sits on the tab row but is an action, not a tab — pushed to the far right so it
+   reads as a toolbar button rather than a third view to switch to. */
+.flashcards-export-btn {
+  margin-left: auto;
+  margin-bottom: var(--space-1);
 }
 
 .flashcards-tab {

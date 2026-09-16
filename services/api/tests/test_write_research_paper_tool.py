@@ -334,6 +334,16 @@ async def test_run_writes_a_paper_and_creates_real_document_rows(paper_user, db_
     pdf_doc = next(d for d in docs if d.filename.endswith(".pdf"))
     assert pdf_doc.mime_type == "application/pdf"
 
+    # The bibliography's real source list is PERSISTED on both generated rows (see
+    # Document.paper_sources), not discarded the moment the compile finished -- that's
+    # what makes GET /documents/{id}/bibliography.bib able to hand the student back the
+    # same .bib the compile above consumed, with the same \cite{} keys.
+    tex_doc = next(d for d in docs if d.filename.endswith(".tex"))
+    for generated in (pdf_doc, tex_doc):
+        assert generated.paper_sources, f"{generated.filename} should carry its bibliography sources"
+        assert [s["key"] for s in generated.paper_sources] == ["doe2024solar"]
+        assert generated.paper_sources[0]["title"] == "Solar Growth"
+
     raw_pdf = await documents_service.get_document_raw(pdf_doc)
     assert raw_pdf == _FAKE_PDF
     assert raw_pdf[:5] == b"%PDF-"

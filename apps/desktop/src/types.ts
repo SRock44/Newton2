@@ -80,6 +80,12 @@ export interface UploadedDocument {
   filename: string;
   mime_type: string | null;
   created_at: string;
+  /** True only for a research paper Newton itself wrote that actually cited sources —
+   * the backend stores that paper's real bibliography source list on the document (see
+   * Document.paper_sources) and rebuilds the `.bib` from it on demand. Gates the
+   * "Download bibliography (.bib)" action, which is meaningless for a plain upload.
+   * Optional so an older/partial payload (or a test fixture) simply reads as "no". */
+  has_bibliography?: boolean;
 }
 
 export interface DocumentContent {

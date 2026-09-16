@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   deleteDocument,
+  documentBibliographyUrl,
   documentRawUrl,
   generateFlashcards,
   generatePracticeExam,
@@ -16,7 +17,8 @@ import {
 import type { BillingStatus, DocumentContent, UploadedDocument } from "../types";
 import MessageContent from "./MessageContent";
 import RecentItemCard from "./RecentItemCard";
-import { documentTypeLabel } from "../lib/fileType";
+import { documentTypeLabel, isPreviewableAsPdf } from "../lib/fileType";
+import { fetchBytes, filtersForFilename, saveBytesToDisk, withExtension } from "../lib/download";
 import { toSnippet } from "../lib/snippet";
 import { getDocumentsViewMode, setDocumentsViewMode } from "../lib/preferences";
 import type { DocumentsViewMode } from "../lib/preferences";
@@ -57,6 +59,9 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
   const [planStatusByDoc, setPlanStatusByDoc] = useState<Record<string, string>>({});
   const [cardStatusByDoc, setCardStatusByDoc] = useState<Record<string, string>>({});
   const [examStatusByDoc, setExamStatusByDoc] = useState<Record<string, string>>({});
+  // "Saved to C:\Users\…\paper.pdf" / an error, per document — same per-document status
+  // shape as the generation statuses above, shown in the detail pane.
+  const [downloadStatusByDoc, setDownloadStatusByDoc] = useState<Record<string, string>>({});
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -196,7 +201,11 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
         if (cancelled) return;
         setContentState({ loading: false, error: null, data });
 
-        if (!data.editable) {
+        // Only a real PDF gets the embedded viewer. A .pptx/.docx is also non-editable,
+        // but the webview can't render binary Office XML at all — it would show an empty
+        // frame — so those fall through to the extracted-text view below, which is
+        // exactly the text Newton's RAG retrieval reads from them.
+        if (!data.editable && selectedDoc && isPreviewableAsPdf(selectedDoc)) {
           const res = await fetch(documentRawUrl(selectedId), {
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -309,6 +318,58 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     setOpenMenuId(null);
     setSelectedId(doc.id);
     action(doc);
+  }
+
+  // Downloads: the only way anything a student made in Newton actually reaches their own
+  // disk. Both actions below share one shape — fetch the real bytes from an auth-gated
+  // endpoint, then hand them to the native save dialog + filesystem write (see
+  // lib/download.ts) — and both report where the file landed rather than silently
+  // succeeding, since a save dialog's chosen folder is easy to lose track of.
+  async function runDownload(doc: UploadedDocument, work: () => Promise<string | null>) {
+    setOpenMenuId(null);
+    setSelectedId(doc.id);
+    setDownloadStatusByDoc((prev) => ({ ...prev, [doc.id]: "Preparing download…" }));
+    try {
+      const path = await work();
+      setDownloadStatusByDoc((prev) => ({
+        ...prev,
+        // A cancelled save dialog is a normal outcome, not a failure — clear the status
+        // and say nothing rather than reporting an error the student caused on purpose.
+        [doc.id]: path ? `Saved to ${path}` : "",
+      }));
+    } catch (err) {
+      setDownloadStatusByDoc((prev) => ({
+        ...prev,
+        [doc.id]: err instanceof ApiError ? err.message : "Couldn't save this file.",
+      }));
+    }
+  }
+
+  /** The document's own original file, byte for byte. Uses the SAME /documents/{id}/raw
+   * endpoint the PDF preview already fetches — that returns the exact stored bytes with
+   * no text extraction, which is equally correct for a text document (an edit is written
+   * straight back to that same stored object) and for a binary one. So a LaTeX-compiled
+   * research paper downloads as a real PDF rather than as its extracted text, and
+   * there's no second, text-shaped download path that could re-encode anything. */
+  function handleDownload(doc: UploadedDocument) {
+    runDownload(doc, async () => {
+      const bytes = await fetchBytes(documentRawUrl(doc.id), token);
+      const result = await saveBytesToDisk(doc.filename, bytes, filtersForFilename(doc.filename));
+      return result.path;
+    });
+  }
+
+  /** The real `.bib` behind a research paper Newton wrote (only offered when the backend
+   * says this document actually has citation data — see `has_bibliography`). */
+  function handleDownloadBibliography(doc: UploadedDocument) {
+    runDownload(doc, async () => {
+      const bytes = await fetchBytes(documentBibliographyUrl(doc.id), token);
+      const suggested = withExtension(doc.filename, "bib");
+      const result = await saveBytesToDisk(suggested, bytes, [
+        { name: "BibTeX bibliography", extensions: ["bib"] },
+      ]);
+      return result.path;
+    });
   }
 
   function startEdit() {
@@ -477,6 +538,14 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
               <button type="button" role="menuitem" onClick={() => handleMenuChat(doc)}>
                 Chat about this
               </button>
+              <button type="button" role="menuitem" onClick={() => handleDownload(doc)}>
+                Download
+              </button>
+              {doc.has_bibliography && (
+                <button type="button" role="menuitem" onClick={() => handleDownloadBibliography(doc)}>
+                  Download bibliography (.bib)
+                </button>
+              )}
               <button type="button" role="menuitem" onClick={() => startRename(doc)}>
                 Rename
               </button>
@@ -543,7 +612,7 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
           <input
             ref={fileInputRef}
             type="file"
-            accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+            accept=".txt,.md,.pdf,.pptx,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             onChange={(e) => handleFileChosen(e.target.files?.[0])}
             disabled={uploading}
             style={{ display: "none" }}
@@ -611,6 +680,23 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
                     <button
                       type="button"
                       className="btn-secondary-sm"
+                      onClick={() => handleDownload(selectedDoc)}
+                      aria-label={`Download ${selectedDoc.filename}`}
+                    >
+                      Download
+                    </button>
+                    {selectedDoc.has_bibliography && (
+                      <button
+                        type="button"
+                        className="btn-secondary-sm"
+                        onClick={() => handleDownloadBibliography(selectedDoc)}
+                      >
+                        Download bibliography (.bib)
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-secondary-sm"
                       onClick={() => handleGeneratePlan(selectedDoc)}
                       disabled={planStatusByDoc[selectedDoc.id] === "Reading…"}
                     >
@@ -665,6 +751,9 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
                 )}
                 {examStatusByDoc[selectedDoc.id] && (
                   <div className="item-status">{examStatusByDoc[selectedDoc.id]}</div>
+                )}
+                {downloadStatusByDoc[selectedDoc.id] && (
+                  <div className="item-status">{downloadStatusByDoc[selectedDoc.id]}</div>
                 )}
 
                 {contentState.loading ? (

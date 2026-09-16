@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 import DocumentsPanel from "../DocumentsPanel";
 import * as api from "../../api";
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
+vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile: vi.fn() }));
+
+const saveDialog = save as unknown as ReturnType<typeof vi.fn>;
+const writeFileMock = writeFile as unknown as ReturnType<typeof vi.fn>;
 
 vi.mock("../../api", async () => {
   const actual = await vi.importActual<typeof api>("../../api");
@@ -62,6 +70,9 @@ describe("DocumentsPanel", () => {
     getBillingStatus.mockResolvedValue(FREE_BILLING_STATUS);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Blob(["pdf bytes"])));
     vi.spyOn(window, "confirm").mockReturnValue(true);
+    saveDialog.mockReset();
+    writeFileMock.mockReset();
+    writeFileMock.mockResolvedValue(undefined);
     window.localStorage.clear();
   });
 
@@ -391,5 +402,209 @@ describe("DocumentsPanel", () => {
 
     await waitFor(() => expect(renameDocument).toHaveBeenCalledWith("tok", "1", "renamed.pdf"));
     expect(await screen.findByText("renamed.pdf")).toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Downloads — getting what a student made back out of the app and onto their disk.
+  // ---------------------------------------------------------------------------
+
+  const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x00, 0xff]);
+
+  /** The auth'd raw-bytes fetch the download path uses, returning real binary content
+   * (including a 0x00 and a 0xFF byte that a text round-trip would mangle). */
+  function mockRawFetch(bytes: Uint8Array = PDF_BYTES) {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(bytes.slice().buffer as ArrayBuffer, { status: 200 }),
+    );
+  }
+
+  it("downloads a document's real bytes through the native save dialog", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    const fetchSpy = mockRawFetch();
+    saveDialog.mockResolvedValue("C:\\Users\\student\\Downloads\\syllabus.pdf");
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "Download" }));
+
+    // Fetched from the SAME auth-gated raw endpoint the PDF preview uses.
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(api.documentRawUrl("1"), {
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+    // Suggests the document's own name and offers its own file type.
+    expect(saveDialog).toHaveBeenCalledWith({
+      defaultPath: "syllabus.pdf",
+      filters: [{ name: "PDF file", extensions: ["pdf"] }],
+    });
+    // And writes the exact bytes, byte for byte — not a re-encoded string.
+    await waitFor(() => expect(writeFileMock).toHaveBeenCalled());
+    const [path, written] = writeFileMock.mock.calls[0];
+    expect(path).toBe("C:\\Users\\student\\Downloads\\syllabus.pdf");
+    expect(Array.from(written as Uint8Array)).toEqual(Array.from(PDF_BYTES));
+
+    expect(await screen.findByText(/saved to c:\\users\\student\\downloads\\syllabus\.pdf/i)).toBeInTheDocument();
+  });
+
+  it("downloads an editable text document through the same raw-bytes path", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([NOTES]);
+    getDocumentContent.mockResolvedValue({ content: "Hello.", editable: true });
+    mockRawFetch(new TextEncoder().encode("Hello."));
+    saveDialog.mockResolvedValue("/home/student/notes.txt");
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("notes.txt");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for notes.txt/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "Download" }));
+
+    await waitFor(() => expect(writeFileMock).toHaveBeenCalled());
+    const written = writeFileMock.mock.calls[0][1] as Uint8Array;
+    expect(new TextDecoder().decode(written)).toBe("Hello.");
+    expect(saveDialog).toHaveBeenCalledWith({
+      defaultPath: "notes.txt",
+      filters: [{ name: "TXT file", extensions: ["txt"] }],
+    });
+  });
+
+  it("writes nothing and reports nothing when the save dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    mockRawFetch();
+    saveDialog.mockResolvedValue(null);
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "Download" }));
+
+    await waitFor(() => expect(saveDialog).toHaveBeenCalled());
+    expect(writeFileMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/saved to/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/couldn't save/i)).not.toBeInTheDocument();
+  });
+
+  it("reports a failed download instead of writing a broken file", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "Download" }));
+
+    expect(await screen.findByText(/couldn't save this file/i)).toBeInTheDocument();
+    expect(writeFileMock).not.toHaveBeenCalled();
+    expect(saveDialog).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Bibliography export — only for a paper that actually has one.
+  // ---------------------------------------------------------------------------
+
+  const PAPER = {
+    id: "9",
+    filename: "Solar Power Trends.pdf",
+    mime_type: "application/pdf",
+    created_at: "2026-01-01T00:00:00Z",
+    has_bibliography: true,
+  };
+
+  it("offers a bibliography download only for a document that actually has one", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([PAPER, SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("Solar Power Trends.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    expect(screen.queryByRole("menuitem", { name: /bibliography/i })).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: /more actions for solar power trends.pdf/i }));
+    expect(await screen.findByRole("menuitem", { name: /download bibliography/i })).toBeInTheDocument();
+  });
+
+  it("downloads the .bib named after the paper it belongs to", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([PAPER]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    const bib = "@article{doe2024solar,\n  author = {Jane Doe}\n}";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(new TextEncoder().encode(bib), { status: 200 }));
+    saveDialog.mockResolvedValue("C:\\refs\\Solar Power Trends.bib");
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("Solar Power Trends.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for solar power trends.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /download bibliography/i }));
+
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(api.documentBibliographyUrl("9"), {
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+    expect(saveDialog).toHaveBeenCalledWith({
+      defaultPath: "Solar Power Trends.bib",
+      filters: [{ name: "BibTeX bibliography", extensions: ["bib"] }],
+    });
+    await waitFor(() => expect(writeFileMock).toHaveBeenCalled());
+    expect(new TextDecoder().decode(writeFileMock.mock.calls[0][1] as Uint8Array)).toBe(bib);
+  });
+
+  // A .pptx/.docx comes back `editable: false` just like a PDF, but the webview can't
+  // render binary Office XML — it would show an empty frame. Those must fall through to
+  // the extracted text the content endpoint already returns (the same text RAG reads).
+  it("shows a .pptx's extracted text rather than an empty PDF frame", async () => {
+    const user = userEvent.setup();
+    const DECK = {
+      id: "7",
+      filename: "lecture-4.pptx",
+      mime_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      created_at: "2026-01-01T00:00:00Z",
+    };
+    listDocuments.mockResolvedValue([DECK]);
+    getDocumentContent.mockResolvedValue({ content: "The Krebs cycle occurs in the matrix.", editable: false });
+    const fetchSpy = mockRawFetch();
+    const { container } = render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(await screen.findByText("lecture-4.pptx"));
+
+    const detailPane = container.querySelector(".documents-detail-pane") as HTMLElement;
+    expect(await within(detailPane).findByText("The Krebs cycle occurs in the matrix.")).toBeInTheDocument();
+    expect(container.querySelector(".doc-detail-pdf-frame")).not.toBeInTheDocument();
+    // No raw fetch for the viewer either — nothing would have rendered it.
+    expect(fetchSpy).not.toHaveBeenCalledWith(api.documentRawUrl("7"), expect.anything());
+  });
+
+  it("still embeds the PDF viewer for a real PDF", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "extracted", editable: false });
+    mockRawFetch();
+    const { container } = render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(await screen.findByText("syllabus.pdf"));
+
+    await waitFor(() => expect(container.querySelector(".doc-detail-pdf-frame")).toBeInTheDocument());
+  });
+
+  it("accepts .pptx and .docx uploads in the file picker", async () => {
+    listDocuments.mockResolvedValue([]);
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText(/no documents yet/i);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.accept).toContain(".pptx");
+    expect(input.accept).toContain(".docx");
+    // The types that already worked are untouched.
+    expect(input.accept).toContain(".pdf");
+    expect(input.accept).toContain(".txt");
+    expect(input.accept).toContain(".md");
   });
 });

@@ -202,6 +202,21 @@ class Document(Base):
     # reflected immediately rather than waiting on that debounce. Meaningless (always
     # []) on kind="upload" documents -- no UI ever surfaces it for plain uploads.
     tags: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    # The real, de-duplicated bibliography source list that produced this document --
+    # set ONLY by app/tools/write_research_paper.py on the PDF/.tex it generates, and
+    # exactly the list it already handed to app/services/bibliography.py's assemble_bib()
+    # to build the .bib the LaTeX compile consumed. Stored so that .bib remains a
+    # downloadable artifact in its own right (GET /documents/{id}/bibliography.bib
+    # re-runs the same pure assemble_bib() over it) instead of being discarded the
+    # moment the compile finishes, which is what used to happen.
+    #
+    # NULL -- never [] -- for every other document: a plain uploaded PDF, a .txt, a
+    # note. That NULL is precisely the "this wasn't a research-paper output" signal the
+    # bibliography endpoint and the frontend's menu gating both read, so there is no
+    # separate boolean flag to keep in sync with it. A paper that genuinely cited
+    # nothing also stores NULL (write_research_paper only passes a non-empty list),
+    # which is correct: there is no bibliography to offer for it either.
+    paper_sources: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
 
 class DocumentChunk(Base):

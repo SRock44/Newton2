@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import require_user
 from app.db.base import get_db
 from app.db.models import Document
+from app.services.bibliography import assemble_bib
 from app.services.documents import (
     delete_document,
     get_document_raw,
@@ -29,12 +31,22 @@ class DocumentRename(BaseModel):
     filename: str
 
 
+def _has_bibliography(document: Document) -> bool:
+    """True only for a write_research_paper output that actually cited something (see
+    Document.paper_sources) -- the single gate on both the .bib endpoint below and the
+    frontend's "Download bibliography (.bib)" menu item. A plain uploaded PDF, a note, a
+    .txt, or a paper that cited nothing all answer False, so nothing offers a student a
+    download that would come back empty."""
+    return bool(document.paper_sources)
+
+
 def _document_meta(document: Document) -> dict:
     return {
         "id": str(document.id),
         "filename": document.filename,
         "mime_type": document.mime_type,
         "created_at": document.created_at.isoformat(),
+        "has_bibliography": _has_bibliography(document),
     }
 
 
@@ -53,12 +65,7 @@ async def upload(
 ) -> dict:
     user = await get_or_create_user(db, claims)
     document = await upload_document(db, user.id, file)
-    return {
-        "id": str(document.id),
-        "filename": document.filename,
-        "mime_type": document.mime_type,
-        "created_at": document.created_at.isoformat(),
-    }
+    return _document_meta(document)
 
 
 @router.get("")
@@ -81,15 +88,7 @@ async def list_documents(
         .scalars()
         .all()
     )
-    return [
-        {
-            "id": str(d.id),
-            "filename": d.filename,
-            "mime_type": d.mime_type,
-            "created_at": d.created_at.isoformat(),
-        }
-        for d in rows
-    ]
+    return [_document_meta(d) for d in rows]
 
 
 @router.delete("/{document_id}")
@@ -130,6 +129,55 @@ async def get_raw(
     document = await _get_owned_document(db, document_id, user.id)
     data = await get_document_raw(document)
     return Response(content=data, media_type=document.mime_type or "application/octet-stream")
+
+
+@router.get("/{document_id}/bibliography.bib")
+async def get_bibliography(
+    document_id: uuid.UUID,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """The real `.bib` file behind a research paper this app wrote, rebuilt on demand by
+    the SAME pure app/services/bibliography.py assemble_bib() the LaTeX compile itself
+    used, over the SAME de-duplicated, final-keyed source list stored on the row (see
+    Document.paper_sources). So the `\\cite{}` keys in the downloaded .bib match the ones
+    in the paper's own .tex exactly -- this isn't a second, parallel rendering of the
+    bibliography, it's the same function over the same data.
+
+    404 for a document that has no such source data at all (every plain upload, note,
+    and any paper that genuinely cited nothing) -- deliberately the same status as "no
+    such document", since from the student's point of view there IS no bibliography
+    artifact here to fetch. The frontend never offers the action in that case anyway
+    (see `has_bibliography` on every document payload)."""
+    user = await get_or_create_user(db, claims)
+    document = await _get_owned_document(db, document_id, user.id)
+    if not _has_bibliography(document):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "This document doesn't have a bibliography"
+        )
+    body = assemble_bib(list(document.paper_sources or []))
+    # application/x-bibtex is what biblatex tooling and reference managers (Zotero,
+    # JabRef) actually advertise for this format; charset is spelled out because a .bib
+    # routinely carries non-ASCII author names.
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="application/x-bibtex; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{_bib_filename(document)}"'},
+    )
+
+
+def _bib_filename(document: Document) -> str:
+    """"Attention Is All You Need.pdf" -> "Attention Is All You Need.bib" -- the paper's
+    own name with its extension swapped, so a student's Downloads folder shows the .bib
+    sitting right next to the paper it belongs to rather than a generic
+    "bibliography.bib" that collides with every other paper's.
+
+    Quotes, control characters, and path separators are stripped because this goes into a
+    quoted Content-Disposition header -- PATCH /documents/{id} lets a student rename a
+    document to anything at all, so the name reaching this header is user-controlled."""
+    stem = document.filename.rsplit(".", 1)[0] if "." in document.filename else document.filename
+    stem = re.sub(r'[\x00-\x1f"\\/]', "", stem).strip()
+    return f"{stem or 'bibliography'}.bib"
 
 
 @router.put("/{document_id}/content")

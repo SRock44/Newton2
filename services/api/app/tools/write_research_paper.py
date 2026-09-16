@@ -620,9 +620,30 @@ class WriteResearchPaperTool(Tool):
             )
 
         base_name = _sanitize_filename(title)
+        # `final_sources` is exactly what assemble_bib() consumed above; storing it on
+        # both generated Documents (see Document.paper_sources) is what lets the student
+        # download the SAME bibliography later via GET /documents/{id}/bibliography.bib
+        # -- previously this list was discarded here and the .bib existed only inside the
+        # compile's temp directory. Both rows get it (not just the PDF) so a student who
+        # keeps the .tex and deletes the PDF, or vice versa, still has the .bib that
+        # actually goes with the \cite{} keys in that source.
         async with SessionLocal() as db:
-            await upload_document_bytes(db, uid, f"{base_name}.pdf", "application/pdf", result.pdf_bytes)
-            await upload_document_bytes(db, uid, f"{base_name}.tex", "text/plain", tex.encode("utf-8"))
+            await upload_document_bytes(
+                db,
+                uid,
+                f"{base_name}.pdf",
+                "application/pdf",
+                result.pdf_bytes,
+                paper_sources=final_sources or None,
+            )
+            await upload_document_bytes(
+                db,
+                uid,
+                f"{base_name}.tex",
+                "text/plain",
+                tex.encode("utf-8"),
+                paper_sources=final_sources or None,
+            )
 
         return (
             f'Done — "{title}" ({style_label} format, {len(clean_sections)} section(s), '

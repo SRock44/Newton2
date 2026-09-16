@@ -197,6 +197,24 @@ export function documentRawUrl(documentId: string): string {
   return `${API_URL}/documents/${documentId}/raw`;
 }
 
+/** The URL for the real `.bib` behind a research paper Newton wrote — rebuilt server-side
+ * by the same assemble_bib() the paper's own LaTeX compile used, so the \cite{} keys
+ * match the paper exactly. 404s for any document without stored citation data, which is
+ * why callers only offer this when `has_bibliography` is true. Auth-gated, so fetch it
+ * with a bearer header like documentRawUrl above. */
+export function documentBibliographyUrl(documentId: string): string {
+  return `${API_URL}/documents/${documentId}/bibliography.bib`;
+}
+
+/** The URL for a real Anki `.apkg` of the student's flashcards (decks grouped by source
+ * document). Pass `documentId` to export just one document's cards. Auth-gated; fetch
+ * with a bearer header, same as the two URLs above. */
+export function flashcardsApkgUrl(documentId?: string): string {
+  const url = new URL(`${API_URL}/flashcards/export.apkg`);
+  if (documentId) url.searchParams.set("document_id", documentId);
+  return url.toString();
+}
+
 export async function updateDocumentContent(
   token: string,
   documentId: string,

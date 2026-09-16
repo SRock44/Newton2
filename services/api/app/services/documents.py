@@ -1,7 +1,10 @@
 import asyncio
 import io
 import uuid
+from typing import Any
 
+import docx
+import pptx
 from fastapi import HTTPException, UploadFile, status
 from pypdf import PdfReader
 from sqlalchemy import delete, func
@@ -22,6 +25,16 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB
 _TEXT_MIME_TYPES = {"text/plain", "text/markdown"}
 _TEXT_EXTENSIONS = (".txt", ".md", ".markdown")
 _PDF_EXTENSION = ".pdf"
+# Office Open XML -- lecture slides and essays/handouts, by far the two most common
+# things a student is actually handed after a PDF. Both are really zip archives of XML,
+# so there's no "decode it as text" fallback: they need their own real parser
+# (python-pptx / python-docx) exactly like a PDF needs pypdf.
+_PPTX_EXTENSION = ".pptx"
+_PPTX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+_DOCX_EXTENSION = ".docx"
+_DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+SUPPORTED_TYPES_MESSAGE = "Unsupported file type — upload .txt, .md, .pdf, .pptx, or .docx"
 
 
 def _extract_pdf_text(raw: bytes) -> str:
@@ -29,20 +42,92 @@ def _extract_pdf_text(raw: bytes) -> str:
     return "\n\n".join(page.extract_text() or "" for page in reader.pages)
 
 
+def _extract_pptx_text(raw: bytes) -> str:
+    """Every text-bearing shape on every slide, in slide order then in the slide's own
+    shape order -- which is what a student means by "what's on the slides", including
+    titles, bullet bodies, and text inside tables. Grouped shapes are walked recursively
+    (python-pptx exposes a group's members only through its own .shapes), and notes are
+    deliberately left out: a lecturer's speaker notes are frequently absent, and when
+    present they're a different kind of content from the deck itself.
+
+    One blank line between slides so the RAG chunker (app/memory/rag.py) has a natural
+    paragraph boundary to split on rather than running two slides together."""
+    presentation = pptx.Presentation(io.BytesIO(raw))
+    slides: list[str] = []
+    for slide in presentation.slides:
+        lines: list[str] = []
+        _collect_pptx_shape_text(slide.shapes, lines)
+        if lines:
+            slides.append("\n".join(lines))
+    return "\n\n".join(slides)
+
+
+def _collect_pptx_shape_text(shapes: Any, lines: list[str]) -> None:
+    for shape in shapes:
+        # MSO_SHAPE_TYPE.GROUP == 6; compared numerically to avoid importing the enum
+        # just for one check (python-pptx's own shape_type can also be None).
+        if getattr(shape, "shape_type", None) == 6:
+            _collect_pptx_shape_text(shape.shapes, lines)
+            continue
+        if shape.has_text_frame:
+            for paragraph in shape.text_frame.paragraphs:
+                text = "".join(run.text for run in paragraph.runs).strip()
+                if text:
+                    lines.append(text)
+        if getattr(shape, "has_table", False):
+            for row in shape.table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                joined = " | ".join(c for c in cells if c)
+                if joined:
+                    lines.append(joined)
+
+
+def _extract_docx_text(raw: bytes) -> str:
+    """Every paragraph's text in document order, plus table cell rows (a lot of real
+    coursework -- rubrics, problem sets, lab data -- lives in tables, and dropping it
+    would silently lose content a student can plainly see in Word). Empty paragraphs are
+    skipped rather than emitted as blank lines."""
+    document = docx.Document(io.BytesIO(raw))
+    lines: list[str] = []
+    for paragraph in document.paragraphs:
+        text = paragraph.text.strip()
+        if text:
+            lines.append(text)
+    for table in document.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells]
+            joined = " | ".join(c for c in cells if c)
+            if joined:
+                lines.append(joined)
+    return "\n".join(lines)
+
+
 def _extract_text(filename: str, mime_type: str | None, raw: bytes) -> str:
-    """Runs in a worker thread (see upload_document) since PDF parsing is CPU-bound and
-    would otherwise block the event loop."""
+    """Runs in a worker thread (see upload_document) since PDF/Office parsing is
+    CPU-bound and would otherwise block the event loop."""
     lower_name = filename.lower()
     if lower_name.endswith(_PDF_EXTENSION) or mime_type == "application/pdf":
         return _extract_pdf_text(raw)
+    if lower_name.endswith(_PPTX_EXTENSION) or mime_type == _PPTX_MIME_TYPE:
+        try:
+            return _extract_pptx_text(raw)
+        except Exception as exc:  # noqa: BLE001 - a corrupt/mislabeled .pptx is a 400, not a 500
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Couldn't read this PowerPoint file — it may be corrupt"
+            ) from exc
+    if lower_name.endswith(_DOCX_EXTENSION) or mime_type == _DOCX_MIME_TYPE:
+        try:
+            return _extract_docx_text(raw)
+        except Exception as exc:  # noqa: BLE001 - same reasoning as .pptx above
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Couldn't read this Word file — it may be corrupt"
+            ) from exc
     if lower_name.endswith(_TEXT_EXTENSIONS) or mime_type in _TEXT_MIME_TYPES:
         try:
             return raw.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is not valid UTF-8 text") from exc
-    raise HTTPException(
-        status.HTTP_400_BAD_REQUEST, "Unsupported file type — upload .txt, .md, or .pdf"
-    )
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, SUPPORTED_TYPES_MESSAGE)
 
 
 async def _store_document(
@@ -53,12 +138,17 @@ async def _store_document(
     raw: bytes,
     text: str,
     kind: str = "upload",
+    paper_sources: list[dict] | None = None,
 ) -> Document:
     """Shared tail end of upload_document(), upload_document_bytes(), and create_note():
     store the raw bytes in MinIO under a per-user key, create the Document row, then run
     the chunk+embed+store pipeline (app.memory.rag) over the already-extracted text.
     `kind` distinguishes a student upload from a Notepad note (see Document.kind's
-    docstring in app/db/models.py) -- everything else about the pipeline is identical."""
+    docstring in app/db/models.py) -- everything else about the pipeline is identical.
+    `paper_sources` is the de-duplicated, final-keyed bibliography source list that
+    produced this document, for a write_research_paper output only (see
+    Document.paper_sources) -- None/[] for every other document, which is what makes
+    GET /documents/{id}/bibliography.bib 404 for a plain upload."""
     settings = get_settings()
     document_id = uuid.uuid4()
     minio_key = f"{user_id}/{document_id}/{filename}"
@@ -74,6 +164,7 @@ async def _store_document(
         mime_type=mime_type,
         minio_key=minio_key,
         kind=kind,
+        paper_sources=paper_sources or None,
     )
     db.add(document)
     await db.flush()
@@ -107,6 +198,7 @@ async def upload_document_bytes(
     filename: str,
     mime_type: str,
     raw: bytes,
+    paper_sources: list[dict] | None = None,
 ) -> Document:
     """Bytes-based sibling of upload_document() for content that never arrived as an
     HTTP UploadFile -- e.g. app/tools/write_research_paper.py's compiled PDF and
@@ -119,7 +211,7 @@ async def upload_document_bytes(
     content wasn't submitted by an HTTP client and is already bounded well under that
     ceiling by sandbox-runner's own LATEX_MAX_PDF_BYTES."""
     text = await asyncio.to_thread(_extract_text, filename, mime_type, raw)
-    return await _store_document(db, user_id, filename, mime_type, raw, text)
+    return await _store_document(db, user_id, filename, mime_type, raw, text, paper_sources=paper_sources)
 
 
 async def create_note(db: AsyncSession, user_id: uuid.UUID, title: str) -> Document:
