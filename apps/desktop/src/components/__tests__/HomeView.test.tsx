@@ -4,6 +4,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import HomeView from "../HomeView";
 import * as api from "../../api";
+import {
+  getHomeWidgetSizes,
+  getHomeWidgetVisibility,
+  setHomeWidgetOrder,
+  setHomeWidgetSizes,
+  setHomeWidgetVisibility,
+} from "../../lib/homeWidgets";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatSession } from "../../types";
 
@@ -223,5 +230,130 @@ describe("HomeView", () => {
 
     render(<HomeView {...baseProps({ userId: "user-b" })} />);
     expect(screen.getByRole("heading", { name: "Due soon" })).toBeInTheDocument();
+  });
+
+  describe("layout customization (order + size)", () => {
+    /** The rendered widget headings, top to bottom — the only thing that actually proves
+     * an order was applied. */
+    function renderedWidgetOrder(container: HTMLElement): string[] {
+      return Array.from(container.querySelectorAll(".home-widget .home-widget-title")).map(
+        (el) => el.textContent ?? "",
+      );
+    }
+
+    it("renders the dashboard's original order for an untouched account", async () => {
+      const { container } = render(<HomeView {...baseProps()} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+
+      expect(renderedWidgetOrder(container)).toEqual([
+        "Quick actions",
+        "Recent documents & notes",
+        "Continue a conversation",
+        "Due soon",
+        "Your progress",
+      ]);
+    });
+
+    it("renders widgets in a persisted custom order", async () => {
+      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "quickActions", "conversations", "recent"]);
+      const { container } = render(<HomeView {...baseProps()} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+
+      expect(renderedWidgetOrder(container)).toEqual([
+        "Your progress",
+        "Due soon",
+        "Quick actions",
+        "Continue a conversation",
+        "Recent documents & notes",
+      ]);
+    });
+
+    it("keeps a hidden widget out of the layout without disturbing the order of the rest", async () => {
+      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "quickActions", "conversations", "recent"]);
+      setHomeWidgetVisibility("user-1", { ...getHomeWidgetVisibility("user-1"), dueSoon: false });
+      const { container } = render(<HomeView {...baseProps()} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+
+      expect(renderedWidgetOrder(container)).toEqual([
+        "Your progress",
+        "Quick actions",
+        "Continue a conversation",
+        "Recent documents & notes",
+      ]);
+    });
+
+    it("the Customize popover lists every widget with a drag handle, in the current order", async () => {
+      const user = userEvent.setup();
+      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "quickActions", "conversations", "recent"]);
+      render(<HomeView {...baseProps()} />);
+
+      await user.click(screen.getByRole("button", { name: /customize/i }));
+
+      const handles = screen.getAllByRole("button", { name: /^Reorder / });
+      expect(handles.map((h) => h.getAttribute("aria-label"))).toEqual([
+        "Reorder Your progress",
+        "Reorder Due soon",
+        "Reorder Quick actions",
+        "Reorder Continue a conversation",
+        "Reorder Recent documents & notes",
+      ]);
+    });
+
+    it("applies the default widget footprints: quick actions and recent are wide, the rest compact", async () => {
+      const { container } = render(<HomeView {...baseProps()} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+
+      expect(container.querySelector(".home-widget--quick-actions")).toHaveClass("home-widget--wide");
+      expect(container.querySelector(".home-widget--recent")).toHaveClass("home-widget--wide");
+      expect(container.querySelector(".home-widget--due-soon")).toHaveClass("home-widget--compact");
+      expect(container.querySelector(".home-widget--progress")).toHaveClass("home-widget--compact");
+    });
+
+    it("toggling a widget's size switches its grid footprint and persists it", async () => {
+      const user = userEvent.setup();
+      const { container, unmount } = render(<HomeView {...baseProps()} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+
+      await user.click(screen.getByRole("button", { name: /customize/i }));
+      await user.click(screen.getByRole("button", { name: /^Your progress size:/i }));
+
+      expect(container.querySelector(".home-widget--progress")).toHaveClass("home-widget--wide");
+      expect(getHomeWidgetSizes("user-1").progress).toBe("wide");
+
+      unmount();
+      const second = render(<HomeView {...baseProps()} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+      expect(second.container.querySelector(".home-widget--progress")).toHaveClass("home-widget--wide");
+    });
+
+    it("size, order and visibility are all scoped to the signed-in student", async () => {
+      setHomeWidgetOrder("user-a", ["progress", "dueSoon", "quickActions", "conversations", "recent"]);
+      setHomeWidgetSizes("user-a", { ...getHomeWidgetSizes("user-a"), progress: "wide" });
+
+      const { container } = render(<HomeView {...baseProps({ userId: "user-b" })} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+
+      expect(renderedWidgetOrder(container)[0]).toBe("Quick actions");
+      expect(container.querySelector(".home-widget--progress")).toHaveClass("home-widget--compact");
+    });
+
+    it("a widget hidden from the popover still keeps its place in the order when shown again", async () => {
+      const user = userEvent.setup();
+      const { container } = render(<HomeView {...baseProps()} />);
+      await screen.findByRole("heading", { name: "Your progress" });
+
+      await user.click(screen.getByRole("button", { name: /customize/i }));
+      await user.click(screen.getByRole("checkbox", { name: /continue a conversation/i }));
+      expect(renderedWidgetOrder(container)).not.toContain("Continue a conversation");
+
+      await user.click(screen.getByRole("checkbox", { name: /continue a conversation/i }));
+      expect(renderedWidgetOrder(container)).toEqual([
+        "Quick actions",
+        "Recent documents & notes",
+        "Continue a conversation",
+        "Due soon",
+        "Your progress",
+      ]);
+    });
   });
 });

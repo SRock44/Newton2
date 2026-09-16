@@ -1,17 +1,38 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { getDocumentContent, getGamificationStats, getNote, listDocuments, listFlashcards, listNotes, listStudyPlan } from "../api";
 import type { ChatSession, GamificationStats } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
 import { documentTypeLabel } from "../lib/fileType";
 import { toSnippet } from "../lib/snippet";
 import {
-  HOME_WIDGET_IDS,
   HOME_WIDGET_LABELS,
+  getHomeWidgetOrder,
+  getHomeWidgetSizes,
   getHomeWidgetVisibility,
+  setHomeWidgetOrder,
+  setHomeWidgetSizes,
   setHomeWidgetVisibility,
 } from "../lib/homeWidgets";
-import type { HomeWidgetId } from "../lib/homeWidgets";
+import type { HomeWidgetId, HomeWidgetSize } from "../lib/homeWidgets";
 import RecentItemCard from "./RecentItemCard";
 
 interface HomeViewProps {
@@ -39,6 +60,18 @@ interface HomeViewProps {
 const RECENT_LIMIT = 6;
 const CONVERSATIONS_LIMIT = 5;
 const DUE_SOON_LIMIT = 6;
+
+/** The per-widget CSS modifier suffixes the stylesheet already uses
+ * (.home-widget--quick-actions, .home-widget--due-soon, …). Kept as an explicit map
+ * rather than derived from the camelCase ids, so renaming an id can never silently
+ * detach a widget from its styling. */
+const WIDGET_CLASS_SUFFIX: Record<HomeWidgetId, string> = {
+  quickActions: "quick-actions",
+  recent: "recent",
+  conversations: "conversations",
+  dueSoon: "due-soon",
+  progress: "progress",
+};
 
 type RecentItem = {
   kind: "document" | "note";
@@ -76,11 +109,67 @@ function openNotepad() {
   });
 }
 
+/** One row of the Customize popover: a drag handle, the show/hide checkbox, and the
+ * widget's grid footprint. The whole row is the sortable item but only the ⠿ handle
+ * carries the drag listeners — otherwise ticking a checkbox or clicking "Wide" would
+ * start a drag instead, which is the classic way this pattern goes wrong. dnd-kit's
+ * KeyboardSensor makes the handle work without a mouse (focus it, Space to lift,
+ * arrows to move, Space to drop). */
+function CustomizeRow({
+  id,
+  visible,
+  size,
+  onToggleVisible,
+  onToggleSize,
+}: {
+  id: HomeWidgetId;
+  visible: boolean;
+  size: HomeWidgetSize;
+  onToggleVisible: () => void;
+  onToggleSize: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const label = HOME_WIDGET_LABELS[id];
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`home-customize-row${isDragging ? " home-customize-row--dragging" : ""}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+    >
+      <button
+        type="button"
+        className="home-customize-drag"
+        aria-label={`Reorder ${label}`}
+        title="Drag to reorder"
+        {...attributes}
+        {...listeners}
+      >
+        ⠿
+      </button>
+      <label className="home-customize-option">
+        <input type="checkbox" checked={visible} onChange={onToggleVisible} />
+        {label}
+      </label>
+      <button
+        type="button"
+        className="home-customize-size"
+        onClick={onToggleSize}
+        aria-label={`${label} size: ${size === "wide" ? "wide" : "compact"}`}
+        title="Toggle this widget between a full-width row and a single column"
+      >
+        {size === "wide" ? "Wide" : "Compact"}
+      </button>
+    </div>
+  );
+}
+
 /** The real dashboard / home screen — the default landing view (see App.tsx's
  * mainView), replacing an empty chat as the first thing a student sees. A curated,
- * fixed set of five widgets, each independently show/hide-able via "Customize" (see
- * lib/homeWidgets.ts) — deliberately NOT a drag-and-drop layout engine, a confirmed
- * scoping decision (see ROADMAP.md). */
+ * fixed set of five widgets, each independently show/hide-able, drag-reorderable, and
+ * switchable between a full-width and a single-column footprint via "Customize" (see
+ * lib/homeWidgets.ts for how all three are persisted, and for why size is exposed at
+ * all). Untouched, it renders the exact layout it always has. */
 function HomeView({
   token,
   userId,
@@ -99,10 +188,21 @@ function HomeView({
   const [dueItems, setDueItems] = useState<DueItem[] | null>(null);
   const [stats, setStats] = useState<GamificationStats | null>(null);
   const [visibility, setVisibility] = useState(() => getHomeWidgetVisibility(userId));
+  const [order, setOrder] = useState(() => getHomeWidgetOrder(userId));
+  const [sizes, setSizes] = useState(() => getHomeWidgetSizes(userId));
   const [customizeOpen, setCustomizeOpen] = useState(false);
+
+  // A drag must not start on a plain click — the handle is also a focusable button, and
+  // a 5px threshold is the difference between "clicked it" and "meant to move it".
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     setVisibility(getHomeWidgetVisibility(userId));
+    setOrder(getHomeWidgetOrder(userId));
+    setSizes(getHomeWidgetSizes(userId));
   }, [userId]);
 
   // "Recent documents & notes" — merges the two existing summary lists (no new backend
@@ -229,7 +329,160 @@ function HomeView({
     [userId],
   );
 
+  const toggleSize = useCallback(
+    (id: HomeWidgetId) => {
+      setSizes((prev) => {
+        const next = { ...prev, [id]: prev[id] === "wide" ? ("compact" as const) : ("wide" as const) };
+        setHomeWidgetSizes(userId, next);
+        return next;
+      });
+    },
+    [userId],
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      setOrder((prev) => {
+        const from = prev.indexOf(active.id as HomeWidgetId);
+        const to = prev.indexOf(over.id as HomeWidgetId);
+        if (from === -1 || to === -1) return prev;
+        const next = arrayMove(prev, from, to);
+        setHomeWidgetOrder(userId, next);
+        return next;
+      });
+    },
+    [userId],
+  );
+
   const recentConversations = sessions.slice(0, CONVERSATIONS_LIMIT);
+
+  /** Each widget's inner content, keyed by id, so the render below can lay them out in
+   * whatever order the student dragged them into rather than a hardcoded JSX sequence.
+   * The <section> wrapper, title and aria-label are applied uniformly at the call site
+   * — they were already identical in shape for all five. `progress` is null until its
+   * stats arrive, which is how it has always behaved (it renders nothing rather than an
+   * empty shell). */
+  const widgetBodies: Record<HomeWidgetId, ReactNode> = {
+    quickActions: (
+      <div className="home-quick-actions">
+        <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
+          <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
+        </button>
+        <button type="button" className="btn-secondary" onClick={onOpenDocuments}>
+          Upload a document
+        </button>
+        <button type="button" className="btn-secondary" onClick={openNotepad}>
+          New note
+        </button>
+        <button type="button" className="btn-secondary" onClick={onOpenPracticeExams}>
+          Start a practice session
+        </button>
+      </div>
+    ),
+    recent:
+      recentItems === null ? (
+        <p className="empty-state-text">Loading…</p>
+      ) : recentItems.length === 0 ? (
+        <p className="empty-state-text">Upload a document or start a note to see it here.</p>
+      ) : (
+        <div className="home-recent-grid">
+          {recentItems.map((item) => (
+            <RecentItemCard
+              key={`${item.kind}-${item.id}`}
+              typeLabel={item.typeLabel}
+              title={item.title}
+              timestamp={item.timestamp}
+              snippet={item.snippet}
+              tags={item.kind === "note" ? item.tags : undefined}
+              onClick={() => (item.kind === "document" ? onOpenDocument(item.id) : openNotepad())}
+            />
+          ))}
+        </div>
+      ),
+    conversations:
+      recentConversations.length === 0 ? (
+        <p className="empty-state-text">No chats yet — start one above.</p>
+      ) : (
+        <ul className="home-conversation-list">
+          {recentConversations.map((session) => (
+            <li key={session.id}>
+              <button type="button" className="home-conversation-item" onClick={() => onSelectSession(session.id)}>
+                <span className="home-conversation-title">
+                  {sessionDisplayTitle(session, firstMessageBySession[session.id])}
+                </span>
+                <span className="home-conversation-date">{formatShortDate(session.created_at)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ),
+    dueSoon:
+      dueItems === null ? (
+        <p className="empty-state-text">Loading…</p>
+      ) : dueItems.length === 0 ? (
+        <p className="empty-state-text">Nothing due — you're all caught up.</p>
+      ) : (
+        <ul className="home-due-list">
+          {dueItems.map((item) => (
+            <li key={`${item.kind}-${item.id}`}>
+              <button
+                type="button"
+                className="home-due-item"
+                onClick={() => (item.kind === "study" ? onOpenStudyPlan() : onOpenFlashcards())}
+              >
+                <span className="home-due-item-top">
+                  <span className={`home-due-badge home-due-badge--${item.kind}`}>
+                    {item.kind === "study" ? "Study plan" : "Flashcards"}
+                  </span>
+                  <span className="home-due-date">{formatShortDate(item.due)}</span>
+                </span>
+                <span className="home-due-title">{item.title}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ),
+    progress: stats && (
+      <>
+        <div className="progress-stats">
+          <div className="progress-stat">
+            <span className="progress-stat-value">{stats.streak_days > 0 ? `🔥 ${stats.streak_days}` : "0"}</span>
+            <span className="progress-stat-label">day streak</span>
+          </div>
+          <div className="progress-stat">
+            <span className="progress-stat-value">Lv {stats.level}</span>
+            <span className="progress-stat-label">{stats.xp} XP</span>
+          </div>
+        </div>
+        <div className="progress-bar-track">
+          <div className="progress-bar-fill" style={{ width: `${100 - (stats.xp_to_next_level / 100) * 100}%` }} />
+        </div>
+        <div className="progress-bar-caption">
+          {stats.xp_to_next_level} XP to level {stats.level + 1}
+        </div>
+        <div className="progress-detail-grid">
+          <div className="progress-detail-item">
+            <span className="progress-detail-value">{stats.messages_sent}</span>
+            <span className="progress-detail-label">Messages sent</span>
+          </div>
+          <div className="progress-detail-item">
+            <span className="progress-detail-value">{stats.flashcards_reviewed}</span>
+            <span className="progress-detail-label">Cards reviewed</span>
+          </div>
+          <div className="progress-detail-item">
+            <span className="progress-detail-value">{stats.flashcards_created}</span>
+            <span className="progress-detail-label">Cards created</span>
+          </div>
+          <div className="progress-detail-item">
+            <span className="progress-detail-value">{stats.study_plan_items}</span>
+            <span className="progress-detail-label">Plan items</span>
+          </div>
+        </div>
+      </>
+    ),
+  };
 
   return (
     <div className="home-view">
@@ -246,163 +499,52 @@ function HomeView({
             Customize
           </button>
           {customizeOpen && (
-            <div className="home-customize-popover" role="menu" aria-label="Show or hide widgets">
-              {HOME_WIDGET_IDS.map((id) => (
-                <label key={id} className="home-customize-option">
-                  <input type="checkbox" checked={visibility[id]} onChange={() => toggleWidget(id)} />
-                  {HOME_WIDGET_LABELS[id]}
-                </label>
-              ))}
+            /* No role="menu" any more: this is no longer a list of menu items but a
+               small editing surface (checkboxes, a size button and a drag handle per
+               row), and a menu role would promise arrow-key menu semantics it doesn't
+               implement. A plain labelled group describes what's actually here. */
+            <div className="home-customize-popover" aria-label="Customize widgets">
+              <p className="home-customize-hint">
+                Drag <span aria-hidden="true">⠿</span> to reorder. Wide widgets fill the row.
+              </p>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={order} strategy={verticalListSortingStrategy}>
+                  {order.map((id) => (
+                    <CustomizeRow
+                      key={id}
+                      id={id}
+                      visible={visibility[id]}
+                      size={sizes[id]}
+                      onToggleVisible={() => toggleWidget(id)}
+                      onToggleSize={() => toggleSize(id)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
             </div>
           )}
         </div>
       </div>
 
+      {/* Laid out in the student's own order; each widget's grid footprint comes from
+          its persisted size (see lib/homeWidgets.ts). The wrapper/title/aria-label are
+          identical for all five, so they're applied here once rather than repeated. */}
       <div className="home-widgets">
-        {visibility.quickActions && (
-          <section className="home-widget home-widget--quick-actions" aria-label="Quick actions">
-            <h2 className="home-widget-title">Quick actions</h2>
-            <div className="home-quick-actions">
-              <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
-                <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
-              </button>
-              <button type="button" className="btn-secondary" onClick={onOpenDocuments}>
-                Upload a document
-              </button>
-              <button type="button" className="btn-secondary" onClick={openNotepad}>
-                New note
-              </button>
-              <button type="button" className="btn-secondary" onClick={onOpenPracticeExams}>
-                Start a practice session
-              </button>
-            </div>
-          </section>
-        )}
-
-        {visibility.recent && (
-          <section className="home-widget home-widget--recent" aria-label="Recent documents & notes">
-            <h2 className="home-widget-title">Recent documents & notes</h2>
-            {recentItems === null ? (
-              <p className="empty-state-text">Loading…</p>
-            ) : recentItems.length === 0 ? (
-              <p className="empty-state-text">Upload a document or start a note to see it here.</p>
-            ) : (
-              <div className="home-recent-grid">
-                {recentItems.map((item) => (
-                  <RecentItemCard
-                    key={`${item.kind}-${item.id}`}
-                    typeLabel={item.typeLabel}
-                    title={item.title}
-                    timestamp={item.timestamp}
-                    snippet={item.snippet}
-                    tags={item.kind === "note" ? item.tags : undefined}
-                    onClick={() => (item.kind === "document" ? onOpenDocument(item.id) : openNotepad())}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {visibility.conversations && (
-          <section className="home-widget home-widget--conversations" aria-label="Continue a conversation">
-            <h2 className="home-widget-title">Continue a conversation</h2>
-            {recentConversations.length === 0 ? (
-              <p className="empty-state-text">No chats yet — start one above.</p>
-            ) : (
-              <ul className="home-conversation-list">
-                {recentConversations.map((session) => (
-                  <li key={session.id}>
-                    <button
-                      type="button"
-                      className="home-conversation-item"
-                      onClick={() => onSelectSession(session.id)}
-                    >
-                      <span className="home-conversation-title">
-                        {sessionDisplayTitle(session, firstMessageBySession[session.id])}
-                      </span>
-                      <span className="home-conversation-date">{formatShortDate(session.created_at)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-
-        {visibility.dueSoon && (
-          <section className="home-widget home-widget--due-soon" aria-label="Due soon">
-            <h2 className="home-widget-title">Due soon</h2>
-            {dueItems === null ? (
-              <p className="empty-state-text">Loading…</p>
-            ) : dueItems.length === 0 ? (
-              <p className="empty-state-text">Nothing due — you're all caught up.</p>
-            ) : (
-              <ul className="home-due-list">
-                {dueItems.map((item) => (
-                  <li key={`${item.kind}-${item.id}`}>
-                    <button
-                      type="button"
-                      className="home-due-item"
-                      onClick={() => (item.kind === "study" ? onOpenStudyPlan() : onOpenFlashcards())}
-                    >
-                      <span className="home-due-item-top">
-                        <span className={`home-due-badge home-due-badge--${item.kind}`}>
-                          {item.kind === "study" ? "Study plan" : "Flashcards"}
-                        </span>
-                        <span className="home-due-date">{formatShortDate(item.due)}</span>
-                      </span>
-                      <span className="home-due-title">{item.title}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-
-        {visibility.progress && stats && (
-          <section className="home-widget home-widget--progress" aria-label="Your progress">
-            <h2 className="home-widget-title">Your progress</h2>
-            <div className="progress-stats">
-              <div className="progress-stat">
-                <span className="progress-stat-value">{stats.streak_days > 0 ? `🔥 ${stats.streak_days}` : "0"}</span>
-                <span className="progress-stat-label">day streak</span>
-              </div>
-              <div className="progress-stat">
-                <span className="progress-stat-value">Lv {stats.level}</span>
-                <span className="progress-stat-label">{stats.xp} XP</span>
-              </div>
-            </div>
-            <div className="progress-bar-track">
-              <div
-                className="progress-bar-fill"
-                style={{ width: `${100 - (stats.xp_to_next_level / 100) * 100}%` }}
-              />
-            </div>
-            <div className="progress-bar-caption">
-              {stats.xp_to_next_level} XP to level {stats.level + 1}
-            </div>
-            <div className="progress-detail-grid">
-              <div className="progress-detail-item">
-                <span className="progress-detail-value">{stats.messages_sent}</span>
-                <span className="progress-detail-label">Messages sent</span>
-              </div>
-              <div className="progress-detail-item">
-                <span className="progress-detail-value">{stats.flashcards_reviewed}</span>
-                <span className="progress-detail-label">Cards reviewed</span>
-              </div>
-              <div className="progress-detail-item">
-                <span className="progress-detail-value">{stats.flashcards_created}</span>
-                <span className="progress-detail-label">Cards created</span>
-              </div>
-              <div className="progress-detail-item">
-                <span className="progress-detail-value">{stats.study_plan_items}</span>
-                <span className="progress-detail-label">Plan items</span>
-              </div>
-            </div>
-          </section>
-        )}
+        {order.map((id) => {
+          if (!visibility[id]) return null;
+          const body = widgetBodies[id];
+          if (!body) return null;
+          return (
+            <section
+              key={id}
+              className={`home-widget home-widget--${WIDGET_CLASS_SUFFIX[id]} home-widget--${sizes[id]}`}
+              aria-label={HOME_WIDGET_LABELS[id]}
+            >
+              <h2 className="home-widget-title">{HOME_WIDGET_LABELS[id]}</h2>
+              {body}
+            </section>
+          );
+        })}
       </div>
     </div>
   );
