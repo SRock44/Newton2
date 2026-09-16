@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DocumentsPanel from "../DocumentsPanel";
 import * as api from "../../api";
@@ -61,6 +61,8 @@ describe("DocumentsPanel", () => {
     getDocumentContent.mockResolvedValue({ content: "", editable: true });
     getBillingStatus.mockResolvedValue(FREE_BILLING_STATUS);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Blob(["pdf bytes"])));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -114,10 +116,13 @@ describe("DocumentsPanel", () => {
     const user = userEvent.setup();
     listDocuments.mockResolvedValue([NOTES]);
     getDocumentContent.mockResolvedValue({ content: "Hello from the document.", editable: true });
-    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    const { container } = render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
     await user.click(await screen.findByText("notes.txt"));
 
-    expect(await screen.findByText("Hello from the document.")).toBeInTheDocument();
+    // Scoped to the detail pane — grid view's own thumbnail also shows a snippet of the
+    // same short mock content, so the plain text is ambiguous unscoped.
+    const detailPane = container.querySelector(".documents-detail-pane") as HTMLElement;
+    expect(await within(detailPane).findByText("Hello from the document.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /chat about this document/i })).toBeInTheDocument();
   });
@@ -200,9 +205,12 @@ describe("DocumentsPanel", () => {
     listDocuments.mockResolvedValue([NOTES]);
     getDocumentContent.mockResolvedValue({ content: "Original text.", editable: true });
     updateDocumentContent.mockResolvedValue(NOTES);
-    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    const { container } = render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
     await user.click(await screen.findByText("notes.txt"));
-    await screen.findByText("Original text.");
+    // Scoped to the detail pane — grid view's own thumbnail also shows a snippet of the
+    // same short mock content, so the plain text is ambiguous unscoped.
+    const detailPane = container.querySelector(".documents-detail-pane") as HTMLElement;
+    await within(detailPane).findByText("Original text.");
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
     const textarea = screen.getByLabelText(/edit notes.txt/i);
@@ -296,5 +304,92 @@ describe("DocumentsPanel", () => {
     render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
 
     expect(await screen.findByText("syllabus.pdf")).toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Grid/list view toggle and the per-entry "⋮" overflow menu.
+  // ---------------------------------------------------------------------------
+
+  it("defaults to grid view, showing a thumbnail with real content, and can switch to list view", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "Course policies and grading breakdown.", editable: false });
+    const { container } = render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+
+    await screen.findByText("syllabus.pdf");
+    expect(container.querySelector(".documents-grid")).toBeInTheDocument();
+    expect(await screen.findByText("Course policies and grading breakdown.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "List view" }));
+    expect(container.querySelector(".documents-rows")).toBeInTheDocument();
+    expect(container.querySelector(".documents-grid")).not.toBeInTheDocument();
+  });
+
+  it("remembers the chosen view mode across remounts", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    const { container, unmount } = render(
+      <DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />,
+    );
+    await screen.findByText("syllabus.pdf");
+    await user.click(screen.getByRole("button", { name: "List view" }));
+    unmount();
+
+    const second = render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await second.findByText("syllabus.pdf");
+    expect(second.container.querySelector(".documents-rows")).toBeInTheDocument();
+    expect(container).not.toBe(second.container); // sanity: genuinely a fresh mount
+  });
+
+  it("the '⋮' menu's Study plan action selects the document and generates without opening it first", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    generateStudyPlan.mockResolvedValue([{ id: "a" }]);
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "Study plan" }));
+
+    expect(generateStudyPlan).toHaveBeenCalledWith("tok", "1");
+    expect(await screen.findByText(/added 1 item/i)).toBeInTheDocument();
+  });
+
+  it("the '⋮' menu's Delete action asks for confirmation and does nothing if declined", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+
+    expect(window.confirm).toHaveBeenCalled();
+    expect(deleteDocument).not.toHaveBeenCalled();
+    expect(screen.getByText("syllabus.pdf")).toBeInTheDocument();
+  });
+
+  it("renames a document inline from the '⋮' menu, without opening the detail pane", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    renameDocument.mockResolvedValue({ ...SYLLABUS, filename: "renamed.pdf" });
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const input = await screen.findByLabelText("Rename syllabus.pdf");
+    await user.clear(input);
+    await user.type(input, "renamed.pdf");
+    await user.tab();
+
+    await waitFor(() => expect(renameDocument).toHaveBeenCalledWith("tok", "1", "renamed.pdf"));
+    expect(await screen.findByText("renamed.pdf")).toBeInTheDocument();
   });
 });

@@ -17,6 +17,9 @@ import type { BillingStatus, DocumentContent, UploadedDocument } from "../types"
 import MessageContent from "./MessageContent";
 import RecentItemCard from "./RecentItemCard";
 import { documentTypeLabel } from "../lib/fileType";
+import { toSnippet } from "../lib/snippet";
+import { getDocumentsViewMode, setDocumentsViewMode } from "../lib/preferences";
+import type { DocumentsViewMode } from "../lib/preferences";
 
 interface DocumentsPanelProps {
   token: string;
@@ -66,7 +69,28 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
   const [detailError, setDetailError] = useState<string | null>(null);
   const [filenameDraft, setFilenameDraft] = useState("");
 
+  // Grid (thumbnail tiles, Google Drive-style) vs. list (compact rows) — both real
+  // options rather than picking one for everyone, persisted locally (see
+  // lib/preferences.ts, same pattern as the sidebar's collapse toggle).
+  const [viewMode, setViewMode] = useState<DocumentsViewMode>(() => getDocumentsViewMode());
+  // Content snippets for grid-view thumbnails — fetched lazily only once grid view is
+  // actually shown (list view never needs them), same "don't fetch what isn't visible"
+  // reasoning as HomeView's own recent-items snippets.
+  const [snippetsById, setSnippetsById] = useState<Record<string, string>>({});
+  // A Drive-style "⋮" overflow menu per row/card — only one open at a time. Rename is
+  // inline-editable directly on the entry itself (like Drive's own rename), not a
+  // separate dialog; the other actions reuse the exact same handlers the detail pane's
+  // buttons already call, just without requiring the document to be selected/open first.
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
   const selectedDoc = documents.find((d) => d.id === selectedId) ?? null;
+
+  function changeViewMode(mode: DocumentsViewMode) {
+    setViewMode(mode);
+    setDocumentsViewMode(mode);
+  }
 
   async function refresh() {
     setLoading(true);
@@ -84,6 +108,52 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (viewMode !== "grid") return;
+    const missing = documents.filter((d) => !(d.id in snippetsById));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        missing.map(async (doc) => {
+          try {
+            const content = await getDocumentContent(token, doc.id);
+            return [doc.id, toSnippet(content.content)] as const;
+          } catch {
+            return [doc.id, ""] as const; // thumbnail just falls back to skeleton lines
+          }
+        }),
+      );
+      if (!cancelled) setSnippetsById((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, documents, token]);
+
+  // Closes the open "⋮" menu on any click outside it — checked via the entry's own
+  // data-doc-menu-root marker rather than a ref, since which entry that is changes as
+  // the open menu changes.
+  useEffect(() => {
+    if (!openMenuId) return;
+    function handlePointerDown(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest(`[data-doc-menu-root="${openMenuId}"]`)) {
+        setOpenMenuId(null);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenMenuId(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
 
   // Drives the free-plan generation-count note next to the Flashcards/Practice
   // exam/Study plan buttons below — see handleGenerate*'s honest-expectations note
@@ -180,6 +250,17 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     }
   }
 
+  // A confirmation prompt before deleting — the "⋮" menu makes delete reachable in one
+  // click straight from the grid/list, without opening the document first, so it's
+  // worth the one extra step it didn't have when it was only a button inside the
+  // already-open detail pane.
+  function handleDeleteWithConfirm(doc: UploadedDocument) {
+    setOpenMenuId(null);
+    if (window.confirm(`Delete "${doc.filename}"? This can't be undone.`)) {
+      handleDelete(doc);
+    }
+  }
+
   async function commitFilename() {
     if (!selectedDoc) return;
     const trimmed = filenameDraft.trim();
@@ -194,6 +275,40 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
       setDetailError(err instanceof ApiError ? err.message : "Couldn't rename this document.");
       setFilenameDraft(selectedDoc.filename);
     }
+  }
+
+  function startRename(doc: UploadedDocument) {
+    setOpenMenuId(null);
+    setRenamingId(doc.id);
+    setRenameDraft(doc.filename);
+  }
+
+  async function commitInlineRename(doc: UploadedDocument) {
+    const trimmed = renameDraft.trim();
+    setRenamingId(null);
+    if (!trimmed || trimmed === doc.filename) return;
+    try {
+      const updated = await renameDocument(token, doc.id, trimmed);
+      setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't rename this document.");
+    }
+  }
+
+  // The rest of the "⋮" menu's actions reuse the exact same handlers the detail pane's
+  // own buttons call — they already take the target doc directly rather than relying on
+  // `selectedDoc`. Selecting the document too (rather than leaving selection alone)
+  // means its status line ("Added 6 items — see Flashcards", etc.) has somewhere to
+  // actually show up, since that status only ever renders in the now-open detail pane.
+  function handleMenuChat(doc: UploadedDocument) {
+    setOpenMenuId(null);
+    handleChatAboutDocument(doc);
+  }
+
+  function handleMenuGenerate(doc: UploadedDocument, action: (doc: UploadedDocument) => void) {
+    setOpenMenuId(null);
+    setSelectedId(doc.id);
+    action(doc);
   }
 
   function startEdit() {
@@ -284,6 +399,115 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     }
   }
 
+  // Shared by both the grid and the list — the entry itself is the read-only
+  // RecentItemCard (or, mid-rename, a plain input standing in for its title), with the
+  // "⋮" trigger positioned as an absolutely-placed SIBLING rather than nested inside
+  // it: RecentItemCard's root is itself a <button>, and a <button> inside a <button> is
+  // invalid HTML with unpredictable click-bubbling, not just a style nitpick.
+  function renderEntry(doc: UploadedDocument, variant: "row" | "card") {
+    const typeLabel = documentTypeLabel(doc);
+    const menuOpen = openMenuId === doc.id;
+    const renaming = renamingId === doc.id;
+
+    return (
+      <div className={`doc-entry doc-entry--${variant}`} key={doc.id} data-doc-menu-root={doc.id}>
+        {renaming ? (
+          <div className={`recent-item-card recent-item-card--${variant} doc-entry-renaming`}>
+            {variant === "card" ? (
+              <span className="recent-item-thumb">
+                <span className="recent-item-thumb-badge">{typeLabel}</span>
+                {snippetsById[doc.id] ? (
+                  <span className="recent-item-thumb-text">{snippetsById[doc.id]}</span>
+                ) : (
+                  <span className="recent-item-thumb-lines" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="recent-item-card-icon" aria-hidden="true">
+                {typeLabel}
+              </span>
+            )}
+            <span className="recent-item-card-body">
+              <input
+                className="doc-rename-input"
+                autoFocus
+                value={renameDraft}
+                aria-label={`Rename ${doc.filename}`}
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onBlur={() => commitInlineRename(doc)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  else if (e.key === "Escape") setRenamingId(null);
+                }}
+              />
+            </span>
+          </div>
+        ) : (
+          <RecentItemCard
+            variant={variant}
+            typeLabel={typeLabel}
+            title={doc.filename}
+            timestamp={doc.created_at}
+            snippet={variant === "card" ? snippetsById[doc.id] : undefined}
+            active={doc.id === selectedId}
+            onClick={() => setSelectedId(doc.id)}
+          />
+        )}
+
+        <div className="doc-menu-wrap">
+          <button
+            type="button"
+            className="doc-menu-trigger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenMenuId(menuOpen ? null : doc.id);
+            }}
+            aria-label={`More actions for ${doc.filename}`}
+            aria-haspopup="true"
+            aria-expanded={menuOpen}
+          >
+            ⋮
+          </button>
+          {menuOpen && (
+            <div className="doc-menu-popover" role="menu">
+              <button type="button" role="menuitem" onClick={() => handleMenuChat(doc)}>
+                Chat about this
+              </button>
+              <button type="button" role="menuitem" onClick={() => startRename(doc)}>
+                Rename
+              </button>
+              <button type="button" role="menuitem" onClick={() => handleMenuGenerate(doc, handleGeneratePlan)}>
+                Study plan
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => handleMenuGenerate(doc, handleGenerateFlashcards)}
+              >
+                Flashcards
+              </button>
+              <button type="button" role="menuitem" onClick={() => handleMenuGenerate(doc, handleGenerateExam)}>
+                Practice exam
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="doc-menu-item--danger"
+                onClick={() => handleDeleteWithConfirm(doc)}
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="documents-page">
       <div className="documents-page-toolbar">
@@ -292,47 +516,61 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
           reference them by name. Select a document to view, edit, or chat about it.
         </p>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
-          onChange={(e) => handleFileChosen(e.target.files?.[0])}
-          disabled={uploading}
-          style={{ display: "none" }}
-        />
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-        >
-          {uploading ? "Uploading…" : "Upload a document"}
-        </button>
+        <div className="documents-page-toolbar-actions">
+          <div className="view-toggle" role="group" aria-label="Document view">
+            <button
+              type="button"
+              className={`view-toggle-btn${viewMode === "grid" ? " view-toggle-btn--active" : ""}`}
+              onClick={() => changeViewMode("grid")}
+              aria-pressed={viewMode === "grid"}
+              aria-label="Grid view"
+              title="Grid view"
+            >
+              ▦
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn${viewMode === "list" ? " view-toggle-btn--active" : ""}`}
+              onClick={() => changeViewMode("list")}
+              aria-pressed={viewMode === "list"}
+              aria-label="List view"
+              title="List view"
+            >
+              ☰
+            </button>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+            onChange={(e) => handleFileChosen(e.target.files?.[0])}
+            disabled={uploading}
+            style={{ display: "none" }}
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? "Uploading…" : "Upload a document"}
+          </button>
+        </div>
       </div>
 
       {error && <div className="banner banner--error">{error}</div>}
 
       <div className="documents-drive">
-          <div className="documents-list-pane">
+          <div className={`documents-list-pane documents-list-pane--${viewMode}`}>
             {loading ? (
               <p className="empty-state-text">Loading…</p>
             ) : documents.length === 0 ? (
               <p className="empty-state-text">No documents yet — upload one to get started.</p>
+            ) : viewMode === "grid" ? (
+              <div className="documents-grid">{documents.map((doc) => renderEntry(doc, "card"))}</div>
             ) : (
-              <ul className="item-list">
-                {documents.map((doc) => (
-                  <li key={doc.id}>
-                    <RecentItemCard
-                      variant="row"
-                      typeLabel={documentTypeLabel(doc)}
-                      title={doc.filename}
-                      timestamp={doc.created_at}
-                      active={doc.id === selectedId}
-                      onClick={() => setSelectedId(doc.id)}
-                    />
-                  </li>
-                ))}
-              </ul>
+              <div className="documents-rows">{documents.map((doc) => renderEntry(doc, "row"))}</div>
             )}
           </div>
 
@@ -397,7 +635,7 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
                     <button
                       type="button"
                       className="btn-secondary-sm btn-secondary-sm--danger"
-                      onClick={() => handleDelete(selectedDoc)}
+                      onClick={() => handleDeleteWithConfirm(selectedDoc)}
                       aria-label={`Delete ${selectedDoc.filename}`}
                     >
                       Delete

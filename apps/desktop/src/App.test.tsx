@@ -766,7 +766,12 @@ describe("App", () => {
     await (await messageList()).findByText("Hello from s1");
 
     await user.click(screen.getByRole("button", { name: "Documents" }));
-    await user.click(await screen.findByRole("button", { name: /resume \(4\)\.pdf/i }));
+    // The grid view's own "⋮" overflow-menu trigger is separately labeled "More actions
+    // for resume (4).pdf", which also matches a loose /resume \(4\)\.pdf/i regex — find
+    // both and take the one that isn't the menu trigger, rather than the entry tile.
+    const matches = await screen.findAllByRole("button", { name: /resume \(4\)\.pdf/i });
+    const entryTile = matches.find((el) => !el.getAttribute("aria-label")?.startsWith("More actions"));
+    await user.click(entryTile!);
     await user.click(await screen.findByRole("button", { name: /chat about this document/i }));
 
     // Lands back in chat (a fresh, empty session) with the document attached to the
