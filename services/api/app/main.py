@@ -10,6 +10,7 @@ from app.core.sentry import init_sentry, report_exception
 from app.routers import (
     account,
     billing,
+    calendar,
     chat,
     classroom,
     documents,
@@ -18,6 +19,7 @@ from app.routers import (
     health,
     notes,
     practice_exams,
+    share,
     study_plan,
     tools,
     voice,
@@ -107,3 +109,10 @@ app.include_router(practice_exams.router)
 app.include_router(voice.router)
 app.include_router(billing.router)
 app.include_router(account.router)
+app.include_router(calendar.router)
+app.include_router(share.router)
+# Deliberately separate from share.router above: this one has NO auth dependency on any of
+# its routes, because its single endpoint (GET /s/{token}) is the public page someone
+# without a Newton account opens. Keeping it as its own router makes that fact visible
+# here, at the wiring, rather than only in the handler.
+app.include_router(share.public_router)

@@ -2,6 +2,8 @@ import type {
   AccountConsentStatus,
   AgeBand,
   BillingStatus,
+  CalendarEvent,
+  CalendarFeedUrls,
   ChatMessage,
   ChatSession,
   ClassroomStatus,
@@ -14,6 +16,7 @@ import type {
   PracticeExamDetail,
   PracticeExamSummary,
   ProModel,
+  ShareLink,
   StudyPlanItem,
   ToolInfo,
   UploadedDocument,
@@ -359,6 +362,132 @@ export async function deleteStudyPlanItem(token: string, itemId: string): Promis
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this item."));
+}
+
+// ---------------------------------------------------------------------------
+// The student's own calendar (services/api/app/routers/calendar.py). Separate from the
+// study-plan endpoints above on purpose: a study plan item is a deadline Newton
+// EXTRACTED from a syllabus, a calendar event is one the student TYPED. The ICS feed is
+// where the two are merged, server-side.
+// ---------------------------------------------------------------------------
+
+export async function listCalendarEvents(token: string): Promise<CalendarEvent[]> {
+  const res = await fetch(`${API_URL}/calendar/events`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your calendar."));
+  return (await res.json()) as CalendarEvent[];
+}
+
+/** `startAt`/`endAt` are ISO-8601 strings WITH an offset — the panel builds them from a
+ * local datetime-local input via `new Date(...).toISOString()`, so a 2pm event entered in
+ * New York stays 2pm in New York after it's round-tripped through UTC and into an ICS
+ * feed read by a phone. */
+export async function createCalendarEvent(
+  token: string,
+  event: { title: string; start_at: string; end_at?: string | null; notes?: string | null },
+): Promise<CalendarEvent> {
+  const res = await fetch(`${API_URL}/calendar/events`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(event),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save this event."));
+  return (await res.json()) as CalendarEvent;
+}
+
+/** A real PATCH: only the fields present in `changes` are touched server-side. Sending an
+ * explicit `end_at: null` genuinely clears the end time, which is different from omitting
+ * the key (see the backend's EventUpdate.model_fields_set handling). */
+export async function updateCalendarEvent(
+  token: string,
+  eventId: string,
+  changes: { title?: string; start_at?: string; end_at?: string | null; notes?: string | null },
+): Promise<CalendarEvent> {
+  const res = await fetch(`${API_URL}/calendar/events/${eventId}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't update this event."));
+  return (await res.json()) as CalendarEvent;
+}
+
+export async function deleteCalendarEvent(token: string, eventId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/calendar/events/${eventId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't remove this event."));
+}
+
+/** The student's personal ICS SUBSCRIPTION url — not a one-time download.
+ *
+ * Worth restating here because it's the confusing part of the feature: once this URL is
+ * pasted into Google Calendar / Apple Calendar / Outlook, those apps refetch it on their
+ * own schedule (commonly every 12–24h) forever. Everything that changes what the feed
+ * returns — a new event, an edited time, a freshly synced deadline — then shows up on the
+ * student's phone with no further action from them. An exported .ics FILE is a dead
+ * snapshot; this is a live feed.
+ *
+ * Idempotent: calling it repeatedly returns the SAME url. The secret in it is minted once,
+ * on first call, and only ever changes via regenerateCalendarFeedUrl below. */
+export async function getCalendarFeedUrl(token: string): Promise<CalendarFeedUrls> {
+  const res = await fetch(`${API_URL}/calendar/feed-url`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't get your calendar link."));
+  return (await res.json()) as CalendarFeedUrls;
+}
+
+/** Leak recovery. Replaces the secret embedded in the feed URL, which instantly and
+ * permanently breaks every copy of the old link that's already out there — the student
+ * then has to re-subscribe in their calendar app with the new one. */
+export async function regenerateCalendarFeedUrl(token: string): Promise<CalendarFeedUrls> {
+  const res = await fetch(`${API_URL}/calendar/feed-url/regenerate`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't create a new calendar link."));
+  return (await res.json()) as CalendarFeedUrls;
+}
+
+// ---------------------------------------------------------------------------
+// Public share links (services/api/app/routers/share.py).
+// ---------------------------------------------------------------------------
+
+/** Mints (or returns the existing) public read-only link for a flashcard deck or a
+ * practice exam. Idempotent unless `regenerate` is true, so pressing "Share" twice hands
+ * back the same URL rather than quietly orphaning one already sent to someone.
+ *
+ * The returned `url` is a plain http(s) address served by the API itself and readable with
+ * NO Newton account — that's the whole point, and why the credential is an unguessable
+ * token in the path rather than this app's own bearer token. */
+export async function createShareLink(
+  token: string,
+  target:
+    | { kind: "flashcards"; document_id?: string | null }
+    | { kind: "practice_exam"; exam_id: string },
+  regenerate = false,
+): Promise<ShareLink> {
+  const res = await fetch(`${API_URL}/share`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ ...target, regenerate }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't create a share link."));
+  return (await res.json()) as ShareLink;
+}
+
+export async function listShareLinks(token: string): Promise<ShareLink[]> {
+  const res = await fetch(`${API_URL}/share`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load your share links."));
+  return (await res.json()) as ShareLink[];
+}
+
+/** Revokes a link for good — the public URL 404s from the next request onward. */
+export async function revokeShareLink(token: string, linkId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/share/${linkId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't revoke this share link."));
 }
 
 export async function getClassroomStatus(token: string): Promise<ClassroomStatus> {

@@ -99,6 +99,17 @@ class Settings(BaseSettings):
     # login IdP's, added as an *additional* redirect URI alongside Keycloak's.
     google_classroom_redirect_uri: str = "http://127.0.0.1:58001/integrations/classroom/callback"
 
+    # The address THIS API is reachable at from outside the Docker network -- used to
+    # build the absolute URLs this app hands to something that is not the desktop client
+    # and therefore can't be told a relative path: a student's subscribable ICS calendar
+    # feed (pasted into Google/Apple/Outlook Calendar) and a public share link (opened in
+    # someone else's browser, on someone else's machine). Same shape and same
+    # keep-it-in-sync-by-hand caveat as google_classroom_redirect_uri above, which already
+    # hardcodes this same dev address for the same reason. A real deployment must override
+    # it with its public https:// origin, or every link this app generates will point at
+    # the developer's own loopback port.
+    public_base_url: str = "http://127.0.0.1:58001"
+
     # Symmetric key (Fernet) this app uses to encrypt Classroom OAuth tokens before they
     # touch Postgres — see app/core/crypto.py. Generate one with `python -c "from
     # cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.

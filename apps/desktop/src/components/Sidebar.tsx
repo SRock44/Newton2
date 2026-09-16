@@ -27,6 +27,7 @@ interface SidebarProps {
   onOpenHome: () => void;
   onOpenDocuments: () => void;
   onOpenStudyPlan: () => void;
+  onOpenCalendar: () => void;
   onOpenFlashcards: () => void;
   onOpenPracticeExams: () => void;
   onOpenSettings: () => void;
@@ -81,6 +82,7 @@ function Sidebar({
   onOpenHome,
   onOpenDocuments,
   onOpenStudyPlan,
+  onOpenCalendar,
   onOpenFlashcards,
   onOpenPracticeExams,
   onOpenSettings,
@@ -146,6 +148,7 @@ function Sidebar({
           <CollapsedNavButton label="New chat" onClick={onNewChat} />
           <CollapsedNavButton label="Documents" active={mainView === "documents"} onClick={onOpenDocuments} />
           <CollapsedNavButton label="Study plan" onClick={onOpenStudyPlan} />
+          <CollapsedNavButton label="Calendar" onClick={onOpenCalendar} />
           <CollapsedNavButton label="Flashcards" onClick={onOpenFlashcards} />
           <CollapsedNavButton label="Practice exams" onClick={onOpenPracticeExams} />
           <CollapsedNavButton label="Settings" onClick={onOpenSettings} />
@@ -266,6 +269,9 @@ function Sidebar({
           </button>
           <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenStudyPlan}>
             Study plan
+          </button>
+          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenCalendar}>
+            Calendar
           </button>
           <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenFlashcards}>
             Flashcards

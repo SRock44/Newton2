@@ -23,6 +23,7 @@ function baseProps(mainView: MainView = "home") {
     onOpenHome: vi.fn(),
     onOpenDocuments: vi.fn(),
     onOpenStudyPlan: vi.fn(),
+    onOpenCalendar: vi.fn(),
     onOpenFlashcards: vi.fn(),
     onOpenPracticeExams: vi.fn(),
     onOpenSettings: vi.fn(),

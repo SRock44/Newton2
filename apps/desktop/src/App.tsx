@@ -40,6 +40,7 @@ import type { ComposerHandle } from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
 import HomeView from "./components/HomeView";
 import StudyPlanPanel from "./components/StudyPlanPanel";
+import CalendarPanel from "./components/CalendarPanel";
 import FlashcardsPanel from "./components/FlashcardsPanel";
 import PracticeExamsPanel from "./components/PracticeExamsPanel";
 import SettingsPanel from "./components/SettingsPanel";
@@ -187,6 +188,7 @@ function App() {
   // view (see handleOpenDocument below).
   const [openDocumentId, setOpenDocumentId] = useState<string | null>(null);
   const [showStudyPlan, setShowStudyPlan] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [showPracticeExams, setShowPracticeExams] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -1101,6 +1103,7 @@ function App() {
           onOpenHome={handleOpenHome}
           onOpenDocuments={handleToggleDocuments}
           onOpenStudyPlan={() => setShowStudyPlan(true)}
+          onOpenCalendar={() => setShowCalendar(true)}
           onOpenFlashcards={() => setShowFlashcards(true)}
           onOpenPracticeExams={() => setShowPracticeExams(true)}
           onOpenSettings={() => setShowSettings(true)}
@@ -1213,6 +1216,7 @@ function App() {
       </div>
 
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
+      {showCalendar && <CalendarPanel token={token} onClose={() => setShowCalendar(false)} />}
       {showFlashcards && (
         <FlashcardsPanel
           getAccessToken={() => tokenManager.getValidAccessToken()}

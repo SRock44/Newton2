@@ -257,3 +257,40 @@ export interface Flashcard {
   last_review: string | null;
   created_at: string;
 }
+
+/** A student's OWN calendar entry -- typed in by hand, distinct from a StudyPlanItem,
+ * which is a deadline Newton extracted from a syllabus or a Classroom sync. See
+ * services/api/app/db/models.py's CalendarEvent for why they're separate tables.
+ * `end_at` is genuinely optional: "Dentist, 9am" is a normal thing to put on a calendar
+ * and inventing an end time for it would be storing a guess. */
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  /** ISO-8601 with an offset, as produced by the backend. */
+  start_at: string;
+  end_at: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+/** The student's personal, subscribable ICS feed address (see
+ * services/api/app/routers/calendar.py). Both fields point at the same endpoint --
+ * `webcal_url` is the semantically-correct "subscribe, don't download" scheme, `url` is
+ * the plain http(s) form every calendar app accepts in its own "add by URL" box without
+ * needing an OS protocol handler registered. SettingsPanel copies `url`. */
+export interface CalendarFeedUrls {
+  url: string;
+  webcal_url: string;
+}
+
+/** A public, revocable read-only link to a flashcard deck or a practice exam. `url` is a
+ * plain http(s) address served by the API itself -- the recipient has no Newton account
+ * and no desktop app, so it deliberately isn't a deep link into this app. */
+export interface ShareLink {
+  id: string;
+  kind: "flashcards" | "practice_exam";
+  document_id: string | null;
+  exam_id: string | null;
+  url: string;
+  created_at: string;
+}

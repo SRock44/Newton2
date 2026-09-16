@@ -5492,3 +5492,71 @@ body.is-resizing-panel * {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ---------- Calendar panel ---------- */
+
+.calendar-add-btn {
+  align-self: flex-start;
+  margin-bottom: var(--space-4);
+}
+
+.calendar-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+}
+
+.calendar-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-field-row {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.calendar-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.calendar-day-heading {
+  margin: 0 0 var(--space-2);
+  font-family: inherit;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-faint);
+}
+
+/* Two or more buttons on the right-hand side of an .item-row — shared by the calendar's
+   Edit/Delete pair and the practice exam list's Share/Delete pair, since the layout need
+   is identical and neither panel should grow its own copy of it. */
+.item-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ---------- Settings -> Calendar subscription ---------- */
+
+.settings-calendar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

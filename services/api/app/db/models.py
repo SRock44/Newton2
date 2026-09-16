@@ -90,6 +90,21 @@ class User(Base):
     # app/agents/tutor.py's LEARN_MODE_SYSTEM_ADDENDUM for the real effects.
     learn_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
+    # The per-user secret embedded in this student's subscribable ICS calendar URL
+    # (GET /calendar/feed/{user_id}/{token}.ics -- see app/routers/calendar.py). This is
+    # deliberately NOT the app's normal Keycloak bearer token and deliberately NOT a JWT
+    # of any kind: a calendar client (Google Calendar, Apple Calendar, Outlook) refetching
+    # a subscribed URL on its own 12-24h schedule has no way to run an OAuth refresh, so
+    # the credential has to live in the URL itself and has to be long-lived. Same shape as
+    # Google Calendar's own "secret address in iCal format".
+    #
+    # NULLABLE and lazily minted: no secret exists for a user until they actually ask for
+    # their feed URL (GET /calendar/feed-url), so a student who never uses this feature
+    # never has a shareable credential sitting in the database at all. Regenerated in
+    # place by POST /calendar/feed-url/regenerate, which instantly and permanently breaks
+    # every previously-handed-out link -- the leak-recovery path.
+    calendar_feed_token: Mapped[str | None] = mapped_column(String, nullable=True)
+
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
@@ -348,6 +363,86 @@ class PracticeExam(Base):
     score: Mapped[float | None] = mapped_column(Float, nullable=True)  # fraction correct, 0.0-1.0
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CalendarEvent(Base):
+    """A student's OWN calendar entry -- typed in by hand, not extracted from anything.
+
+    Deliberately a separate table from StudyPlanItem rather than a new `source` value on
+    it: a study plan item is a *deadline* derived from a syllabus/Classroom sync (it has a
+    due_date DATE, a free-text due_date_text for "Week 5", and a document_id tracing it
+    back to where it came from), whereas this is a real scheduled block of time the
+    student chose -- an actual timestamp, an optional end, and nothing to trace back.
+    Folding the two together would mean every column of each being meaningless on half the
+    rows. They are merged only where merging is genuinely what's wanted: the ICS feed (see
+    app/services/ics.py), which emits both.
+
+    `end_at` is nullable on purpose -- "Chem lab 2-4pm" and "Dentist, 9am" are both normal
+    things to put on a calendar, and forcing an invented end time on the second one would
+    be storing a guess. See ics.py for how a null end is rendered into a real VEVENT.
+    """
+
+    __tablename__ = "calendar_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(500))
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ShareLink(Base):
+    """One unguessable, revocable, PUBLIC read-only link to something a student owns.
+
+    Same credential-in-the-URL reasoning as User.calendar_feed_token above, for the same
+    reason: the recipient of a shared deck has no Newton account at all, so there is no
+    login to do and nothing to put in an Authorization header. The token IS the
+    authorization, which is why it's 256 bits of `secrets`-grade randomness (see
+    app/services/share_tokens.py) rather than anything derived from the owner's identity.
+
+    Kept as a generic (kind, target_id) pair rather than two separate tables because the
+    *sharing* concern is genuinely identical for both things being shared -- mint a
+    secret, look content up by it, revoke it -- and only the rendering differs (see
+    app/routers/share.py). What is NOT shared with User.calendar_feed_token is the
+    storage: that one is exactly one per user, forever, and lives as a column on `users`;
+    these are many-per-user, per-object, and disposable.
+
+    The target is two real, separately-cascading nullable FKs rather than one untyped
+    `target_id` column, precisely so the database can clean up after itself: deleting a
+    practice exam (or the document a deck was generated from) takes its share links with
+    it, instead of leaving a live public URL pointing at content that no longer exists.
+    Which one is meaningful is decided by `kind`:
+      - "flashcards":    `document_id` scopes the deck to one source document, or is NULL
+                         for every card the student owns (mirrors GET
+                         /flashcards/export.apkg's optional document_id). `exam_id` unused.
+      - "practice_exam": `exam_id` is the exam. Never NULL. `document_id` unused.
+
+    Revocation is a real row DELETE, not a soft-delete flag: there is no audit story this
+    app tells about share links, and a deleted row can't be resurrected by a bug in a
+    `WHERE revoked_at IS NULL` clause someone forgets to write.
+    """
+
+    __tablename__ = "share_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String)  # flashcards | practice_exam
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("practice_exams.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # Unique because it's the sole lookup key for the public endpoint -- a collision would
+    # be a cross-account content leak, so the database enforces it rather than trusting
+    # the RNG alone.
+    token: Mapped[str] = mapped_column(String, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class PracticeExamQuestion(Base):
