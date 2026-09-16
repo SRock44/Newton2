@@ -92,6 +92,19 @@ export async function deleteSession(token: string, sessionId: string): Promise<v
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete this chat."));
 }
 
+/** Message editing (ROADMAP.md): deletes `messageId` and every message after it (by
+ * creation order) in `sessionId` — the student's own previous message being edited,
+ * plus its original reply and everything since, permanently discarded with no
+ * undo/branch history. App.tsx's handleSend calls this FIRST, awaited, before touching
+ * its local message list or sending the edited text as a new message. */
+export async function deleteMessageAndAfter(token: string, sessionId: string, messageId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/chat/sessions/${sessionId}/messages/${messageId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save that edit."));
+}
+
 /** Opens the streaming chat socket for a session. Caller owns the returned socket. */
 export function openChatSocket(token: string, sessionId: string): WebSocket {
   return new WebSocket(`${WS_URL}/chat/ws/${sessionId}?token=${encodeURIComponent(token)}`);

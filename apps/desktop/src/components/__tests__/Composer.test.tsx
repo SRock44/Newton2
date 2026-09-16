@@ -279,4 +279,136 @@ describe("Composer", () => {
       expect(onSend).toHaveBeenCalledWith("hello");
     });
   });
+
+  // Message editing (ROADMAP.md): Composer's own contract for the `editing` prop --
+  // App.tsx owns the actual delete-and-resend logic (see App.test.tsx's "message
+  // editing" suite for that full flow), this just covers Composer's piece of it in
+  // isolation: populating/repopulating the draft, the visible indicator, Cancel, and
+  // the Save-edit send still going through the same onSend.
+  describe("editing", () => {
+    it("repopulates the draft with the exact original text and shows an editing indicator", () => {
+      render(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "my original wording" }}
+        />,
+      );
+
+      expect(screen.getByRole("textbox")).toHaveValue("my original wording");
+      expect(screen.getByText("Editing message")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save edit" })).toBeInTheDocument();
+    });
+
+    it("re-populates when the edit target changes to a different message", () => {
+      const { rerender } = render(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "first message text" }}
+        />,
+      );
+      expect(screen.getByRole("textbox")).toHaveValue("first message text");
+
+      rerender(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m2", content: "second message text" }}
+        />,
+      );
+      expect(screen.getByRole("textbox")).toHaveValue("second message text");
+    });
+
+    it("does not stomp further edits to the draft on every re-render while the same message stays targeted", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "original" }}
+        />,
+      );
+      const textarea = screen.getByRole("textbox");
+      await user.type(textarea, " plus more");
+
+      // A re-render with the SAME editing.id (e.g. a parent re-render for an unrelated
+      // reason) must not wipe out the student's in-progress tweak.
+      rerender(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "original" }}
+        />,
+      );
+      expect(textarea).toHaveValue("original plus more");
+    });
+
+    it("Cancel clears the draft and calls onCancelEdit without sending anything", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      const onCancelEdit = vi.fn();
+      render(
+        <Composer
+          onSend={onSend}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "original wording" }}
+          onCancelEdit={onCancelEdit}
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onCancelEdit).toHaveBeenCalledTimes(1);
+      expect(onSend).not.toHaveBeenCalled();
+      expect(screen.getByRole("textbox")).toHaveValue("");
+    });
+
+    it("shows the edit error inline next to the editing indicator", () => {
+      render(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "original" }}
+          editError="Couldn't save that edit."
+        />,
+      );
+      expect(screen.getByText("Couldn't save that edit.")).toBeInTheDocument();
+    });
+
+    it("Save edit sends the (possibly further-edited) text through the same onSend as a normal message", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(
+        <Composer
+          onSend={onSend}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "original wording" }}
+        />,
+      );
+
+      const textarea = screen.getByRole("textbox");
+      await user.clear(textarea);
+      await user.type(textarea, "edited wording");
+      await user.click(screen.getByRole("button", { name: "Save edit" }));
+
+      expect(onSend).toHaveBeenCalledWith("edited wording");
+    });
+  });
 });

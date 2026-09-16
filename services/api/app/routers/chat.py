@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.router import route
@@ -159,6 +159,7 @@ async def list_messages(
     )
     return [
         {
+            "id": str(m.id),
             "role": m.role,
             "content": m.content,
             "created_at": m.created_at.isoformat(),
@@ -167,6 +168,52 @@ async def list_messages(
         }
         for m in rows
     ]
+
+
+@router.delete("/sessions/{session_id}/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_message_and_after(
+    session_id: uuid.UUID,
+    message_id: uuid.UUID,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Backs message editing (ROADMAP.md): editing a previous message permanently
+    discards that message's own original reply and everything after it in the session
+    (no branch history/undo -- a real tree schema is deliberately out of scope), then
+    the edited text is resent as a brand new user_message. The frontend calls this
+    FIRST, awaited, before touching its local message list or sending anything new --
+    see App.tsx's handleSend edit branch.
+
+    Deletes the target message and every later message (by created_at, with the
+    target's own id as an equality tiebreaker so it's removed even in the practically
+    impossible case of a duplicate timestamp) in a single statement -- not a loop of
+    individual deletes, so there's no window where a concurrent read could observe a
+    partially-truncated history. No cascade concerns beyond the chat_messages table
+    itself: nothing else in this schema references a chat message by id (profile_facts
+    and session_summaries only ever reference a *session*, see migration 0004) -- unlike
+    delete_session, there's no other table to clean up here."""
+    user = await get_or_create_user(db, claims)
+    session = await db.get(ChatSession, session_id)
+    if session is None or session.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+
+    target = await db.get(ChatMessage, message_id)
+    if target is None or target.session_id != session_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Message not found")
+
+    await db.execute(
+        delete(ChatMessage).where(
+            ChatMessage.session_id == session_id,
+            (ChatMessage.created_at > target.created_at)
+            | ((ChatMessage.created_at == target.created_at) & (ChatMessage.id == target.id)),
+        )
+    )
+    await db.commit()
+    # The working-memory bundle (Tier 1, Redis) may still hold turns for messages just
+    # deleted -- invalidate it so the next turn rebuilds fresh from Postgres instead of
+    # resending stale, now-discarded turns as context. Same cleanup delete_session
+    # already does for the same reason.
+    await invalidate(str(session_id))
 
 
 @router.post("/sessions/{session_id}/images")
@@ -324,9 +371,16 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                         "chat turn start session_id=%s user_id=%s", session_id, user.id
                     )
 
-                    db.add(ChatMessage(session_id=session_id, role="user", content=user_message))
+                    user_msg = ChatMessage(session_id=session_id, role="user", content=user_message)
+                    db.add(user_msg)
                     await db.commit()
                     await append_turn(str(session_id), "user", user_message)
+                    # Echoes back this message's real, persisted id so the desktop app
+                    # can offer "Edit" on it immediately, without waiting for a session
+                    # switch/reload to refetch history (see GET .../messages, which also
+                    # returns this same id -- the delete-message-and-after endpoint above
+                    # needs it as the truncation-point identity either way).
+                    await websocket.send_json({"type": "user_message_saved", "id": str(user_msg.id)})
 
                     # Baseline crisis-response safety net (ROADMAP.md Phase 7): a
                     # deterministic, local pattern match -- NOT an LLM call, so this adds

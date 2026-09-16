@@ -26,6 +26,11 @@ interface MessageBubbleProps {
   /** Whether this message holds the most recent ```paper-plan block in the whole
    * visible conversation — see PaperPlanCard.tsx / lib/paperPlanIndex.ts. */
   isLatestPaperPlanMessage?: boolean;
+  /** Message editing (ROADMAP.md): true for the one message currently being edited (see
+   * App.tsx's editingMessage state / ContextMenu's "Edit message") — a subtle highlight
+   * so it's obvious which message the composer's populated text belongs to, distinct
+   * from the composer's own "Editing message — Cancel" indicator. */
+  isBeingEdited?: boolean;
 }
 
 // The composer/snip-modal tag an uploaded image onto the outgoing message as
@@ -103,6 +108,7 @@ function MessageBubble({
   onFocusComposer,
   nextMessageContent,
   isLatestPaperPlanMessage,
+  isBeingEdited,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
   // Still used as an accessible name for the row (a screen-reader user still needs to
@@ -132,7 +138,9 @@ function MessageBubble({
 
   return (
     <div
-      className={`transcript-entry transcript-entry--${isUser ? "user" : "assistant"}`}
+      className={`transcript-entry transcript-entry--${isUser ? "user" : "assistant"}${
+        isBeingEdited ? " transcript-entry--editing" : ""
+      }`}
       aria-label={roleLabel}
     >
       <div className="transcript-gutter">
@@ -149,6 +157,8 @@ function MessageBubble({
         }`}
         data-context-menu="message"
         data-message-content={message.content}
+        data-message-role={message.role}
+        data-message-id={message.id ?? ""}
       >
         {hasPlanNarration && (
           <div className="tool-activity plan-activity" aria-label="Newton's plan">

@@ -1720,6 +1720,16 @@ textarea:focus-visible,
   color: var(--color-danger);
 }
 
+/* Message editing (ROADMAP.md): a subtle highlight on the ONE message currently being
+   edited (see App.tsx's editingMessage / Composer's own "Editing message" banner) --
+   just a firmer accent rule, not a loud full-row background, so it reads as "this is
+   the one" without competing with the student's-own-message tint every user message
+   already has. */
+.transcript-entry--editing .transcript-body {
+  border-left-color: var(--color-accent);
+  border-left-width: 3px;
+}
+
 /* A quiet "live" cue while a reply is still streaming in — a slow breathing pulse on
    the rule Newton's replies already read against, rather than anything that competes
    with the text itself for attention. Purely decorative: message.streaming already
@@ -2777,6 +2787,47 @@ textarea:focus-visible,
   margin: 0 auto;
   padding: var(--space-2) var(--space-5) var(--space-4);
   flex-shrink: 0;
+}
+
+/* Message editing (ROADMAP.md): a quiet accent-colored banner above the composer row
+   while editing a previous message -- distinct from the transcript's own
+   .transcript-entry--editing highlight on the message itself, so it's obvious both
+   WHERE the edit came from and THAT the composer's populated text is an edit in
+   progress, not a fresh draft. */
+.composer-editing-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+}
+
+.composer-editing-label {
+  font-weight: 600;
+}
+
+.composer-editing-error {
+  color: var(--color-danger);
+  flex: 1;
+}
+
+.composer-editing-cancel {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.composer-editing-cancel:hover {
+  opacity: 0.8;
 }
 
 .composer-row {

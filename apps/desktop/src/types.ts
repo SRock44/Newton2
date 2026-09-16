@@ -16,6 +16,14 @@ export interface SuggestedAction {
 }
 
 export interface ChatMessage {
+  /** The real, persisted chat_messages.id (see services/api/app/routers/chat.py's
+   * list_messages) — undefined only for a message this client just optimistically
+   * appended locally (handleSend) that hasn't been echoed back yet by the WS's
+   * "user_message_saved" frame (see App.tsx). Message editing uses this as the
+   * truncation-point identity: DELETE /chat/sessions/{id}/messages/{id} deletes this
+   * message and everything after it, so editing is only ever offered once a real id is
+   * known. */
+  id?: string;
   role: Role;
   content: string;
   created_at?: string;

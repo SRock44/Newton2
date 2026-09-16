@@ -124,7 +124,9 @@ async def test_crisis_message_gets_fixed_response_and_skips_the_tutor_entirely(
     assert done_frames[0]["completion_tokens"] is None
 
     # No tool_start/tool_end/suggested_action/error frames -- nothing tutor-shaped.
-    assert {f["type"] for f in ws.sent} == {"chunk", "done"}
+    # (user_message_saved always fires first, right after the user turn is persisted --
+    # see chat_ws's own comment -- independent of the crisis short-circuit.)
+    assert {f["type"] for f in ws.sent} == {"user_message_saved", "chunk", "done"}
 
     # Persisted to chat_messages exactly like any other turn: one user row, one
     # assistant row with the fixed text verbatim.

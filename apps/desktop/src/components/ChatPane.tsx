@@ -27,6 +27,10 @@ interface ChatPaneProps {
   firstRun?: boolean;
   /** Marks the welcome card seen and hides it for good — see OnboardingWelcome.tsx. */
   onDismissFirstRun?: () => void;
+  /** Message editing (ROADMAP.md): the id of the one message currently being edited, if
+   * any (see App.tsx's editingMessage state) — threaded down to MessageBubble for a
+   * subtle highlight distinct from the composer's own "Editing message" indicator. */
+  editingMessageId?: string | null;
 }
 
 function ChatPane({
@@ -41,6 +45,7 @@ function ChatPane({
   onFocusComposer,
   firstRun,
   onDismissFirstRun,
+  editingMessageId,
 }: ChatPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Which single message (if any) holds the most recent ```paper-plan block across the
@@ -103,6 +108,7 @@ function ChatPane({
               onFocusComposer={onFocusComposer}
               nextMessageContent={messages[index + 1]?.content}
               isLatestPaperPlanMessage={index === latestPaperPlanIndex}
+              isBeingEdited={Boolean(editingMessageId) && message.id === editingMessageId}
             />
           );
         })}

@@ -33,6 +33,22 @@ interface ComposerProps {
   /** Called once the pending attachment above has actually been applied, so the parent
    * can clear it and never re-apply it (e.g. if the student then removes the chip). */
   onPendingAttachmentConsumed?: () => void;
+  /** Message editing (ROADMAP.md): non-null while the student is editing a previous
+   * message of their own — set by App.tsx's handleEditMessage (via the context menu's
+   * "Edit message"), cleared on cancel or once the edit is actually sent. Repopulates
+   * the draft with that message's exact original text (see the effect below) and shows
+   * a visible "Editing message" indicator with a way to back out. `content` is the
+   * message's raw original text (same string "Copy message" copies), not the
+   * attachment-stripped display text. */
+  editing?: { id: string; content: string } | null;
+  /** Backs out of edit mode without sending anything — the original message and the
+   * rest of the conversation stay exactly as they were. */
+  onCancelEdit?: () => void;
+  /** Set by App.tsx if the edit's delete-and-truncate call fails — shown inline next to
+   * the editing indicator so the student knows to retry or cancel, same
+   * fail-loud-but-leave-everything-untouched spirit as this app's other destructive
+   * actions (e.g. SettingsPanel's delete-account confirmation). */
+  editError?: string | null;
 }
 
 const MAX_TEXTAREA_HEIGHT = 220;
@@ -53,6 +69,9 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     sessionId,
     pendingAttachment,
     onPendingAttachmentConsumed,
+    editing,
+    onCancelEdit,
+    editError,
   },
   ref,
 ) {
@@ -131,6 +150,17 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     setPickerOpen(false);
   }, [sessionId]);
 
+  // Message editing (ROADMAP.md): the moment a new edit target is set (id changes from
+  // null/a different message to this one), repopulate the draft with that message's
+  // exact original text — not appended, a full replace — so the student sees and can
+  // further tweak their exact original wording. Deliberately keyed on `editing?.id`
+  // alone (not `editing` itself, and not `draft`): re-running this on every keystroke
+  // would stomp the student's in-progress tweaks back to the original text.
+  useEffect(() => {
+    if (editing) setDraft(editing.content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing?.id]);
+
   // "Chat about this document" (App.tsx) hands off a document to pre-attach here the
   // same way manually picking it from the "+" menu would — runs after the reset above
   // for the same session-switch, so it lands as the final state rather than being
@@ -195,10 +225,19 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     if (attachedDocument) {
       text = `${text}\n\n[Attached document: ${attachedDocument.id}|${attachedDocument.name}]`.trim();
     }
+    // Same onSend call either way — App.tsx's handleSend itself checks whether an edit
+    // is in progress and, if so, deletes-and-truncates before resending. No parallel
+    // send mechanism here; editing is indistinguishable from a brand new message once
+    // that truncation has happened.
     onSend(text);
     setDraft("");
     setAttachedImage(null);
     setAttachedDocument(null);
+  }
+
+  function handleCancelEdit() {
+    setDraft("");
+    onCancelEdit?.();
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -261,7 +300,16 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   }
 
   return (
-    <div className="composer">
+    <div className={`composer${editing ? " composer--editing" : ""}`}>
+      {editing && (
+        <div className="composer-editing-banner" role="status">
+          <span className="composer-editing-label">Editing message</span>
+          {editError && <span className="composer-editing-error">{editError}</span>}
+          <button type="button" className="composer-editing-cancel" onClick={handleCancelEdit}>
+            Cancel
+          </button>
+        </div>
+      )}
       <div className="composer-controls">
         <div
           className="composer-learn-mode-toggle"
@@ -408,9 +456,9 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             className="btn-primary composer-send"
             onClick={handleSend}
             disabled={disabled || (!draft.trim() && !attachedImage && !attachedDocument)}
-            aria-label="Send message"
+            aria-label={editing ? "Save edit" : "Send message"}
           >
-            Send
+            {editing ? "Save edit" : "Send"}
           </button>
         )}
       </div>

@@ -15,6 +15,15 @@ interface MenuState {
 
 interface ContextMenuProps {
   onDeleteSession: (sessionId: string) => void;
+  /** Message editing (ROADMAP.md): starts editing the student's own previous message —
+   * offered only on user-role messages that already have a real, persisted id (see
+   * types.ts's ChatMessage.id doc comment). Optional so existing call sites/tests that
+   * never need editing (e.g. the login/age-gate screens) don't need to pass it. */
+  onEditMessage?: (messageId: string, content: string) => void;
+  /** True while a reply is generating — editing an earlier message mid-stream would
+   * race the in-flight generation, so the "Edit message" item is offered but disabled,
+   * same as Composer already disables sending a new message while `isStreaming`. */
+  editDisabled?: boolean;
 }
 
 /** Replaces the WebView's default right-click menu (Reload/Print/Inspect — none of it
@@ -26,7 +35,7 @@ interface ContextMenuProps {
  * Falls back to a plain "Copy" when there's a text selection but no recognized target, and
  * to no menu at all otherwise — the native menu is still gone, but there's nothing useful
  * to offer. Mounted once near the root; listens on `document`, so it works everywhere. */
-function ContextMenu({ onDeleteSession }: ContextMenuProps) {
+function ContextMenu({ onDeleteSession, onEditMessage, editDisabled }: ContextMenuProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -44,6 +53,8 @@ function ContextMenu({ onDeleteSession }: ContextMenuProps) {
         items = [{ label: "Delete chat", danger: true, onSelect: () => onDeleteSession(sessionId) }];
       } else if (kind === "message") {
         const content = menuTarget?.dataset.messageContent ?? "";
+        const role = menuTarget?.dataset.messageRole;
+        const messageId = menuTarget?.dataset.messageId;
         items = [
           {
             label: "Copy message",
@@ -51,6 +62,18 @@ function ContextMenu({ onDeleteSession }: ContextMenuProps) {
             onSelect: () => void navigator.clipboard.writeText(content),
           },
         ];
+        // Edit is only ever offered on the student's OWN messages (never Newton's
+        // replies — this is "edit what I said," not "edit what Newton said"), and only
+        // once a real, persisted id is known (see types.ts's ChatMessage.id doc
+        // comment) — without it there's nothing to pass to the delete-and-truncate
+        // endpoint.
+        if (role === "user" && messageId && onEditMessage) {
+          items.push({
+            label: "Edit message",
+            disabled: Boolean(editDisabled),
+            onSelect: () => onEditMessage(messageId, content),
+          });
+        }
       } else if (kind === "editable") {
         const field = menuTarget as HTMLInputElement | HTMLTextAreaElement;
         const hasSelection = field.selectionStart !== field.selectionEnd;
@@ -74,7 +97,7 @@ function ContextMenu({ onDeleteSession }: ContextMenuProps) {
 
     document.addEventListener("contextmenu", handleContextMenu);
     return () => document.removeEventListener("contextmenu", handleContextMenu);
-  }, [onDeleteSession]);
+  }, [onDeleteSession, onEditMessage, editDisabled]);
 
   useLayoutEffect(() => {
     if (!menu || !menuRef.current) return;

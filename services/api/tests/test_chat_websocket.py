@@ -33,9 +33,11 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
                 if frame["type"] == "done":
                     done_frame = frame
                     break
-                if frame["type"] in ("tool_start", "tool_end"):
+                if frame["type"] in ("user_message_saved", "tool_start", "tool_end"):
                     # A real model may genuinely reach for symbolic_math for a
                     # "derivatives" question — that's not what this test is about.
+                    # user_message_saved (see chat_ws) always fires first, before any
+                    # reply content -- also not what this test is about.
                     continue
                 assert frame["type"] == "chunk", frame
                 chunks.append(frame["content"])
@@ -77,6 +79,45 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
         # client — no separate, potentially-diverging source of truth.
         assert persisted[1]["prompt_tokens"] == done_frame["prompt_tokens"]
         assert persisted[1]["completion_tokens"] == done_frame["completion_tokens"]
+    finally:
+        session_uuid = uuid.UUID(session_id)
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.commit()
+
+
+async def test_websocket_echoes_the_persisted_user_message_id(
+    http_client, auth_headers, keycloak_token, db_session
+):
+    """Message editing (ROADMAP.md) needs a message's real id as its truncation-point
+    identity, and the frontend must be able to offer "Edit" on the message a student
+    JUST sent, not only on ones that survived a session reload -- see App.tsx's
+    handling of the "user_message_saved" frame this asserts."""
+    create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = create_resp.json()["session_id"]
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            await ws.send(json.dumps({"type": "user_message", "content": "what is a derivative?"}))
+
+            # Must arrive before any reply content -- the message is persisted (and its
+            # id known) before generation even starts.
+            first = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
+            assert first["type"] == "user_message_saved"
+            assert first["id"]
+
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                if json.loads(raw)["type"] == "done":
+                    break
+
+        messages_resp = await http_client.get(
+            f"/chat/sessions/{session_id}/messages", headers=auth_headers
+        )
+        persisted = messages_resp.json()
+        assert persisted[0]["role"] == "user"
+        assert persisted[0]["id"] == first["id"]
     finally:
         session_uuid = uuid.UUID(session_id)
         await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
@@ -174,6 +215,10 @@ async def test_websocket_stop_mid_generation_truncates_and_persists_partial(
         async with websockets.connect(uri) as ws:
             await ws.send(json.dumps({"type": "user_message", "content": message}))
 
+            # user_message_saved always fires first, before any reply content -- skip
+            # past it to the actual proof generation has started.
+            first = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
+            assert first["type"] == "user_message_saved"
             first = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
             assert first["type"] in ("chunk", "tool_start")
             await ws.send(json.dumps({"type": "stop"}))

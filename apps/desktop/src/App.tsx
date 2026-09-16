@@ -5,6 +5,7 @@ import "highlight.js/styles/github-dark.css";
 import {
   ApiError,
   createSession,
+  deleteMessageAndAfter,
   deleteSession,
   getAccountStatus,
   getMessages,
@@ -134,6 +135,13 @@ function App() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [firstMessageBySession, setFirstMessageBySession] = useState<Record<string, string>>({});
+  // Message editing (ROADMAP.md): non-null while the student is editing one of their
+  // own previous messages (set by handleEditMessage, via ContextMenu's "Edit message").
+  // `content` is that message's exact original text, handed to Composer to repopulate
+  // the draft. editError surfaces a failed delete-and-truncate call (see handleSend)
+  // without ever touching messages/the original conversation.
+  const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>("closed");
@@ -416,6 +424,14 @@ function App() {
     sessionsRef.current = sessions;
   }, [sessions]);
 
+  // A switched (or new) session has no meaning for an in-progress edit of a message in
+  // the PREVIOUS session — same "reset on session switch" reasoning as Composer's own
+  // attachment-reset effect.
+  useEffect(() => {
+    setEditingMessage(null);
+    setEditError(null);
+  }, [activeSessionId]);
+
   // Load message history whenever the active session changes.
   useEffect(() => {
     if (!token || !activeSessionId) {
@@ -518,6 +534,7 @@ function App() {
           panel?: string;
           prompt_tokens?: number | null;
           completion_tokens?: number | null;
+          id?: string;
         };
         try {
           payload = JSON.parse(event.data);
@@ -525,7 +542,26 @@ function App() {
           return;
         }
 
-        if (payload.type === "plan_chunk") {
+        if (payload.type === "user_message_saved") {
+          // Echoes back the real, persisted id of the user message just sent (see
+          // services/api/app/routers/chat.py's chat_ws) -- attaches it to the most
+          // recent id-less user message (the optimistic one handleSend just pushed)
+          // so "Edit" is offered on it immediately, without waiting for a session
+          // switch/reload to refetch history from GET .../messages.
+          const id = payload.id;
+          if (!id) return;
+          setMessages((prev) => {
+            let idx = -1;
+            for (let i = prev.length - 1; i >= 0; i -= 1) {
+              if (prev[i]!.role === "user" && !prev[i]!.id) {
+                idx = i;
+                break;
+              }
+            }
+            if (idx === -1) return prev;
+            return [...prev.slice(0, idx), { ...prev[idx]!, id }, ...prev.slice(idx + 1)];
+          });
+        } else if (payload.type === "plan_chunk") {
           // Always fires (if at all) before any real answer text/tool activity for the
           // same reply. Updates the streaming placeholder handleSend already pushed
           // synchronously the moment the user's message was sent (see ROADMAP.md's
@@ -641,7 +677,12 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
 
-  function handleSend(text: string) {
+  // Message editing (ROADMAP.md): edits a previous message by resending it exactly like
+  // a brand new message, but only after permanently discarding that message's original
+  // reply and everything after it. Deliberately NOT a separate send path -- Composer
+  // always calls this same onSend, and once the edit branch below finishes truncating,
+  // the rest of this function is indistinguishable from an ordinary send.
+  async function handleSend(text: string) {
     const socket = wsRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN || !activeSessionId) {
       setMessages((prev) => [
@@ -651,6 +692,27 @@ function App() {
       ]);
       return;
     }
+
+    if (editingMessage) {
+      const { id } = editingMessage;
+      setEditError(null);
+      try {
+        // Awaited and FIRST: the deletion must be confirmed before anything else
+        // happens. A failure here must leave the local message list and the original
+        // conversation completely untouched -- no truncation, nothing resent.
+        const accessToken = await tokenManager.getValidAccessToken();
+        await deleteMessageAndAfter(accessToken, activeSessionId, id);
+      } catch (err) {
+        setEditError(errorMessage(err, "Couldn't save that edit. Please try again."));
+        return;
+      }
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === id);
+        return idx === -1 ? prev : prev.slice(0, idx);
+      });
+      setEditingMessage(null);
+    }
+
     // The user's message AND an immediate "Newton is thinking" placeholder land in the
     // same synchronous update, before any WebSocket frame can possibly arrive -- so
     // there is always visible activity from the instant Send is pressed, not just once
@@ -662,6 +724,23 @@ function App() {
     rememberFirstMessage(activeSessionId, text);
     socket.send(JSON.stringify({ type: "user_message", content: text }));
     setIsStreaming(true);
+  }
+
+  // ContextMenu's "Edit message" (user-role messages only, and only once a real,
+  // persisted id is known -- see types.ts's ChatMessage.id doc comment). Blocked while a
+  // reply is streaming, same gate Composer already applies to sending a new message --
+  // ContextMenu itself disables the menu item (see editDisabled below), this is a
+  // second guard against it firing some other way.
+  function handleEditMessage(messageId: string, content: string) {
+    if (isStreaming) return;
+    setEditError(null);
+    setEditingMessage({ id: messageId, content });
+    composerRef.current?.focus();
+  }
+
+  function handleCancelEdit() {
+    setEditingMessage(null);
+    setEditError(null);
   }
 
   function handleFocusComposer() {
@@ -898,6 +977,7 @@ function App() {
                     onFocusComposer={handleFocusComposer}
                     firstRun={!onboardingSeen}
                     onDismissFirstRun={handleDismissOnboarding}
+                    editingMessageId={editingMessage?.id ?? null}
                   />
                   {/* MathLive's virtual keyboard is retargeted here instead of its
                       default page-covering overlay — see lib/mathKeyboardDock.ts and
@@ -918,6 +998,9 @@ function App() {
                       pendingComposerDocument?.sessionId === activeSessionId ? pendingComposerDocument : null
                     }
                     onPendingAttachmentConsumed={() => setPendingComposerDocument(null)}
+                    editing={editingMessage}
+                    onCancelEdit={handleCancelEdit}
+                    editError={editError}
                   />
                 </>
               )}
@@ -951,7 +1034,11 @@ function App() {
       )}
       {showHelp && <HelpModal token={token} onClose={() => setShowHelp(false)} />}
 
-      <ContextMenu onDeleteSession={handleDeleteSession} />
+      <ContextMenu
+        onDeleteSession={handleDeleteSession}
+        onEditMessage={handleEditMessage}
+        editDisabled={isStreaming}
+      />
 
       {snipDataUrl && (
         <ScreenSnipModal

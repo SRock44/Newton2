@@ -11,10 +11,10 @@ const sessions: ChatSession[] = [
 
 const messagesBySession: Record<string, ChatMessage[]> = {
   s1: [
-    { role: "user", content: "Hello from s1" },
-    { role: "assistant", content: "Here's the file.\n\n[Attached document: doc-1|syllabus.pdf]" },
+    { id: "m1", role: "user", content: "Hello from s1" },
+    { id: "m2", role: "assistant", content: "Here's the file.\n\n[Attached document: doc-1|syllabus.pdf]" },
   ],
-  s2: [{ role: "assistant", content: "Reply in s2" }],
+  s2: [{ id: "m3", role: "assistant", content: "Reply in s2" }],
 };
 
 function makeFakeSocket() {
@@ -37,6 +37,7 @@ vi.mock("./api", () => ({
   getMessages: vi.fn(async (_token: string, sessionId: string) => messagesBySession[sessionId] ?? []),
   endSession: vi.fn(async () => ({})),
   deleteSession: vi.fn(async () => undefined),
+  deleteMessageAndAfter: vi.fn(async () => undefined),
   openChatSocket: vi.fn(() => makeFakeSocket()),
   listTools: vi.fn(async () => []),
   getGamificationStats: vi.fn(async () => ({ streak_days: 0, xp: 0, level: 1, xp_to_next_level: 100 })),
@@ -103,6 +104,7 @@ vi.mock("./auth", async () => {
 });
 
 import {
+  deleteMessageAndAfter,
   deleteSession,
   getAccountStatus,
   getDocumentContent,
@@ -132,6 +134,8 @@ describe("App", () => {
     vi.mocked(openChatSocket).mockClear();
     vi.mocked(signInWithBrowser).mockClear();
     vi.mocked(deleteSession).mockClear();
+    vi.mocked(deleteMessageAndAfter).mockReset();
+    vi.mocked(deleteMessageAndAfter).mockResolvedValue(undefined);
     vi.mocked(listFlashcards).mockClear();
     vi.mocked(listStudyPlan).mockClear();
     vi.mocked(listSessions).mockClear();
@@ -856,6 +860,145 @@ describe("App", () => {
       expect(await screen.findByText(/needs to create and manage this account/i)).toBeInTheDocument();
       expect(screen.queryByTestId("message-list")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
+    });
+  });
+
+  // Message editing (ROADMAP.md): a student can edit a PREVIOUS message they sent.
+  // Editing permanently discards that message's original reply and everything after it
+  // (no branch history/undo), then resends the edited text exactly like a brand new
+  // message. See App.tsx's handleSend/handleEditMessage and ContextMenu.tsx's "Edit
+  // message" item.
+  describe("message editing", () => {
+    async function openMessageContextMenu(text: string) {
+      // Scoped to the message list -- "Hello from s1" (this fixture's first user
+      // message) also doubles as the auto-derived session title shown in several other
+      // places (titlebar, sidebar, main header), so an unscoped screen.findByText would
+      // ambiguously match more than one element.
+      const list = await messageList();
+      const bubble = (await list.findByText(text)).closest('[data-context-menu="message"]');
+      expect(bubble).not.toBeNull();
+      fireEvent.contextMenu(bubble!);
+      return bubble!;
+    }
+
+    it("offers Edit message only on the student's own messages, never on Newton's replies", async () => {
+      await signIn();
+      await (await messageList()).findByText("Hello from s1");
+
+      await openMessageContextMenu("Hello from s1"); // user message
+      expect(await screen.findByRole("menuitem", { name: "Edit message" })).toBeInTheDocument();
+      await userEvent.keyboard("{Escape}");
+
+      await openMessageContextMenu("Here's the file."); // assistant message
+      expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
+    });
+
+    it("clicking Edit populates the composer with the exact original text and marks edit mode", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+
+      await openMessageContextMenu("Hello from s1");
+      await user.click(await screen.findByRole("menuitem", { name: "Edit message" }));
+
+      const textarea = screen.getByPlaceholderText(/ask newton/i) as HTMLTextAreaElement;
+      expect(textarea.value).toBe("Hello from s1");
+      expect(screen.getByText("Editing message")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save edit" })).toBeInTheDocument();
+    });
+
+    it("cancel leaves the composer, the messages, and the delete endpoint completely untouched", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+
+      await openMessageContextMenu("Hello from s1");
+      await user.click(await screen.findByRole("menuitem", { name: "Edit message" }));
+      expect(screen.getByText("Editing message")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.queryByText("Editing message")).not.toBeInTheDocument();
+      expect((screen.getByPlaceholderText(/ask newton/i) as HTMLTextAreaElement).value).toBe("");
+      expect(vi.mocked(deleteMessageAndAfter)).not.toHaveBeenCalled();
+      // The original conversation is exactly as it was.
+      const list = await messageList();
+      expect(await list.findByText("Hello from s1")).toBeInTheDocument();
+      expect(await list.findByText("Here's the file.")).toBeInTheDocument();
+    });
+
+    it("sending an edit calls the delete-and-truncate endpoint before resending, then removes the old reply", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+      const socket = vi.mocked(openChatSocket).mock.results[0]!.value as { send: (d: string) => void };
+
+      const callOrder: string[] = [];
+      vi.mocked(deleteMessageAndAfter).mockImplementation(async () => {
+        callOrder.push("delete");
+      });
+      const originalSend = socket.send;
+      socket.send = (d: string) => {
+        callOrder.push("send");
+        originalSend(d);
+      };
+
+      await openMessageContextMenu("Hello from s1");
+      await user.click(await screen.findByRole("menuitem", { name: "Edit message" }));
+
+      const textarea = screen.getByPlaceholderText(/ask newton/i);
+      await user.clear(textarea);
+      await user.type(textarea, "Hello, edited");
+      await user.click(screen.getByRole("button", { name: "Save edit" }));
+
+      await waitFor(() => expect(vi.mocked(deleteMessageAndAfter)).toHaveBeenCalledWith(expect.any(String), "s1", "m1"));
+      expect(callOrder).toEqual(["delete", "send"]);
+
+      // The old reply (and the edited message's own old copy) are gone locally; the new
+      // edited text is sent as a normal message.
+      const list = await messageList();
+      expect(list.queryByText("Here's the file.")).not.toBeInTheDocument();
+      expect(await list.findByText("Hello, edited")).toBeInTheDocument();
+      expect(screen.queryByText("Editing message")).not.toBeInTheDocument();
+    });
+
+    it("a failed delete shows an error and leaves the original message and conversation untouched", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+
+      vi.mocked(deleteMessageAndAfter).mockRejectedValueOnce(new Error("network down"));
+
+      await openMessageContextMenu("Hello from s1");
+      await user.click(await screen.findByRole("menuitem", { name: "Edit message" }));
+      await user.click(screen.getByRole("button", { name: "Save edit" }));
+
+      expect(await screen.findByText(/couldn.t save that edit/i)).toBeInTheDocument();
+      // Nothing sent, nothing truncated.
+      const list = await messageList();
+      expect(await list.findByText("Hello from s1")).toBeInTheDocument();
+      expect(await list.findByText("Here's the file.")).toBeInTheDocument();
+      expect(list.queryByText("Hello, edited")).not.toBeInTheDocument();
+    });
+
+    it("blocks editing while a reply is streaming, same as sending a new message is blocked", async () => {
+      const user = await signIn();
+      await (await messageList()).findByText("Hello from s1");
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+      const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
+        onmessage: ((event: { data: string }) => void) | null;
+      };
+
+      const textarea = screen.getByPlaceholderText(/ask newton/i);
+      await user.type(textarea, "Explain gravity");
+      await user.keyboard("{Enter}");
+
+      act(() => {
+        socket.onmessage?.({ data: JSON.stringify({ type: "chunk", content: "Gravity is..." }) });
+      });
+      await screen.findByText(/Gravity is/);
+
+      await openMessageContextMenu("Hello from s1");
+      const editItem = await screen.findByRole("menuitem", { name: "Edit message" });
+      expect(editItem).toBeDisabled();
     });
   });
 });

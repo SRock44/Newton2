@@ -53,7 +53,18 @@ function MessageContent({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!streaming) {
+    // The blank-content case (MessageBubble passes a single " " placeholder for an
+    // empty message -- see its own `displayContent || " "`) also covers a brand new
+    // streaming placeholder reusing a PREVIOUS, unrelated message's slot in the list --
+    // e.g. message editing (ROADMAP.md) truncates a finished reply and immediately
+    // appends a fresh `{ content: "", streaming: true }` placeholder at the same array
+    // index, so React (matched by ChatPane's key) reuses this same MessageContent
+    // instance rather than mounting a new one. Content only ever grows during a real
+    // stream, so blank while streaming can only mean a fresh start, never a mid-stream
+    // event worth coalescing -- update immediately rather than let the debounce below
+    // leave the OLD message's rendered text on screen for up to STREAMING_DEBOUNCE_MS
+    // after the new (unrelated) one has already started.
+    if (!streaming || content.trim() === "") {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
