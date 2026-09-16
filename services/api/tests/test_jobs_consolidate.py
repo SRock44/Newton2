@@ -171,10 +171,20 @@ async def test_consolidate_session_does_not_wipe_the_tier1_working_memory_bundle
     rehydration, added separately) of the model's whole recent-conversation context if
     it fired mid-conversation, which it now does (see ROADMAP.md)."""
     user, session = throwaway_session
-    _add_messages(db_session, session.id, [("user", "hi"), ("assistant", "hello")])
+    # Persist-then-append_turn PER message, interleaved -- exactly app/routers/chat.py's
+    # WS handler's real per-turn contract (persist+commit a message, then call
+    # append_turn for that same message), not a single bulk insert followed by two
+    # append_turn calls: with get_bundle's Postgres rehydration now in play, the latter
+    # would leave Postgres already holding BOTH messages by the time the FIRST
+    # append_turn call rehydrates a cold cache, which append_turn's dedup guard doesn't
+    # (and shouldn't) special-case -- it only ever drops an exact tail duplicate of the
+    # turn it's currently appending, matching the one real invariant chat.py guarantees.
+    _add_messages(db_session, session.id, [("user", "hi")])
     await db_session.commit()
-
     await working.append_turn(str(session.id), "user", "hi")
+
+    _add_messages(db_session, session.id, [("assistant", "hello")])
+    await db_session.commit()
     await working.append_turn(str(session.id), "assistant", "hello")
 
     fake = ScriptedToolCallingProvider([[_summary_json("greeting")]])
