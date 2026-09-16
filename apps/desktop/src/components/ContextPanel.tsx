@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getGamificationStats } from "../api";
-import type { GamificationStats } from "../types";
+import type { GamificationStats, MainView } from "../types";
+import { getContextPanelCollapsed, setContextPanelCollapsed } from "../lib/preferences";
 
 interface ContextPanelProps {
   token: string;
@@ -10,6 +11,14 @@ interface ContextPanelProps {
    * active chat — 0 (and hidden) if usage reporting isn't available, e.g. the keyless
    * dev EchoProvider or a BYOK Anthropic key, which don't report token counts. */
   totalTokens?: number;
+  /** Which page is currently showing (see App.tsx's mainView). `messageCount`/
+   * `totalTokens` describe whatever chat session was LAST open, not necessarily the one
+   * on screen right now — App.tsx never clears them on navigating away from chat, since
+   * a student switching to Home and back should land exactly where they left off. This
+   * panel is what needs to stop claiming a conversation is "open" once you've actually
+   * navigated elsewhere, hence gating the "This conversation" / "Tokens used" rows on
+   * `mainView === "chat"` rather than clearing that state itself. */
+  mainView: MainView;
 }
 
 /** Shows what's actually true right now — real session/message counts and live
@@ -17,8 +26,20 @@ interface ContextPanelProps {
  * used to live here too, but that's help content, not live state, so it now lives
  * behind its own on-demand affordance (see HelpModal, opened from the sidebar's "?")
  * instead of permanently competing for space with things that actually change. */
-function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0 }: ContextPanelProps) {
+function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0, mainView }: ContextPanelProps) {
   const [stats, setStats] = useState<GamificationStats | null>(null);
+  const chatOpen = mainView === "chat";
+  // Collapsible, same pattern/rationale as Sidebar.tsx's rail — window chrome, not
+  // account data, persisted locally (see lib/preferences.ts).
+  const [collapsed, setCollapsed] = useState(() => getContextPanelCollapsed());
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      setContextPanelCollapsed(next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -32,22 +53,60 @@ function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0 }: Co
     return () => {
       cancelled = true;
     };
-  }, [token]);
+    // Refetches on every view change, not just once on mount — otherwise this panel's
+    // "Your progress" numbers go stale the moment they drift from whatever else is
+    // reading the same live endpoint (e.g. HomeView's own progress widget, which fetches
+    // fresh every time Home is opened).
+  }, [token, mainView]);
+
+  if (collapsed) {
+    return (
+      <aside className="right-panel right-panel--collapsed">
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          onClick={toggleCollapsed}
+          aria-label="Expand Newton context"
+          title="Expand Newton context"
+        >
+          «
+        </button>
+        {stats && stats.streak_days > 0 && (
+          <div className="right-panel-collapsed-streak" title={`${stats.streak_days} day streak`}>
+            🔥{stats.streak_days}
+          </div>
+        )}
+      </aside>
+    );
+  }
 
   return (
     <aside className="right-panel">
-      <div className="right-panel-header">Newton context</div>
+      <div className="right-panel-header">
+        <span>Newton context</span>
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          onClick={toggleCollapsed}
+          aria-label="Collapse Newton context"
+          title="Collapse Newton context"
+        >
+          »
+        </button>
+      </div>
 
       <div className="panel-section">
         <div className="context-row">
           <span className="context-row-label">Chats</span>
           <span className="context-row-value">{sessionCount}</span>
         </div>
-        <div className="context-row">
-          <span className="context-row-label">This conversation</span>
-          <span className="context-row-value">{messageCount} messages</span>
-        </div>
-        {totalTokens > 0 && (
+        {chatOpen && (
+          <div className="context-row">
+            <span className="context-row-label">This conversation</span>
+            <span className="context-row-value">{messageCount} messages</span>
+          </div>
+        )}
+        {chatOpen && totalTokens > 0 && (
           <div className="context-row">
             <span className="context-row-label">Tokens used</span>
             <span className="context-row-value">{totalTokens.toLocaleString()}</span>

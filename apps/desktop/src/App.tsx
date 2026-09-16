@@ -1208,6 +1208,7 @@ function App() {
             (sum, m) => sum + (m.prompt_tokens ?? 0) + (m.completion_tokens ?? 0),
             0,
           )}
+          mainView={mainView}
         />
       </div>
 
