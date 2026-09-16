@@ -194,6 +194,15 @@ fn show_notepad_window(app: &tauri::AppHandle) {
         .build();
 }
 
+/// The Home dashboard's "New note" quick action and its "Recent documents & notes"
+/// widget's note cards (see HomeView.tsx) both need a way to open the Notepad window
+/// from the MAIN window, not just the tray menu — this is that, a thin invokable
+/// wrapper around show_notepad_window's existing show-or-create logic (unchanged).
+#[tauri::command]
+fn open_notepad_window(app: tauri::AppHandle) {
+    show_notepad_window(&app);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -213,7 +222,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             wait_for_oauth_callback,
-            focus_main_window
+            focus_main_window,
+            open_notepad_window
         ])
         .setup(|app| {
             // "Newton Snip": Ctrl+Alt+N from anywhere captures the screen and hands it to
