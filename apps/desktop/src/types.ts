@@ -133,6 +133,10 @@ export interface GamificationStats {
   xp: number;
   level: number;
   xp_to_next_level: number;
+  messages_sent: number;
+  flashcards_reviewed: number;
+  flashcards_created: number;
+  study_plan_items: number;
 }
 
 export interface PracticeExamQuestion {

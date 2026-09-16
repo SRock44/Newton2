@@ -65,7 +65,11 @@ async def _count(db: AsyncSession, stmt) -> int:
     return (await db.execute(stmt)).scalar_one()
 
 
-async def get_xp(db: AsyncSession, user_id: uuid.UUID) -> int:
+async def _activity_counts(db: AsyncSession, user_id: uuid.UUID) -> dict[str, int]:
+    """The raw counts behind both the XP total and the "Your progress" dashboard
+    widget's breakdown (see HomeView.tsx) -- computed once here so the widget's extra
+    detail is real activity already being queried for XP, not a second set of
+    lookalike numbers that could drift out of sync with it."""
     message_count = await _count(
         db,
         select(func.count())
@@ -82,13 +86,25 @@ async def get_xp(db: AsyncSession, user_id: uuid.UUID) -> int:
     flashcard_count = await _count(
         db, select(func.count()).select_from(Flashcard).where(Flashcard.user_id == user_id)
     )
+    return {
+        "message_count": message_count,
+        "review_count": review_count,
+        "plan_item_count": plan_item_count,
+        "flashcard_count": flashcard_count,
+    }
 
+
+def _xp_for_counts(counts: dict[str, int]) -> int:
     return (
-        message_count * XP_PER_USER_MESSAGE
-        + review_count * XP_PER_FLASHCARD_REVIEW
-        + plan_item_count * XP_PER_STUDY_PLAN_ITEM
-        + flashcard_count * XP_PER_FLASHCARD_GENERATED
+        counts["message_count"] * XP_PER_USER_MESSAGE
+        + counts["review_count"] * XP_PER_FLASHCARD_REVIEW
+        + counts["plan_item_count"] * XP_PER_STUDY_PLAN_ITEM
+        + counts["flashcard_count"] * XP_PER_FLASHCARD_GENERATED
     )
+
+
+async def get_xp(db: AsyncSession, user_id: uuid.UUID) -> int:
+    return _xp_for_counts(await _activity_counts(db, user_id))
 
 
 def level_for_xp(xp: int) -> int:
@@ -97,10 +113,15 @@ def level_for_xp(xp: int) -> int:
 
 async def get_stats(db: AsyncSession, user_id: uuid.UUID) -> dict:
     streak = await get_streak_days(db, user_id)
-    xp = await get_xp(db, user_id)
+    counts = await _activity_counts(db, user_id)
+    xp = _xp_for_counts(counts)
     return {
         "streak_days": streak,
         "xp": xp,
         "level": level_for_xp(xp),
         "xp_to_next_level": XP_PER_LEVEL - (xp % XP_PER_LEVEL),
+        "messages_sent": counts["message_count"],
+        "flashcards_reviewed": counts["review_count"],
+        "flashcards_created": counts["flashcard_count"],
+        "study_plan_items": counts["plan_item_count"],
     }

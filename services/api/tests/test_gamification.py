@@ -140,7 +140,16 @@ async def test_get_xp_sums_weighted_activity_counts(db_session, throwaway_user_w
 async def test_get_stats_shape(db_session, throwaway_user_with_session):
     user, _session = throwaway_user_with_session
     stats = await get_stats(db_session, user.id)
-    assert stats == {"streak_days": 0, "xp": 0, "level": 1, "xp_to_next_level": 100}
+    assert stats == {
+        "streak_days": 0,
+        "xp": 0,
+        "level": 1,
+        "xp_to_next_level": 100,
+        "messages_sent": 0,
+        "flashcards_reviewed": 0,
+        "flashcards_created": 0,
+        "study_plan_items": 0,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +166,16 @@ async def test_stats_endpoint_returns_the_expected_shape(http_client, auth_heade
     resp = await http_client.get("/gamification/stats", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body.keys()) == {"streak_days", "xp", "level", "xp_to_next_level"}
+    assert set(body.keys()) == {
+        "streak_days",
+        "xp",
+        "level",
+        "xp_to_next_level",
+        "messages_sent",
+        "flashcards_reviewed",
+        "flashcards_created",
+        "study_plan_items",
+    }
     assert isinstance(body["streak_days"], int)
     assert isinstance(body["xp"], int)
     assert body["level"] >= 1
