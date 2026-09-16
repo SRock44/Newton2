@@ -1,7 +1,12 @@
 import json
+import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+
 from app.core.redis_client import get_redis
+from app.db.base import SessionLocal
+from app.db.models import ChatMessage
 
 BUNDLE_TTL_SECONDS = 2 * 60 * 60
 MAX_TURNS = 20
@@ -38,14 +43,84 @@ def _bundle_key(session_id: str) -> str:
     return f"newton:session:{session_id}:bundle"
 
 
+async def _rehydrate_from_postgres(session_id: str) -> dict | None:
+    """Cold-cache recovery for get_bundle below (real, confirmed bug -- see
+    ROADMAP.md): a student returning to an existing chat after more than
+    BUNDLE_TTL_SECONDS/2 hours idle used to get a Tutor with genuinely zero memory of
+    that conversation, even though the full transcript is sitting right there in
+    Postgres -- app/agents/tutor.py's run_tutor only ever reads bundle["turns"], never
+    ChatMessage directly, and get_bundle used to just return an empty default on any
+    Redis miss with no fallback at all.
+
+    Opens its own short-lived DB session (the same self-contained pattern app/agents/
+    tutor.py's _load_user and app/routers/chat.py's _gather_memory_context helpers
+    already use) rather than threading one through get_bundle's signature -- get_bundle
+    is called from several places in THIS module alone (append_turn, set_profile_facts,
+    set_retrieved_chunks, mark_consolidated), not just app/agents/tutor.py's run_tutor,
+    and rehydration has to work correctly no matter which of those hits the cold cache
+    first. That matters concretely: app/routers/chat.py's WS handler calls append_turn
+    with the student's new message BEFORE it calls run_tutor, so if rehydration were
+    only bolted onto run_tutor's own get_bundle call, append_turn's earlier call would
+    already have overwritten a cold Redis key with a single-turn bundle by the time
+    run_tutor asked for it. Putting rehydration inside get_bundle itself -- its one
+    real home -- means every call site benefits uniformly for free.
+
+    Pulls back only the most recent MAX_TURNS messages, the same window size
+    append_turn already caps the live `turns` list at, so a cold rehydrate and a warm
+    cache read are indistinguishable to run_tutor. Returns None (never an empty-turns
+    dict) when the session genuinely has no prior messages at all -- that's the ONE
+    query this does either way (there's no separate, extra existence check), so a
+    brand-new session still costs exactly one cheap query, same as before this fix, and
+    still gets no Redis write."""
+    async with SessionLocal() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(ChatMessage)
+                    .where(ChatMessage.session_id == uuid.UUID(session_id))
+                    .order_by(ChatMessage.created_at.desc())
+                    .limit(MAX_TURNS)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    if not rows:
+        return None
+    rows.reverse()  # DESC -> chronological: oldest of the window first, like append_turn
+    return {
+        "turns": [{"role": row.role, "content": row.content} for row in rows],
+        "profile_facts": [],
+        "retrieved_chunks": [],
+        # Reset, not carried over from nothing (there IS nothing to carry over -- this
+        # is a fresh rehydration). The durable Tier-3 facts layer, not this counter, is
+        # what's supposed to carry "what we covered before this gap" across a cold
+        # start, so starting the periodic-consolidation clock over from 0 here is the
+        # right default rather than trying to reconstruct a stale count.
+        "turns_since_consolidation": 0,
+        "updated_at": None,
+    }
+
+
 async def get_bundle(session_id: str) -> dict:
     """Tier 1: the assembled context bundle for an active session — recent turns plus
     retrieved profile facts and retrieved document chunks, cached in Redis and reused
-    across turns instead of being rebuilt from Postgres on every message."""
+    across turns instead of being rebuilt from Postgres on every message.
+
+    On a cold cache (missing/expired Redis key), rehydrates from Postgres -- see
+    _rehydrate_from_postgres above -- rather than silently returning an empty bundle
+    for a session that actually has history. The rehydrated bundle is cached back into
+    Redis immediately (_save), so this Postgres round trip is paid once per cold start,
+    not on every subsequent turn in the same active stretch. A genuinely new/empty
+    session still gets the plain empty default with no Redis write, exactly as before."""
     raw = await get_redis().get(_bundle_key(session_id))
     if raw:
         return json.loads(raw)
-    return {"turns": [], "profile_facts": [], "retrieved_chunks": [], "updated_at": None}
+    bundle = await _rehydrate_from_postgres(session_id)
+    if bundle is None:
+        return {"turns": [], "profile_facts": [], "retrieved_chunks": [], "updated_at": None}
+    await _save(session_id, bundle)
+    return bundle
 
 
 async def _save(session_id: str, bundle: dict) -> None:

@@ -123,11 +123,13 @@ async def consolidate_session(ctx: dict, session_id: str) -> None:
     # session's end (see app/memory/working.py's CONSOLIDATION_INTERVAL_TURNS / the WS
     # handler's trigger) -- invalidate() drops the ENTIRE Tier-1 bundle, including the
     # raw sliding "turns" window (app.agents.tutor.run_tutor's only source of recent-
-    # conversation context; there is no fallback rebuild from Postgres), which would
-    # silently erase the model's memory of the conversation so far the moment this job
-    # finishes, mid-session. The other half of what invalidate() was for -- forcing a
-    # fresh read of Tier 3 profile facts instead of serving a stale cached copy -- is
-    # already handled unconditionally on every turn regardless (see
+    # conversation context). get_bundle now rehydrates a dropped bundle's turns from
+    # Postgres on the next read rather than returning empty (see its own docstring), so
+    # this would no longer cause genuine memory loss the way it used to -- but it would
+    # still force an unnecessary, avoidable Postgres round trip on this session's very
+    # next turn, mid-session, for no benefit. The other half of what invalidate() was
+    # for -- forcing a fresh read of Tier 3 profile facts instead of serving a stale
+    # cached copy -- is already handled unconditionally on every turn regardless (see
     # app/routers/chat.py's _gather_memory_context + set_profile_facts/
     # set_retrieved_chunks, called before every single reply), so there is nothing left
     # here that actually needs forcing. Safe for the original end-of-session trigger

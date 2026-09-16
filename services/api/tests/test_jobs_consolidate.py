@@ -153,9 +153,9 @@ async def test_consolidate_session_does_not_wipe_the_tier1_working_memory_bundle
 ):
     """The regression this is guarding against: consolidate_session used to call
     working.invalidate() unconditionally, which is fine at a real session's end but
-    would silently erase the model's whole recent-conversation context (app.agents.
-    tutor.run_tutor's only source of it -- no Postgres fallback) if it fired
-    mid-conversation, which it now does (see ROADMAP.md)."""
+    would force an unnecessary Postgres rehydration (see get_bundle's cold-start
+    rehydration, added separately) of the model's whole recent-conversation context if
+    it fired mid-conversation, which it now does (see ROADMAP.md)."""
     user, session = throwaway_session
     _add_messages(db_session, session.id, [("user", "hi"), ("assistant", "hello")])
     await db_session.commit()
