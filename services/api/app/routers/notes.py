@@ -31,12 +31,17 @@ class NoteAnnotateRequest(BaseModel):
     action: AnnotateAction
 
 
+class NoteTagsUpdate(BaseModel):
+    tags: list[str]
+
+
 def _note_meta(document: Document) -> dict:
     return {
         "id": str(document.id),
         "title": document.filename,
         "created_at": document.created_at.isoformat(),
         "updated_at": document.updated_at.isoformat(),
+        "tags": document.tags or [],
     }
 
 
@@ -118,6 +123,35 @@ async def update_note(
     document = await _get_owned_note(db, note_id, user.id)
     title = body.title.strip() or document.filename
     document = await update_document_content(db, document, body.content, filename=title)
+    return _note_meta(document)
+
+
+@router.patch("/{note_id}/tags")
+async def update_note_tags(
+    note_id: uuid.UUID,
+    body: NoteTagsUpdate,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Sets a note's user-created, optional course tags -- deliberately separate from
+    the content-autosave PATCH /notes/{note_id} above (which is on a multi-second
+    client debounce): a student clicking to add/remove a tag wants that persisted
+    immediately, not after that delay, and doesn't need a re-chunk/re-embed (tags are
+    never part of the note's RAG-retrieved content)."""
+    user = await get_or_create_user(db, claims)
+    document = await _get_owned_note(db, note_id, user.id)
+    # Trim, drop blanks, dedupe while preserving order -- free-text labels, no
+    # normalization beyond "don't store garbage the UI would just have to filter again".
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for tag in body.tags:
+        tag = tag.strip()
+        if tag and tag not in seen:
+            seen.add(tag)
+            cleaned.append(tag)
+    document.tags = cleaned
+    await db.commit()
+    await db.refresh(document)
     return _note_meta(document)
 
 

@@ -2,7 +2,7 @@ import uuid
 from datetime import date as date_, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -195,6 +195,13 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # User-created, optional course tags (Newton Notepad, ROADMAP.md) -- free-text
+    # labels a student assigns to their OWN notes, e.g. "Bio 101" or "Midterm 2". Only
+    # ever set/read through PATCH /notes/{id}/tags (app/routers/notes.py), deliberately
+    # separate from the content-autosave PATCH /notes/{id} so clicking a tag pill is
+    # reflected immediately rather than waiting on that debounce. Meaningless (always
+    # []) on kind="upload" documents -- no UI ever surfaces it for plain uploads.
+    tags: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
 
 
 class DocumentChunk(Base):

@@ -129,6 +129,73 @@ async def test_delete_note_cleans_up_chunks_same_as_document_deletion(http_clien
     assert await db_session.get(Document, uuid.UUID(note_id)) is None
 
 
+async def test_new_note_has_no_tags_by_default(http_client, auth_headers, db_session):
+    resp = await http_client.post("/notes", headers=auth_headers, json={"title": "Untagged"})
+    body = resp.json()
+    assert body["tags"] == []
+
+    document = await db_session.get(Document, uuid.UUID(body["id"]))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_patch_tags_sets_trims_dedupes_and_persists(http_client, auth_headers, db_session):
+    create_resp = await http_client.post("/notes", headers=auth_headers, json={"title": "Tag me"})
+    note_id = create_resp.json()["id"]
+
+    resp = await http_client.patch(
+        f"/notes/{note_id}/tags",
+        headers=auth_headers,
+        json={"tags": [" Bio 101 ", "Midterm", "Bio 101", "", "  "]},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["tags"] == ["Bio 101", "Midterm"]
+
+    # Persisted -- a fresh GET reflects it, not just the PATCH response.
+    get_resp = await http_client.get(f"/notes/{note_id}", headers=auth_headers)
+    assert get_resp.json()["tags"] == ["Bio 101", "Midterm"]
+
+    list_resp = await http_client.get("/notes", headers=auth_headers)
+    listed = next(n for n in list_resp.json() if n["id"] == note_id)
+    assert listed["tags"] == ["Bio 101", "Midterm"]
+
+    document = await db_session.get(Document, uuid.UUID(note_id))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_patch_tags_does_not_touch_content_or_updated_at_debounce_path(
+    http_client, auth_headers, db_session
+):
+    """Tags are a separate, immediate write -- setting them must not require or disturb
+    the note's content."""
+    create_resp = await http_client.post("/notes", headers=auth_headers, json={"title": "Content untouched"})
+    note_id = create_resp.json()["id"]
+    await http_client.patch(
+        f"/notes/{note_id}", headers=auth_headers, json={"title": "Content untouched", "content": "real content"}
+    )
+
+    tags_resp = await http_client.patch(f"/notes/{note_id}/tags", headers=auth_headers, json={"tags": ["Lecture"]})
+    assert tags_resp.status_code == 200
+
+    get_resp = await http_client.get(f"/notes/{note_id}", headers=auth_headers)
+    assert get_resp.json()["content"] == "real content"
+    assert get_resp.json()["tags"] == ["Lecture"]
+
+    document = await db_session.get(Document, uuid.UUID(note_id))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_patch_tags_404s_for_another_users_note(http_client, auth_headers, db_session):
+    user, document = await _make_note_and_owner(db_session)
+    resp = await http_client.patch(
+        f"/notes/{document.id}/tags", headers=auth_headers, json={"tags": ["nope"]}
+    )
+    assert resp.status_code == 404
+
+    await db_session.execute(delete(Document).where(Document.id == document.id))
+    await db_session.execute(delete(User).where(User.id == user.id))
+    await db_session.commit()
+
+
 async def test_notes_list_sorted_by_most_recently_updated(http_client, auth_headers, db_session):
     first = await http_client.post("/notes", headers=auth_headers, json={"title": "Older"})
     second = await http_client.post("/notes", headers=auth_headers, json={"title": "Newer"})
