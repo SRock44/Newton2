@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { getGamificationStats } from "../api";
 import type { GamificationStats, MainView } from "../types";
-import { getContextPanelCollapsed, setContextPanelCollapsed } from "../lib/preferences";
+import {
+  CONTEXT_PANEL_DEFAULT_WIDTH,
+  CONTEXT_PANEL_MAX_WIDTH,
+  CONTEXT_PANEL_MIN_WIDTH,
+  getContextPanelCollapsed,
+  getContextPanelWidth,
+  setContextPanelCollapsed,
+  setContextPanelWidth,
+} from "../lib/preferences";
+import { usePanelResize } from "../lib/usePanelResize";
+import PanelResizeHandle from "./PanelResizeHandle";
 
 interface ContextPanelProps {
   token: string;
@@ -32,6 +42,18 @@ function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0, main
   // Collapsible, same pattern/rationale as Sidebar.tsx's rail — window chrome, not
   // account data, persisted locally (see lib/preferences.ts).
   const [collapsed, setCollapsed] = useState(() => getContextPanelCollapsed());
+  // Drag-to-resize, mirrored from Sidebar.tsx: this panel is on the RIGHT edge of the
+  // window, so its handle is on its LEFT edge and dragging right makes it narrower —
+  // hence direction: -1. Everything else (CSS custom property, persist-on-mouseup,
+  // keyboard nudging) is the same shared hook.
+  const resize = usePanelResize({
+    initial: getContextPanelWidth(),
+    defaultWidth: CONTEXT_PANEL_DEFAULT_WIDTH,
+    min: CONTEXT_PANEL_MIN_WIDTH,
+    max: CONTEXT_PANEL_MAX_WIDTH,
+    direction: -1,
+    persist: setContextPanelWidth,
+  });
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -81,64 +103,78 @@ function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0, main
   }
 
   return (
-    <aside className="right-panel">
-      <div className="right-panel-header">
-        <span>Newton context</span>
-        <button
-          type="button"
-          className="sidebar-collapse-toggle"
-          onClick={toggleCollapsed}
-          aria-label="Collapse Newton context"
-          title="Collapse Newton context"
-        >
-          »
-        </button>
-      </div>
-
-      <div className="panel-section">
-        <div className="context-row">
-          <span className="context-row-label">Chats</span>
-          <span className="context-row-value">{sessionCount}</span>
+    <>
+      {/* Handle FIRST in DOM order — it sits on this panel's LEFT edge, so it precedes
+          the panel as a flex item of .app-shell. The sidebar's mirror image, where the
+          handle follows its panel instead. */}
+      <PanelResizeHandle
+        label="Resize Newton context"
+        min={CONTEXT_PANEL_MIN_WIDTH}
+        max={CONTEXT_PANEL_MAX_WIDTH}
+        {...resize}
+      />
+      <aside
+        className="right-panel"
+        style={{ ["--context-panel-width" as string]: `${resize.width}px` }}
+      >
+        <div className="right-panel-header">
+          <span>Newton context</span>
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={toggleCollapsed}
+            aria-label="Collapse Newton context"
+            title="Collapse Newton context"
+          >
+            »
+          </button>
         </div>
-        {chatOpen && (
-          <div className="context-row">
-            <span className="context-row-label">This conversation</span>
-            <span className="context-row-value">{messageCount} messages</span>
-          </div>
-        )}
-        {chatOpen && totalTokens > 0 && (
-          <div className="context-row">
-            <span className="context-row-label">Tokens used</span>
-            <span className="context-row-value">{totalTokens.toLocaleString()}</span>
-          </div>
-        )}
-      </div>
 
-      {stats && (
         <div className="panel-section">
-          <div className="panel-section-title">Your progress</div>
-          <div className="progress-stats">
-            <div className="progress-stat">
-              <span className="progress-stat-value">
-                {stats.streak_days > 0 ? `🔥 ${stats.streak_days}` : "0"}
-              </span>
-              <span className="progress-stat-label">day streak</span>
-            </div>
-            <div className="progress-stat">
-              <span className="progress-stat-value">Lv {stats.level}</span>
-              <span className="progress-stat-label">{stats.xp} XP</span>
-            </div>
+          <div className="context-row">
+            <span className="context-row-label">Chats</span>
+            <span className="context-row-value">{sessionCount}</span>
           </div>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${100 - (stats.xp_to_next_level / 100) * 100}%` }}
-            />
-          </div>
-          <div className="progress-bar-caption">{stats.xp_to_next_level} XP to level {stats.level + 1}</div>
+          {chatOpen && (
+            <div className="context-row">
+              <span className="context-row-label">This conversation</span>
+              <span className="context-row-value">{messageCount} messages</span>
+            </div>
+          )}
+          {chatOpen && totalTokens > 0 && (
+            <div className="context-row">
+              <span className="context-row-label">Tokens used</span>
+              <span className="context-row-value">{totalTokens.toLocaleString()}</span>
+            </div>
+          )}
         </div>
-      )}
-    </aside>
+
+        {stats && (
+          <div className="panel-section">
+            <div className="panel-section-title">Your progress</div>
+            <div className="progress-stats">
+              <div className="progress-stat">
+                <span className="progress-stat-value">
+                  {stats.streak_days > 0 ? `🔥 ${stats.streak_days}` : "0"}
+                </span>
+                <span className="progress-stat-label">day streak</span>
+              </div>
+              <div className="progress-stat">
+                <span className="progress-stat-value">Lv {stats.level}</span>
+                <span className="progress-stat-label">{stats.xp} XP</span>
+              </div>
+            </div>
+            <div className="progress-bar-track">
+              <div
+                className="progress-bar-fill"
+                style={{ width: `${100 - (stats.xp_to_next_level / 100) * 100}%` }}
+              />
+            </div>
+            <div className="progress-bar-caption">{stats.xp_to_next_level} XP to level {stats.level + 1}</div>
+          </div>
+        )}
+      </aside>
+    </>
   );
 }
 

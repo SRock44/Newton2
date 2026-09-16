@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ContextPanel from "../ContextPanel";
 import * as api from "../../api";
+import {
+  CONTEXT_PANEL_DEFAULT_WIDTH,
+  CONTEXT_PANEL_MAX_WIDTH,
+  CONTEXT_PANEL_MIN_WIDTH,
+  getContextPanelWidth,
+} from "../../lib/preferences";
 
 vi.mock("../../api", async () => {
   const actual = await vi.importActual<typeof api>("../../api");
@@ -100,5 +106,68 @@ describe("ContextPanel", () => {
 
     const second = render(<ContextPanel token="tok" sessionCount={3} messageCount={7} mainView="chat" />);
     expect(second.container.querySelector(".right-panel--collapsed")).toBeInTheDocument();
+  });
+
+  describe("drag-to-resize", () => {
+    function panelWidthVar(container: HTMLElement): string | undefined {
+      const el = container.querySelector(".right-panel") as HTMLElement | null;
+      return el?.style.getPropertyValue("--context-panel-width");
+    }
+
+    function drag(handle: HTMLElement, fromX: number, toX: number) {
+      fireEvent.mouseDown(handle, { button: 0, clientX: fromX });
+      fireEvent.mouseMove(window, { clientX: toX });
+      fireEvent.mouseUp(window, { clientX: toX });
+    }
+
+    it("renders a resize handle, seeded at the shipped default width", () => {
+      const { container } = render(<ContextPanel token="tok" sessionCount={1} messageCount={1} mainView="chat" />);
+
+      expect(screen.getByRole("separator", { name: "Resize Newton context" })).toBeInTheDocument();
+      expect(panelWidthVar(container)).toBe(`${CONTEXT_PANEL_DEFAULT_WIDTH}px`);
+    });
+
+    it("is MIRRORED from the sidebar: dragging LEFT widens this panel, because it lives on the right edge", () => {
+      const { container } = render(<ContextPanel token="tok" sessionCount={1} messageCount={1} mainView="chat" />);
+      drag(screen.getByRole("separator", { name: "Resize Newton context" }), 800, 760);
+
+      expect(panelWidthVar(container)).toBe(`${CONTEXT_PANEL_DEFAULT_WIDTH + 40}px`);
+    });
+
+    it("dragging right narrows it", () => {
+      const { container } = render(<ContextPanel token="tok" sessionCount={1} messageCount={1} mainView="chat" />);
+      drag(screen.getByRole("separator", { name: "Resize Newton context" }), 800, 820);
+
+      expect(panelWidthVar(container)).toBe(`${CONTEXT_PANEL_DEFAULT_WIDTH - 20}px`);
+    });
+
+    it("clamps to its own min/max", () => {
+      const { container } = render(<ContextPanel token="tok" sessionCount={1} messageCount={1} mainView="chat" />);
+      const handle = screen.getByRole("separator", { name: "Resize Newton context" });
+
+      drag(handle, 800, 2000);
+      expect(panelWidthVar(container)).toBe(`${CONTEXT_PANEL_MIN_WIDTH}px`);
+
+      drag(handle, 800, 0);
+      expect(panelWidthVar(container)).toBe(`${CONTEXT_PANEL_MAX_WIDTH}px`);
+    });
+
+    it("persists on mouseup and restores on remount, under its own storage key", () => {
+      const first = render(<ContextPanel token="tok" sessionCount={1} messageCount={1} mainView="chat" />);
+      drag(screen.getByRole("separator", { name: "Resize Newton context" }), 800, 750);
+
+      expect(getContextPanelWidth()).toBe(CONTEXT_PANEL_DEFAULT_WIDTH + 50);
+      first.unmount();
+
+      const second = render(<ContextPanel token="tok" sessionCount={1} messageCount={1} mainView="chat" />);
+      expect(panelWidthVar(second.container)).toBe(`${CONTEXT_PANEL_DEFAULT_WIDTH + 50}px`);
+    });
+
+    it("hides the handle while collapsed", () => {
+      render(<ContextPanel token="tok" sessionCount={1} messageCount={1} mainView="chat" />);
+      fireEvent.click(screen.getByRole("button", { name: "Collapse Newton context" }));
+
+      expect(screen.queryByRole("separator", { name: "Resize Newton context" })).not.toBeInTheDocument();
+    });
   });
 });

@@ -22,13 +22,35 @@
   --color-text-muted: #6d6250;
   --color-text-faint: #a2947a;
 
-  /* Brand accent — a deep cobalt-ink blue, the app's real identity */
-  --color-accent: #2f4d8c;
-  --color-accent-hover: #263e70;
-  --color-accent-active: #1e325a;
-  --color-accent-contrast: #fdf9f0;
-  --color-accent-tint: rgba(47, 77, 140, 0.12);
-  --color-accent-tint-strong: rgba(47, 77, 140, 0.22);
+  /* Brand accent — a deep cobalt-ink blue, the app's real identity.
+   *
+   * Split into two source-of-truth sets (--accent-l-* for light, --accent-d-* for dark)
+   * that the theme blocks below simply POINT --color-accent* at. That indirection is
+   * what lets Settings → Appearance offer accent presets without duplicating the whole
+   * light/dark theme machinery per preset: a preset block (see "Accent presets" further
+   * down) overrides these twelve values in ONE place, and both themes pick up its
+   * light or dark half automatically. Everything in the app still reads only
+   * --color-accent* — nothing consumes --accent-l-* and --accent-d-* directly. */
+  --accent-l: #2f4d8c;
+  --accent-l-hover: #263e70;
+  --accent-l-active: #1e325a;
+  --accent-l-contrast: #fdf9f0;
+  --accent-l-tint: rgba(47, 77, 140, 0.12);
+  --accent-l-tint-strong: rgba(47, 77, 140, 0.22);
+
+  --accent-d: #7c9de8;
+  --accent-d-hover: #93b1ec;
+  --accent-d-active: #648ae0;
+  --accent-d-contrast: #10182a;
+  --accent-d-tint: rgba(124, 157, 232, 0.18);
+  --accent-d-tint-strong: rgba(124, 157, 232, 0.3);
+
+  --color-accent: var(--accent-l);
+  --color-accent-hover: var(--accent-l-hover);
+  --color-accent-active: var(--accent-l-active);
+  --color-accent-contrast: var(--accent-l-contrast);
+  --color-accent-tint: var(--accent-l-tint);
+  --color-accent-tint-strong: var(--accent-l-tint-strong);
 
   /* Semantic states sit deliberately cool (vs. the warm accent) so they never
      get mistaken for it, each with a matching tint for banners/badges. */
@@ -109,15 +131,36 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/* ---------------------------------------------------------------------
+ * Dark mode
+ *
+ * There are two ways to be in dark mode, and they need identical palettes:
+ *
+ *   1. `@media (prefers-color-scheme: dark)` — the OS decides. This is what the app
+ *      shipped with, and it is still exactly what Settings → Appearance's "System"
+ *      option means: no `data-theme` attribute at all, so the media query is the only
+ *      thing in play. The `:not([data-theme="light"])` guard is what lets an explicit
+ *      "Light" choice win on a dark-mode OS.
+ *   2. `:root[data-theme="dark"]` — the student explicitly chose dark in Settings
+ *      (see lib/preferences.ts's applyAppearance, which writes the attribute on <html>).
+ *
+ * CSS has no way to share one declaration block across a media query and a plain
+ * selector, so the palette below is written twice, deliberately, and the two copies
+ * must be kept in sync. Accent colors are the exception: they're the --accent-d-*
+ * indirection from :root above, so an accent preset only ever has to be defined once.
+ *
+ * A warm charcoal — brown-black, not the cold near-black of the previous pass — so dark
+ * mode still reads as the same "ink and paper" product rather than a generic dark-mode
+ * chat app. The sidebar/right-panel sit a shade *darker* than the main content pane (a
+ * bookshelf behind an open page), the opposite relationship of light mode's
+ * cream-on-parchment — either way the flanking panels are never the same tone as the
+ * content.
+ * ------------------------------------------------------------------- */
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
-    /* A warm charcoal — brown-black, not the cold near-black of the previous
-       pass — so dark mode still reads as the same "ink and paper" product
-       rather than a generic dark-mode chat app. The sidebar/right-panel sit a
-       shade *darker* than the main content pane (a bookshelf behind an open
-       page), the opposite relationship of light mode's cream-on-parchment —
-       either way the flanking panels are never the same tone as the content. */
+
     --color-bg: #1c1712;
     --color-surface: #251f18;
     --color-surface-2: #2d251c;
@@ -129,12 +172,12 @@
     --color-text-muted: #b3a488;
     --color-text-faint: #7c6f59;
 
-    --color-accent: #7c9de8;
-    --color-accent-hover: #93b1ec;
-    --color-accent-active: #648ae0;
-    --color-accent-contrast: #10182a;
-    --color-accent-tint: rgba(124, 157, 232, 0.18);
-    --color-accent-tint-strong: rgba(124, 157, 232, 0.3);
+    --color-accent: var(--accent-d);
+    --color-accent-hover: var(--accent-d-hover);
+    --color-accent-active: var(--accent-d-active);
+    --color-accent-contrast: var(--accent-d-contrast);
+    --color-accent-tint: var(--accent-d-tint);
+    --color-accent-tint-strong: var(--accent-d-tint-strong);
 
     --color-success: #74bf80;
     --color-success-tint: rgba(116, 191, 128, 0.16);
@@ -149,6 +192,121 @@
     --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
   }
+}
+
+/* The explicit "Dark" choice — same palette as the media query above, see that block's
+   comment for why this is duplicated rather than shared. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #1c1712;
+  --color-surface: #251f18;
+  --color-surface-2: #2d251c;
+  --color-surface-3: #392f23;
+  --color-sidebar: #150f0b;
+  --color-border: #3c3021;
+  --color-border-2: #2e2519;
+  --color-text: #f1e7d6;
+  --color-text-muted: #b3a488;
+  --color-text-faint: #7c6f59;
+
+  --color-accent: var(--accent-d);
+  --color-accent-hover: var(--accent-d-hover);
+  --color-accent-active: var(--accent-d-active);
+  --color-accent-contrast: var(--accent-d-contrast);
+  --color-accent-tint: var(--accent-d-tint);
+  --color-accent-tint-strong: var(--accent-d-tint-strong);
+
+  --color-success: #74bf80;
+  --color-success-tint: rgba(116, 191, 128, 0.16);
+  --color-warning: #d3b354;
+  --color-warning-tint: rgba(211, 179, 84, 0.16);
+  --color-danger: #e28080;
+  --color-danger-tint: rgba(226, 128, 128, 0.16);
+  --color-info: #64b3d1;
+  --color-info-tint: rgba(100, 179, 209, 0.16);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------------------------------------------------------------------
+ * Accent presets (Settings → Appearance)
+ *
+ * Each preset redefines the twelve --accent-l-* and --accent-d-* source values from :root
+ * in ONE block; the light/dark blocks above already map them onto --color-accent*, so a
+ * preset works identically in both themes (and under "System") with no per-theme
+ * duplication. Every preset ships a genuinely different hue in each theme — a dark,
+ * saturated ink for light backgrounds and a lighter, desaturated wash for dark ones —
+ * because a single hex that reads well on parchment is unreadable on charcoal.
+ *
+ * "cobalt" is the app's existing default and deliberately has NO block here: it is the
+ * base :root values, and applyAppearance removes data-accent entirely for it.
+ * ------------------------------------------------------------------- */
+
+:root[data-accent="forest"] {
+  --accent-l: #2f6b46;
+  --accent-l-hover: #265839;
+  --accent-l-active: #1d452c;
+  --accent-l-contrast: #fdf9f0;
+  --accent-l-tint: rgba(47, 107, 70, 0.13);
+  --accent-l-tint-strong: rgba(47, 107, 70, 0.24);
+
+  --accent-d: #6fbd88;
+  --accent-d-hover: #8cd0a1;
+  --accent-d-active: #56ab72;
+  --accent-d-contrast: #0f2318;
+  --accent-d-tint: rgba(111, 189, 136, 0.18);
+  --accent-d-tint-strong: rgba(111, 189, 136, 0.3);
+}
+
+:root[data-accent="violet"] {
+  --accent-l: #5a4292;
+  --accent-l-hover: #4a3579;
+  --accent-l-active: #3b2a61;
+  --accent-l-contrast: #fdf9f0;
+  --accent-l-tint: rgba(90, 66, 146, 0.13);
+  --accent-l-tint-strong: rgba(90, 66, 146, 0.24);
+
+  --accent-d: #ab92ee;
+  --accent-d-hover: #bda9f2;
+  --accent-d-active: #957ae6;
+  --accent-d-contrast: #1a1230;
+  --accent-d-tint: rgba(171, 146, 238, 0.18);
+  --accent-d-tint-strong: rgba(171, 146, 238, 0.3);
+}
+
+:root[data-accent="amber"] {
+  --accent-l: #9a6414;
+  --accent-l-hover: #7f5210;
+  --accent-l-active: #65410c;
+  --accent-l-contrast: #fffaf0;
+  --accent-l-tint: rgba(154, 100, 20, 0.13);
+  --accent-l-tint-strong: rgba(154, 100, 20, 0.24);
+
+  --accent-d: #e0a94e;
+  --accent-d-hover: #ebbb6c;
+  --accent-d-active: #d1993a;
+  --accent-d-contrast: #2a1c06;
+  --accent-d-tint: rgba(224, 169, 78, 0.18);
+  --accent-d-tint-strong: rgba(224, 169, 78, 0.3);
+}
+
+:root[data-accent="teal"] {
+  --accent-l: #1f6b73;
+  --accent-l-hover: #19565c;
+  --accent-l-active: #134348;
+  --accent-l-contrast: #f4fbfb;
+  --accent-l-tint: rgba(31, 107, 115, 0.13);
+  --accent-l-tint-strong: rgba(31, 107, 115, 0.24);
+
+  --accent-d: #63bfc9;
+  --accent-d-hover: #82cfd7;
+  --accent-d-active: #4aaeb9;
+  --accent-d-contrast: #06242a;
+  --accent-d-tint: rgba(99, 191, 201, 0.18);
+  --accent-d-tint-strong: rgba(99, 191, 201, 0.3);
 }
 
 * {
@@ -353,6 +511,36 @@ textarea:focus-visible,
 .btn-secondary-sm--danger:hover:not(:disabled) {
   color: var(--color-danger);
   background-color: var(--color-danger-tint);
+}
+
+/* The one genuinely destructive button shape in the app — currently only account
+   deletion. Deliberately NOT accent-colored: it must never be mistaken for the primary
+   action, and it must not change color when a student picks a red-ish accent preset,
+   which is why it uses the --color-danger semantic token rather than --color-accent.
+   Same geometry as .btn-primary so it sits correctly beside .btn-secondary in a row. */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background-color: transparent;
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--color-danger-tint);
+}
+
+.btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* A translucent, semantically-colored inline notice — errors (most common),
@@ -562,9 +750,15 @@ textarea:focus-visible,
 
 /* ---------- Sidebar ---------- */
 
+/* --sidebar-width is set inline on the element by Sidebar.tsx's drag handle (see
+   lib/usePanelResize.ts); the fallback here is the shipped default, so the rule still
+   reads correctly on its own and nothing breaks if the preference is missing. The
+   min-width floor is mirrored by SIDEBAR_MIN_WIDTH in lib/preferences.ts so the drag
+   clamp and the stylesheet agree rather than fighting. */
 .sidebar {
-  width: 236px;
+  width: var(--sidebar-width, 236px);
   min-width: 188px;
+  max-width: 420px;
   flex-shrink: 0;
   background-color: var(--color-sidebar);
   border-right: 1px solid var(--color-border);
@@ -941,6 +1135,55 @@ textarea:focus-visible,
   border-color: var(--color-accent);
 }
 
+/* ---------- Drag-to-resize handles (sidebar + Newton context panel) ----------
+ *
+ * Rendered by Sidebar.tsx / ContextPanel.tsx as SIBLINGS of their panel, i.e. as flex
+ * items of .app-shell — not absolutely-positioned children, which the sidebar's
+ * `overflow: hidden` would clip and the context panel's `overflow-y: auto` would scroll
+ * away. The negative horizontal margin pulls it back over the panel's 1px border so the
+ * grab target straddles the seam and costs the layout nothing.
+ *
+ * Invisible at rest (the existing panel border is the only visual seam); a hover/focus/
+ * drag paints an accent hairline down it, so the affordance appears exactly when it's
+ * relevant instead of adding a permanent third vertical line to the chrome. */
+
+.panel-resize-handle {
+  flex: 0 0 auto;
+  width: 7px;
+  margin: 0 -3px;
+  /* position + z-index together: a z-index on a static flex item does nothing, and
+     without it the neighbouring pane's own background paints over the grab target. */
+  position: relative;
+  z-index: 3;
+  cursor: col-resize;
+  background-color: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle:focus-visible,
+.panel-resize-handle--active {
+  background-color: var(--color-accent-tint-strong);
+}
+
+.panel-resize-handle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Set on <body> for the duration of a drag (see lib/usePanelResize.ts): the pointer
+   leaves the 7px handle immediately once the drag starts, so the resize cursor and the
+   selection lock have to be window-wide or the whole gesture feels broken. */
+body.is-resizing-panel {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.is-resizing-panel * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 /* ---------- Live status dot ---------- */
 
 .live-dot {
@@ -971,8 +1214,11 @@ textarea:focus-visible,
 
 /* ---------- Right panel (capabilities) ---------- */
 
+/* Mirrors .sidebar above — width driven by ContextPanel.tsx's own drag handle. */
 .right-panel {
-  width: 208px;
+  width: var(--context-panel-width, 208px);
+  min-width: 168px;
+  max-width: 420px;
   flex-shrink: 0;
   border-left: 1px solid var(--color-border);
   background-color: var(--color-sidebar);
@@ -999,6 +1245,9 @@ textarea:focus-visible,
 
 .right-panel--collapsed {
   width: 40px;
+  /* Explicitly re-floors min-width, which .right-panel now sets to its resize clamp —
+     the collapsed rail is a fixed-size rail and opts out of resizing entirely. */
+  min-width: 40px;
   flex-shrink: 0;
   align-items: center;
   padding: var(--space-3) 0;
@@ -1756,6 +2005,132 @@ textarea:focus-visible,
 .settings-account-name {
   font-size: var(--font-size-sm);
   color: var(--color-text);
+}
+
+/* ---------- Settings → Appearance ---------- */
+
+.settings-appearance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+
+.settings-appearance-desc {
+  margin: 0 0 var(--space-2);
+}
+
+/* A segmented control (light / dark / system) rather than three radio rows: the options
+   are mutually exclusive, short, and the choice is spatial, so one connected strip reads
+   faster than a stack and matches the compact scale of everything else in this modal. */
+.settings-segmented {
+  display: flex;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.settings-segmented-option {
+  border: none;
+  background-color: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-1) var(--space-3);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.settings-segmented-option + .settings-segmented-option {
+  border-left: 1px solid var(--color-border);
+}
+
+.settings-segmented-option:hover {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.settings-segmented-option--active {
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.settings-segmented-option--active:hover {
+  background-color: var(--color-accent-hover);
+  color: var(--color-accent-contrast);
+}
+
+.settings-accents {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Each swatch paints its own preset color inline (from ACCENT_PRESETS) — the only place
+   in the app where a color is set outside the token system, and necessarily so: a
+   picker has to show the colors you are not currently using. */
+.settings-accent-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 1px var(--color-border);
+  padding: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.settings-accent-swatch:hover {
+  transform: scale(1.12);
+}
+
+.settings-accent-swatch--active {
+  border-color: var(--color-surface);
+  box-shadow: 0 0 0 2px var(--color-text);
+}
+
+/* ---------- Settings → Danger zone ---------- */
+
+.settings-section--danger .settings-section-title {
+  color: var(--color-danger);
+}
+
+.settings-section--danger .settings-plan-line {
+  margin-bottom: var(--space-3);
+}
+
+/* The typed-confirmation dialog stacks on top of the Settings modal, so it needs a
+   higher stacking context than .modal-overlay's own z-index. */
+.modal-overlay--nested {
+  z-index: 110;
+}
+
+.modal-panel--confirm {
+  width: 400px;
+}
+
+.settings-delete-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.settings-delete-input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.settings-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .settings-plan {
@@ -4621,29 +4996,98 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  min-width: 220px;
+  min-width: 300px;
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background-color: var(--color-surface);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-md);
+}
+
+.home-customize-hint {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-faint);
+}
+
+/* One reorderable row: [drag handle] [checkbox + label, taking the slack] [size]. */
+.home-customize-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+}
+
+.home-customize-row--dragging {
+  /* dnd-kit keeps the original element in place and translates it; lifting it visually
+     (shadow + the surface tone used for nested cards elsewhere) is what makes it read
+     as "picked up" rather than as a glitch. */
+  background-color: var(--color-surface-2);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 1;
 }
 
 .home-customize-option {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
   font-size: var(--font-size-sm);
   color: var(--color-text);
   cursor: pointer;
 }
 
-/* A fixed 3-column grid, not the previous auto-fit track — auto-fit reflowed
-   whichever widget landed alone in the last row into an oversized stretched card
-   depending on window width, which read as accidental rather than composed. Every
-   widget below gets an explicit span instead, so the layout is the same shape at
-   every window size: full-width quick actions, full-width recent grid, then
-   conversations/due-soon/progress as one deliberate row of three. */
+.home-customize-drag {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-md);
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.home-customize-drag:hover,
+.home-customize-drag:focus-visible {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.home-customize-drag:active {
+  cursor: grabbing;
+}
+
+.home-customize-size {
+  flex-shrink: 0;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background-color: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.home-customize-size:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* A fixed 3-column grid, not an auto-fit track — auto-fit reflowed whichever widget
+   landed alone in the last row into an oversized stretched card depending on window
+   width, which read as accidental rather than composed. Each widget declares an
+   explicit span instead (.home-widget--wide / --compact below), so the layout is the
+   shape the student actually chose at every window size. */
 .home-widgets {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -4663,9 +5107,17 @@ textarea:focus-visible,
   box-shadow: var(--shadow-sm);
 }
 
-.home-widget--quick-actions,
-.home-widget--recent {
+/* Footprint is now a per-widget, per-student choice (see lib/homeWidgets.ts), not a
+   hardcoded pin on two specific widgets — HomeView.tsx emits .home-widget--wide or
+   .home-widget--compact from the persisted size. The shipped defaults make Quick actions
+   and Recent wide and the other three compact, which is exactly the layout those two
+   removed `grid-column: 1 / -1` rules used to produce. */
+.home-widget--wide {
   grid-column: 1 / -1;
+}
+
+.home-widget--compact {
+  grid-column: span 1;
 }
 
 .home-widget-title {
@@ -4795,9 +5247,13 @@ textarea:focus-visible,
   color: var(--color-warning);
 }
 
+/* Narrower windows drop to two columns rather than pinning one specific widget full
+   width — that old override singled out Progress, which no longer makes sense now that
+   any widget can be anywhere. Dropping a column keeps every student's own wide/compact
+   choices intact instead of overruling them. */
 @media (max-width: 1100px) {
-  .home-widget--progress {
-    grid-column: 1 / -1;
+  .home-widgets {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

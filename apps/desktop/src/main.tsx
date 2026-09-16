@@ -23,6 +23,14 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import NotepadWindow from "./NotepadWindow";
 import ErrorBoundary from "./ErrorBoundary";
+import { applyStoredAppearance } from "./lib/preferences";
+
+// Settings → Appearance writes `data-theme`/`data-accent` onto <html> (see
+// lib/preferences.ts's applyAppearance). Replaying it here — synchronously, before React
+// mounts — is what stops a saved dark theme from flashing the light palette for a frame
+// on every launch. Deliberately outside the isNotepadWindow() branch so the always-on-
+// top Notepad companion window, which loads this exact same bundle, is themed too.
+applyStoredAppearance();
 
 // The always-on-top Notepad is a second window loading this exact same bundle (see
 // src-tauri/src/lib.rs's `show_notepad_window`) — its window label, not its URL, is what

@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import type { ChatSession, MainView } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
-import { getSidebarCollapsed, setSidebarCollapsed } from "../lib/preferences";
+import {
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  getSidebarCollapsed,
+  getSidebarWidth,
+  setSidebarCollapsed,
+  setSidebarWidth,
+} from "../lib/preferences";
+import { usePanelResize } from "../lib/usePanelResize";
 import NewtonMark from "./NewtonMark";
+import PanelResizeHandle from "./PanelResizeHandle";
 
 interface SidebarProps {
   sessions: ChatSession[];
@@ -82,6 +92,18 @@ function Sidebar({
   // lib/preferences.ts) so it survives a restart — a window-chrome preference, same
   // pattern as the existing study-reminders toggle.
   const [collapsed, setCollapsed] = useState(() => getSidebarCollapsed());
+  // Drag-to-resize, persisted alongside the collapse flag. The width is published as a
+  // CSS custom property on the <aside> itself rather than an inline `width`, so
+  // App.css's `.sidebar` rule keeps owning the layout (and the collapsed rail keeps
+  // ignoring it entirely) instead of an inline style overriding the stylesheet.
+  const resize = usePanelResize({
+    initial: getSidebarWidth(),
+    defaultWidth: SIDEBAR_DEFAULT_WIDTH,
+    min: SIDEBAR_MIN_WIDTH,
+    max: SIDEBAR_MAX_WIDTH,
+    direction: 1,
+    persist: setSidebarWidth,
+  });
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -138,126 +160,134 @@ function Sidebar({
   }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <button
-          type="button"
-          className={`sidebar-brand${mainView === "home" ? " sidebar-brand--active" : ""}`}
-          onClick={onOpenHome}
-          aria-label="Home"
-          title="Home"
-        >
-          <span className="sidebar-brand-mark">
-            <NewtonMark size={15} />
-          </span>
-          <span className="sidebar-brand-name">Newton</span>
-        </button>
-        <div className="sidebar-header-actions">
+    <>
+      <aside
+        className="sidebar"
+        style={{ ["--sidebar-width" as string]: `${resize.width}px` }}
+      >
+        <div className="sidebar-header">
           <button
             type="button"
-            className="sidebar-collapse-toggle"
-            onClick={toggleCollapsed}
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
+            className={`sidebar-brand${mainView === "home" ? " sidebar-brand--active" : ""}`}
+            onClick={onOpenHome}
+            aria-label="Home"
+            title="Home"
           >
-            «
+            <span className="sidebar-brand-mark">
+              <NewtonMark size={15} />
+            </span>
+            <span className="sidebar-brand-name">Newton</span>
           </button>
+          <div className="sidebar-header-actions">
+            <button
+              type="button"
+              className="sidebar-collapse-toggle"
+              onClick={toggleCollapsed}
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              «
+            </button>
+            <button
+              type="button"
+              className="sidebar-help-btn"
+              onClick={onOpenHelp}
+              aria-label="What Newton can do"
+              title="What Newton can do"
+            >
+              ?
+            </button>
+          </div>
+        </div>
+
+        <div className="sidebar-clock">
+          <div className="sidebar-clock-time">
+            {/* No `hour12` override: follows the user's own locale/OS preference. */}
+            {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          </div>
+          <div className="sidebar-clock-date">
+            {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </div>
+        </div>
+
+        <div className="sidebar-nav">
+          <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
+            <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
+          </button>
+
+          <nav className="session-list" aria-label="Chat sessions">
+            {sessions.length === 0 && <p className="empty-state-text">No chats yet.</p>}
+            {sessions.map((session, i) => {
+              const isActive = session.id === activeSessionId;
+              return (
+                <div
+                  key={session.id}
+                  className={`session-item fade-up${isActive ? " session-item--active" : ""}`}
+                  style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
+                  data-context-menu="session"
+                  data-session-id={session.id}
+                >
+                  <button
+                    type="button"
+                    className="session-item-main"
+                    onClick={() => onSelectSession(session.id)}
+                    aria-current={isActive}
+                  >
+                    <span className="session-item-title">
+                      {sessionDisplayTitle(session, firstMessageBySession[session.id])}
+                    </span>
+                    <span className="session-item-date">{formatSessionDate(session.created_at)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="session-item-delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteSession(session.id);
+                    }}
+                    aria-label="Delete chat"
+                    title="Delete chat"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="sidebar-footer">
           <button
             type="button"
-            className="sidebar-help-btn"
-            onClick={onOpenHelp}
-            aria-label="What Newton can do"
-            title="What Newton can do"
+            className={`sidebar-nav-more sidebar-nav-more--active${mainView === "documents" ? " sidebar-nav-more--current" : ""}`}
+            onClick={onOpenDocuments}
           >
-            ?
+            Documents
           </button>
-        </div>
-      </div>
-
-      <div className="sidebar-clock">
-        <div className="sidebar-clock-time">
-          {/* No `hour12` override: follows the user's own locale/OS preference. */}
-          {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-        </div>
-        <div className="sidebar-clock-date">
-          {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-        </div>
-      </div>
-
-      <div className="sidebar-nav">
-        <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
-          <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
-        </button>
-
-        <nav className="session-list" aria-label="Chat sessions">
-          {sessions.length === 0 && <p className="empty-state-text">No chats yet.</p>}
-          {sessions.map((session, i) => {
-            const isActive = session.id === activeSessionId;
-            return (
-              <div
-                key={session.id}
-                className={`session-item fade-up${isActive ? " session-item--active" : ""}`}
-                style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
-                data-context-menu="session"
-                data-session-id={session.id}
-              >
-                <button
-                  type="button"
-                  className="session-item-main"
-                  onClick={() => onSelectSession(session.id)}
-                  aria-current={isActive}
-                >
-                  <span className="session-item-title">
-                    {sessionDisplayTitle(session, firstMessageBySession[session.id])}
-                  </span>
-                  <span className="session-item-date">{formatSessionDate(session.created_at)}</span>
-                </button>
-                <button
-                  type="button"
-                  className="session-item-delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteSession(session.id);
-                  }}
-                  aria-label="Delete chat"
-                  title="Delete chat"
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
-        </nav>
-      </div>
-
-      <div className="sidebar-footer">
-        <button
-          type="button"
-          className={`sidebar-nav-more sidebar-nav-more--active${mainView === "documents" ? " sidebar-nav-more--current" : ""}`}
-          onClick={onOpenDocuments}
-        >
-          Documents
-        </button>
-        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenStudyPlan}>
-          Study plan
-        </button>
-        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenFlashcards}>
-          Flashcards
-        </button>
-        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenPracticeExams}>
-          Practice exams
-        </button>
-        <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenSettings}>
-          Settings
-        </button>
-        <div className="sidebar-user">
-          <span className="sidebar-user-name">{username}</span>
-          <button type="button" className="btn-secondary-sm" onClick={onSignOut}>
-            Sign out
+          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenStudyPlan}>
+            Study plan
           </button>
+          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenFlashcards}>
+            Flashcards
+          </button>
+          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenPracticeExams}>
+            Practice exams
+          </button>
+          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenSettings}>
+            Settings
+          </button>
+          <div className="sidebar-user">
+            <span className="sidebar-user-name">{username}</span>
+            <button type="button" className="btn-secondary-sm" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+      {/* Follows the <aside> because it sits on the sidebar's RIGHT edge — see
+          PanelResizeHandle's own comment for why it's a sibling rather than a child. */}
+      <PanelResizeHandle label="Resize sidebar" min={SIDEBAR_MIN_WIDTH} max={SIDEBAR_MAX_WIDTH} {...resize} />
+    </>
   );
 }
 
