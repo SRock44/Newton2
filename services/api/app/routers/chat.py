@@ -20,7 +20,14 @@ from app.db.models import ChatMessage, ChatSession
 from app.jobs.pool import get_arq_pool
 from app.memory import profile as profile_memory
 from app.memory import rag as rag_memory
-from app.memory.working import append_turn, invalidate, set_profile_facts, set_retrieved_chunks
+from app.memory.working import (
+    append_turn,
+    invalidate,
+    mark_consolidated,
+    set_profile_facts,
+    set_retrieved_chunks,
+    should_consolidate,
+)
 from app.services.images import get_image_for_session, upload_image
 from app.services.users import get_or_create_user
 
@@ -95,6 +102,31 @@ async def _maybe_enqueue_title_job(
     if assistant_reply_count == 2:
         pool = await get_arq_pool()
         await pool.enqueue_job("generate_session_title", str(session_id))
+
+
+async def _maybe_enqueue_consolidation(bundle: dict, session_id: uuid.UUID) -> None:
+    """Tier-1 -> Tier-2 compaction trigger (ROADMAP.md): app/jobs/consolidate.py's
+    consolidate_session already re-summarizes a session's full persisted transcript and
+    upserts durable facts into Tier 3 -- it just used to only ever fire from the dead
+    POST /chat/sessions/{id}/end path (nothing in the real desktop app calls it), so it
+    essentially never ran in production. This is the real, live trigger: checked once
+    per turn, right after persisting the assistant's reply, against the
+    `turns_since_consolidation` counter app/memory/working.py's append_turn already
+    maintains on the bundle it returns. See CONSOLIDATION_INTERVAL_TURNS's own comment
+    in working.py for the chosen cadence and why.
+
+    Fire-and-forget from this call's own perspective: pool.enqueue_job just writes one
+    job onto the arq queue (a fast Redis call) and returns immediately -- the actual
+    summarization model call happens later, in a separate arq worker process, and never
+    blocks or slows down this turn's own reply. mark_consolidated resets the counter
+    synchronously, right here at enqueue time (not inside the job itself, which the WS
+    handler never awaits) -- that's what makes "don't fire again too soon" depend only
+    on this decision, not on the job's own, unrelated completion timing."""
+    if not should_consolidate(bundle):
+        return
+    pool = await get_arq_pool()
+    await pool.enqueue_job("consolidate_session", str(session_id))
+    await mark_consolidated(str(session_id))
 
 
 @router.post("/sessions")
@@ -543,9 +575,10 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                         )
                     )
                     await db.commit()
-                    await append_turn(str(session_id), "assistant", full_response)
+                    bundle = await append_turn(str(session_id), "assistant", full_response)
 
                     await _maybe_enqueue_title_job(db, session, session_id)
+                    await _maybe_enqueue_consolidation(bundle, session_id)
 
                     await websocket.send_json(
                         {

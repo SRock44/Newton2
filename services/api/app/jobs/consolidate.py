@@ -7,7 +7,6 @@ from sqlalchemy import select
 from app.db.base import SessionLocal
 from app.db.models import ChatMessage, ChatSession, SessionSummary
 from app.memory import profile as profile_memory
-from app.memory.working import invalidate
 from app.providers.base import ChatTurn, TextDelta
 from app.providers.registry import get_provider
 
@@ -32,8 +31,14 @@ Conversation:
 
 
 async def consolidate_session(ctx: dict, session_id: str) -> None:
-    """Memory Tier 2: turn one ended session into a structured summary, then upsert any
-    durable facts it revealed into Tier 3 (deduplicated profile memory)."""
+    """Memory Tier 2: turn a session's full transcript so far into a structured
+    summary, then upsert any durable facts it revealed into Tier 3 (deduplicated
+    profile memory). Safe to call more than once for the same session -- both writes
+    below are upsert-safe (overwrite-in-place on a repeat run over a longer
+    transcript), not append-only -- since app/routers/chat.py's WS handler now
+    enqueues this periodically as a session grows (see app/memory/working.py's
+    CONSOLIDATION_INTERVAL_TURNS), not only from the original, still-supported
+    POST /chat/sessions/{id}/end path."""
     async with SessionLocal() as db:
         messages = (
             (
@@ -65,15 +70,35 @@ async def consolidate_session(ctx: dict, session_id: str) -> None:
 
         parsed = _parse_summary(raw)
 
-        db.add(
-            SessionSummary(
-                session_id=session.id,
-                topics=parsed["topics"],
-                problems_solved=parsed["problems_solved"],
-                mistakes=parsed["mistakes"],
-                actions_taken=parsed["actions_taken"],
+        # UPDATE-in-place, not a plain INSERT: session_summaries.session_id is UNIQUE
+        # (one summary per session -- migration 0001). That was never a problem while
+        # this job only ever ran once, at a real session's end, but it now also fires
+        # periodically DURING an active session (see CONSOLIDATION_INTERVAL_TURNS), so
+        # a second real run for the same session is an expected, normal case, not an
+        # edge case -- a plain db.add() here would raise a unique-constraint
+        # IntegrityError on that second run and roll back this whole transaction,
+        # including the profile-fact upserts below. Re-summarizing the session's full
+        # transcript so far and overwriting the existing row with the latest version is
+        # exactly the desired behavior (a newer, more complete summary superseding the
+        # old one), not just crash-avoidance.
+        existing_summary = (
+            await db.execute(select(SessionSummary).where(SessionSummary.session_id == session.id))
+        ).scalar_one_or_none()
+        if existing_summary is not None:
+            existing_summary.topics = parsed["topics"]
+            existing_summary.problems_solved = parsed["problems_solved"]
+            existing_summary.mistakes = parsed["mistakes"]
+            existing_summary.actions_taken = parsed["actions_taken"]
+        else:
+            db.add(
+                SessionSummary(
+                    session_id=session.id,
+                    topics=parsed["topics"],
+                    problems_solved=parsed["problems_solved"],
+                    mistakes=parsed["mistakes"],
+                    actions_taken=parsed["actions_taken"],
+                )
             )
-        )
 
         for fact in parsed["profile_facts"]:
             subject_key = fact.get("subject_key")
@@ -93,7 +118,21 @@ async def consolidate_session(ctx: dict, session_id: str) -> None:
 
         await db.commit()
 
-    await invalidate(session_id)
+    # Deliberately does NOT call app.memory.working.invalidate() here (it used to).
+    # This job now fires periodically DURING an active session, not just at a real
+    # session's end (see app/memory/working.py's CONSOLIDATION_INTERVAL_TURNS / the WS
+    # handler's trigger) -- invalidate() drops the ENTIRE Tier-1 bundle, including the
+    # raw sliding "turns" window (app.agents.tutor.run_tutor's only source of recent-
+    # conversation context; there is no fallback rebuild from Postgres), which would
+    # silently erase the model's memory of the conversation so far the moment this job
+    # finishes, mid-session. The other half of what invalidate() was for -- forcing a
+    # fresh read of Tier 3 profile facts instead of serving a stale cached copy -- is
+    # already handled unconditionally on every turn regardless (see
+    # app/routers/chat.py's _gather_memory_context + set_profile_facts/
+    # set_retrieved_chunks, called before every single reply), so there is nothing left
+    # here that actually needs forcing. Safe for the original end-of-session trigger
+    # too: once a session is truly done, nothing reads its bundle again before
+    # BUNDLE_TTL_SECONDS expires it anyway.
 
 
 def _parse_summary(raw: str) -> dict[str, Any]:
