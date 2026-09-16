@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import type { ChangeEvent, KeyboardEvent } from "react";
 import { ApiError, getBillingStatus, listDocuments, setLearnMode, uploadChatImage, uploadDocument } from "../api";
 import type { UploadedDocument } from "../types";
+import { useVoiceRecorder } from "../lib/useVoiceRecorder";
 import Toggle from "./Toggle";
 
 /** Imperative handle exposed via ref — currently just `focus()`, used by
@@ -58,6 +59,13 @@ function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 }
 
+/** m:ss for the live dictation readout — same shape as the Notepad's recording clock. */
+function formatElapsed(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   {
     onSend,
@@ -108,10 +116,64 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachWrapRef = useRef<HTMLDivElement>(null);
+  // Where to put the caret after a transcription has been spliced into the draft —
+  // applied in an effect below, since the new value isn't in the DOM yet at the moment
+  // we work out where the caret should land.
+  const pendingCaretRef = useRef<number | null>(null);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
   }));
+
+  /** Dictation: the same recorder mechanics the Notepad's lecture capture already uses
+   * (see lib/useVoiceRecorder.ts), minus the segmenting — a chat message is short, so
+   * it's one recording transcribed once when the student stops, rather than arriving in
+   * pieces that would fragment the draft mid-sentence. The text lands in the composer
+   * for the student to read and edit; nothing is ever sent on their behalf. */
+  const {
+    recording,
+    transcribing,
+    elapsedSeconds,
+    error: voiceError,
+    clearError: clearVoiceError,
+    start: startRecording,
+    stop: stopRecording,
+  } = useVoiceRecorder({
+    token,
+    onTranscript: (text) => insertAtCursor(text),
+  });
+
+  /** Splices transcribed text in at the caret (replacing any selection), rather than
+   * always appending — a student who dictates mid-sentence gets the words where they
+   * were actually looking. Falls back to the end of the draft when there's no live
+   * selection to read (e.g. the textarea never had focus this session). */
+  function insertAtCursor(text: string) {
+    const el = textareaRef.current;
+    const rawStart = el?.selectionStart;
+    const rawEnd = el?.selectionEnd;
+    const start = typeof rawStart === "number" ? Math.min(rawStart, draft.length) : draft.length;
+    const end = typeof rawEnd === "number" ? Math.max(start, Math.min(rawEnd, draft.length)) : start;
+    const before = draft.slice(0, start);
+    const after = draft.slice(end);
+    // Don't jam dictated words up against existing text on either side.
+    const lead = before.length > 0 && !/\s$/.test(before) ? " " : "";
+    const trail = after.length > 0 && !/^\s/.test(after) ? " " : "";
+    const insertion = `${lead}${text}${trail}`;
+    pendingCaretRef.current = before.length + lead.length + text.length;
+    setDraft(before + insertion + after);
+  }
+
+  // Restore the caret (and focus) right after a transcription lands, so the student can
+  // simply keep typing from where the dictated text ended.
+  useEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null) return;
+    pendingCaretRef.current = null;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  }, [draft]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +210,11 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     setAttachError(null);
     setMenuOpen(false);
     setPickerOpen(false);
+    // A recording started for the last chat has no meaning for this one: release the
+    // mic AND drop what it captured, rather than landing the previous conversation's
+    // half-sentence in this one's draft.
+    stopRecording({ discard: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   // Message editing (ROADMAP.md): the moment a new edit target is set (id changes from
@@ -358,6 +425,19 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
         </div>
       )}
       {attachError && <div className="composer-attachment-error">{attachError}</div>}
+      {/* Dictation's own errors are kept separate from attachment errors and are
+          dismissible: the most likely one is the Pro gate on /voice/transcribe, which is
+          a plan message to read and move on from, not a failure to retry. Same honest,
+          non-punitive framing as DocumentsPanel's free-plan generation note — the
+          server's own wording, shown as-is. */}
+      {voiceError && (
+        <div className="composer-voice-error" role="status">
+          <span>{voiceError}</span>
+          <button type="button" className="composer-voice-error-dismiss" onClick={clearVoiceError} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
       <div className="composer-row">
         <div className="composer-attach-wrap" ref={attachWrapRef}>
           <input
@@ -428,6 +508,29 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             </div>
           )}
         </div>
+        {/* Dictation. One button, two states — click to start, click again to stop and
+            transcribe — mirroring the Notepad's Record/Stop control rather than a
+            press-and-hold, which is awkward for anything longer than a few words. */}
+        <button
+          type="button"
+          className={`composer-mic${recording ? " composer-mic--recording" : ""}`}
+          onClick={() => (recording ? stopRecording() : void startRecording())}
+          disabled={disabled || transcribing}
+          aria-pressed={recording}
+          aria-label={recording ? "Stop recording and transcribe" : "Dictate a message"}
+          title={recording ? "Stop recording and add what you said to the message" : "Speak your message instead of typing"}
+        >
+          {recording ? (
+            <>
+              <span className="composer-mic-dot" aria-hidden="true" />
+              {formatElapsed(elapsedSeconds)}
+            </>
+          ) : transcribing ? (
+            "…"
+          ) : (
+            <span aria-hidden="true">🎙</span>
+          )}
+        </button>
         <textarea
           ref={textareaRef}
           className="composer-input"

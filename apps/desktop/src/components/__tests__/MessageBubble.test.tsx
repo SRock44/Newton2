@@ -1,8 +1,15 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MessageBubble from "../MessageBubble";
 import type { ChatMessage } from "../../types";
+
+vi.mock("../../api", async () => {
+  const actual = await vi.importActual<typeof import("../../api")>("../../api");
+  return { ...actual, synthesizeSpeech: vi.fn() };
+});
+
+import { ApiError, synthesizeSpeech } from "../../api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -95,10 +102,15 @@ describe("MessageBubble", () => {
 
   it("renders no suggested-action button when the message has none", () => {
     const message: ChatMessage = { role: "assistant", content: "Just some text." };
-    render(
+    const { container } = render(
       <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
     );
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(container.querySelector(".suggested-action-btn")).toBeNull();
+    // The only button on a plain finished reply is the "Listen" action (see the
+    // "Listen" suite below) — deliberately asserted rather than assuming zero buttons,
+    // so this keeps catching a stray suggested action.
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /read this message aloud/i })).toBeInTheDocument();
   });
 
   // Regression coverage for every shape the backend's _TOOL_TO_SUGGESTED_ACTION map can
@@ -444,5 +456,184 @@ describe("MessageBubble", () => {
       expect(chips[0]).toContain("Planning the explanation.");
       expect(chips[1]).toContain("Doing the math");
     });
+  });
+});
+
+// Voice OUTPUT. POST /voice/synthesize (a real, Pro-gated Piper TTS service) had been
+// live and working for a while with literally nothing in the app calling it — this is
+// the surface that finally does. See ListenButton in MessageBubble.tsx.
+describe("MessageBubble 'Listen'", () => {
+  let audios: FakeAudio[] = [];
+
+  class FakeAudio {
+    paused = true;
+    onended: (() => void) | null = null;
+    play = vi.fn(async () => {
+      this.paused = false;
+    });
+    pause = vi.fn(() => {
+      this.paused = true;
+    });
+
+    constructor(public src: string) {
+      audios.push(this);
+    }
+  }
+
+  const revokeObjectURL = vi.fn();
+
+  beforeEach(() => {
+    audios = [];
+    revokeObjectURL.mockClear();
+    vi.mocked(synthesizeSpeech).mockReset().mockResolvedValue(new Blob(["wav-bytes"], { type: "audio/wav" }));
+    vi.stubGlobal("Audio", FakeAudio);
+    vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:spoken"), revokeObjectURL });
+  });
+
+  function renderAssistant(overrides: Partial<ChatMessage> = {}) {
+    const message: ChatMessage = { role: "assistant", content: "The Krebs cycle produces ATP.", ...overrides };
+    return render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
+  }
+
+  it("offers a Listen action on a finished Newton reply", () => {
+    renderAssistant();
+    expect(screen.getByRole("button", { name: /read this message aloud/i })).toBeInTheDocument();
+  });
+
+  it("never offers it on the student's own message", () => {
+    render(
+      <MessageBubble
+        message={{ role: "user", content: "What is the Krebs cycle?" }}
+        token="tok"
+        sessionId="s1"
+        onOpenSuggestedPanel={vi.fn()}
+        onOpenDocument={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /read this message aloud/i })).not.toBeInTheDocument();
+  });
+
+  it("never offers it mid-stream, when what it would read is still changing", () => {
+    renderAssistant({ content: "The Krebs cycle", streaming: true });
+    expect(screen.queryByRole("button", { name: /read this message aloud/i })).not.toBeInTheDocument();
+  });
+
+  it("never offers it on an errored or empty reply, which has nothing to read", () => {
+    const { unmount } = renderAssistant({ content: "Something went wrong.", error: true });
+    expect(screen.queryByRole("button", { name: /read this message aloud/i })).not.toBeInTheDocument();
+    unmount();
+
+    renderAssistant({ content: "   " });
+    expect(screen.queryByRole("button", { name: /read this message aloud/i })).not.toBeInTheDocument();
+  });
+
+  it("synthesizes the message's text and plays the returned audio", async () => {
+    const user = userEvent.setup();
+    renderAssistant();
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+
+    await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "The Krebs cycle produces ATP."));
+    await waitFor(() => expect(audios).toHaveLength(1));
+    expect(audios[0].src).toBe("blob:spoken");
+    expect(audios[0].play).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the displayed text, not the raw attachment markers — no UUIDs read aloud", async () => {
+    const user = userEvent.setup();
+    render(
+      <MessageBubble
+        message={{ role: "assistant", content: "Here you go.\n\n[Attached document: doc-1|syllabus.pdf]" }}
+        token="tok"
+        sessionId="s1"
+        onOpenSuggestedPanel={vi.fn()}
+        onOpenDocument={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+
+    await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "Here you go."));
+  });
+
+  it("shows a loading state while synthesizing, then a playing state", async () => {
+    const user = userEvent.setup();
+    let resolveBlob: (blob: Blob) => void = () => {};
+    vi.mocked(synthesizeSpeech).mockReturnValue(
+      new Promise<Blob>((resolve) => {
+        resolveBlob = resolve;
+      }),
+    );
+    renderAssistant();
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+
+    const button = screen.getByRole("button", { name: /read this message aloud/i });
+    expect(button).toHaveTextContent("Preparing…");
+    expect(button).toBeDisabled();
+
+    resolveBlob(new Blob(["wav-bytes"], { type: "audio/wav" }));
+    expect(await screen.findByRole("button", { name: /pause reading this message aloud/i })).toHaveTextContent("Pause");
+  });
+
+  it("pauses on a second click and resumes on a third, without re-synthesizing", async () => {
+    const user = userEvent.setup();
+    renderAssistant();
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+    const playing = await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+    await user.click(playing);
+    expect(audios[0].pause).toHaveBeenCalled();
+    expect(await screen.findByText("Resume")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+    await waitFor(() => expect(audios[0].play).toHaveBeenCalledTimes(2));
+    // Real TTS compute isn't re-spent to replay the same words.
+    expect(synthesizeSpeech).toHaveBeenCalledTimes(1);
+    expect(audios).toHaveLength(1);
+  });
+
+  it("returns to the idle Listen state when playback finishes on its own", async () => {
+    const user = userEvent.setup();
+    renderAssistant();
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+    await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+    audios[0].onended?.();
+
+    expect(await screen.findByText("Listen")).toBeInTheDocument();
+  });
+
+  it("shows the server's own upgrade message on the Pro gate, and stays usable afterwards", async () => {
+    const user = userEvent.setup();
+    vi.mocked(synthesizeSpeech).mockRejectedValue(
+      new ApiError("Voice is a Pro feature — upgrade to Newton Pro to use transcription and playback."),
+    );
+    renderAssistant();
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+
+    expect(await screen.findByText(/Voice is a Pro feature/)).toBeInTheDocument();
+    // Not stuck in a loading state, and not a raw stack-trace-y failure.
+    const button = screen.getByRole("button", { name: /read this message aloud/i });
+    expect(button).toHaveTextContent("Listen");
+    expect(button).not.toBeDisabled();
+  });
+
+  it("releases the audio object URL when the bubble goes away", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderAssistant();
+
+    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+    await waitFor(() => expect(audios).toHaveLength(1));
+
+    unmount();
+
+    expect(audios[0].pause).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:spoken");
   });
 });

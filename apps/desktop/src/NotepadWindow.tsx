@@ -11,12 +11,12 @@ import {
   deleteNote,
   getNote,
   listNotes,
-  transcribeAudio,
   updateNote,
   updateNoteTags,
 } from "./api";
 import type { Note, NoteAnnotateAction, NoteSummary } from "./types";
 import { clearNoteDraft, loadNoteDraft, saveNoteDraft } from "./lib/noteDraft";
+import { useVoiceRecorder } from "./lib/useVoiceRecorder";
 
 interface NotepadAuthPayload {
   token: string | null;
@@ -100,23 +100,38 @@ function NotepadWindow() {
   const [tagPopoverTags, setTagPopoverTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState("");
 
-  // Lecture capture (voice recording) — see RECORDING_SEGMENT_MS above.
-  const [recording, setRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [transcribing, setTranscribing] = useState(false);
-  const [recordingError, setRecordingError] = useState<string | null>(null);
-  const recordingActiveRef = useRef(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
-  const segmentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recordingClockRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   // Latest title/content, readable from the debounced-save callback without making it
   // (or the effect that (re)schedules it) depend on every keystroke.
   const latestRef = useRef({ title, content });
   latestRef.current = { title, content };
+
+  // Lecture capture (voice recording) — the shared recorder mechanics (see
+  // lib/useVoiceRecorder.ts), chunked into RECORDING_SEGMENT_MS segments so a failure
+  // mid-lecture loses at most one segment. The only Notepad-specific part left here is
+  // what happens to the text: appended to the open note as plain, directly-editable
+  // content — unlike the read-only newton-note Explain/Define/Summarize blocks, this is
+  // the student's own captured material.
+  const {
+    recording,
+    transcribing,
+    elapsedSeconds: recordingSeconds,
+    error: recordingError,
+    start: startRecording,
+    stop: stopRecording,
+  } = useVoiceRecorder({
+    token,
+    segmentMs: RECORDING_SEGMENT_MS,
+    onTranscript: (text) => {
+      // A segment can land just after the student closed the note (the upload was
+      // already in flight) — there's nowhere to put it then, so it's dropped rather
+      // than written into whatever note happens to be open next.
+      if (!activeNoteId) return;
+      const currentContent = latestRef.current.content;
+      handleContentChange(currentContent ? `${currentContent}\n\n${text}` : text);
+    },
+  });
 
   // Shown once AUTH_FALLBACK_TIMEOUT_MS elapses with no answer to "notepad-ready" below
   // -- the genuine "actually not signed in yet" case, as opposed to the late-mount race
@@ -187,21 +202,6 @@ function NotepadWindow() {
     refreshNotes();
   }, [refreshNotes]);
 
-  // Releases the microphone and clears any in-flight recording timers if the whole
-  // Notepad window closes mid-recording -- stopRecording() itself already handles
-  // switching notes/going back to the picker (see openNote/backToPicker above), this
-  // just covers the window unmounting entirely.
-  useEffect(() => {
-    return () => {
-      if (recordingClockRef.current) clearInterval(recordingClockRef.current);
-      if (segmentTimeoutRef.current) clearTimeout(segmentTimeoutRef.current);
-      recordingActiveRef.current = false;
-      mediaRecorderRef.current?.stop();
-      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   async function openNote(noteId: string) {
     if (!token) return;
     // Flush any pending debounced save for whatever note was open before switching.
@@ -209,7 +209,10 @@ function NotepadWindow() {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    stopRecording();
+    // The note this recording was feeding is being closed, so its final segment has
+    // nowhere it legitimately belongs — ending without transcribing is correct here,
+    // rather than appending the last note's audio into whatever opens next.
+    stopRecording({ discard: true });
     setTagPopoverNoteId(null);
     setLoadingNote(true);
     setSelectionToolbar(null);
@@ -248,7 +251,7 @@ function NotepadWindow() {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    stopRecording();
+    stopRecording({ discard: true });
     setTagPopoverNoteId(null);
     setActiveNoteId(null);
     setSelectionToolbar(null);
@@ -421,7 +424,7 @@ function NotepadWindow() {
       return;
     }
     if (noteId === activeNoteId) {
-      stopRecording();
+      stopRecording({ discard: true });
       setTagPopoverNoteId(null);
       setActiveNoteId(null);
       setSelectionToolbar(null);
@@ -474,87 +477,6 @@ function NotepadWindow() {
       tagPopoverNoteId,
       tagPopoverTags.filter((t) => t !== tag),
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Lecture capture (voice recording) — a real MediaRecorder, chunked into
-  // RECORDING_SEGMENT_MS segments rather than one long recording, each segment
-  // transcribed (via the existing, Pro-gated POST /voice/transcribe) and appended to
-  // the note as soon as it's ready. Inserted as plain, directly-editable content —
-  // unlike the read-only newton-note Explain/Define/Summarize blocks above, this is
-  // the student's own captured material.
-  // ---------------------------------------------------------------------------
-
-  function stopRecording() {
-    recordingActiveRef.current = false;
-    if (segmentTimeoutRef.current) {
-      clearTimeout(segmentTimeoutRef.current);
-      segmentTimeoutRef.current = null;
-    }
-    if (recordingClockRef.current) {
-      clearInterval(recordingClockRef.current);
-      recordingClockRef.current = null;
-    }
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-    recordingStreamRef.current = null;
-    setRecording(false);
-  }
-
-  async function transcribeAndAppend(blob: Blob) {
-    if (!token || !activeNoteId || blob.size === 0) return;
-    setTranscribing(true);
-    try {
-      const text = (await transcribeAudio(token, blob)).trim();
-      if (text) {
-        const currentContent = latestRef.current.content;
-        handleContentChange(currentContent ? `${currentContent}\n\n${text}` : text);
-      }
-    } catch (err) {
-      setRecordingError(err instanceof ApiError ? err.message : "Couldn't transcribe that segment.");
-    } finally {
-      setTranscribing(false);
-    }
-  }
-
-  function startSegment(stream: MediaStream) {
-    const recorder = new MediaRecorder(stream);
-    const chunks: BlobPart[] = [];
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunks.push(event.data);
-    };
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      void transcribeAndAppend(blob);
-      // Still recording (this wasn't triggered by stopRecording): immediately start
-      // the next segment on the same stream, so nothing of the lecture is missed
-      // between segments.
-      if (recordingActiveRef.current) startSegment(stream);
-    };
-    recorder.start();
-    mediaRecorderRef.current = recorder;
-    segmentTimeoutRef.current = setTimeout(() => recorder.stop(), RECORDING_SEGMENT_MS);
-  }
-
-  async function startRecording() {
-    if (!activeNoteId || recording) return;
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setRecordingError("Voice recording isn't supported in this browser/environment.");
-      return;
-    }
-    setRecordingError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recordingStreamRef.current = stream;
-      recordingActiveRef.current = true;
-      setRecording(true);
-      setRecordingSeconds(0);
-      recordingClockRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
-      startSegment(stream);
-    } catch {
-      setRecordingError("Couldn't access the microphone.");
-    }
   }
 
   const showPicker = activeNoteId === null;
@@ -714,7 +636,7 @@ function NotepadWindow() {
               </div>
               <div className="notepad-window__toolbar-right">
                 {recording ? (
-                  <button type="button" className="notepad-window__record-btn notepad-window__record-btn--active" onClick={stopRecording}>
+                  <button type="button" className="notepad-window__record-btn notepad-window__record-btn--active" onClick={() => stopRecording()}>
                     ● {formatElapsed(recordingSeconds)} — Stop
                   </button>
                 ) : (

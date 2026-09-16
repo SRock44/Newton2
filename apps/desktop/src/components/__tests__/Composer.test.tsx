@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Composer from "../Composer";
@@ -36,10 +36,46 @@ vi.mock("../../api", async () => {
     ]),
     getBillingStatus: vi.fn(async () => FREE_BILLING_STATUS),
     setLearnMode: vi.fn(async (_token: string, enabled: boolean) => ({ ...FREE_BILLING_STATUS, learn_mode_enabled: enabled })),
+    transcribeAudio: vi.fn(async () => "dictated words"),
   };
 });
 
-import { getBillingStatus, listDocuments, setLearnMode, uploadChatImage, uploadDocument } from "../../api";
+import { ApiError, getBillingStatus, listDocuments, setLearnMode, transcribeAudio, uploadChatImage, uploadDocument } from "../../api";
+
+// jsdom has neither of these; the same minimal fakes lib/__tests__/useVoiceRecorder
+// .test.tsx uses, just enough to drive a real start → stop → transcribe round trip.
+let recorders: FakeMediaRecorder[] = [];
+
+class FakeMediaRecorder {
+  ondataavailable: ((event: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
+  mimeType = "audio/webm";
+  state: "inactive" | "recording" = "inactive";
+
+  constructor(public stream: MediaStream) {
+    recorders.push(this);
+  }
+
+  start() {
+    this.state = "recording";
+  }
+
+  stop() {
+    if (this.state !== "recording") return;
+    this.state = "inactive";
+    this.ondataavailable?.({ data: new Blob(["audio-bytes"], { type: "audio/webm" }) });
+    this.onstop?.();
+  }
+}
+
+const getUserMedia = vi.fn();
+
+function stubMicrophone() {
+  recorders = [];
+  getUserMedia.mockReset().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream);
+  vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+  Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia }, configurable: true });
+}
 
 describe("Composer", () => {
   beforeEach(() => {
@@ -50,6 +86,12 @@ describe("Composer", () => {
     vi.mocked(setLearnMode)
       .mockReset()
       .mockImplementation(async (_token, enabled) => ({ ...FREE_BILLING_STATUS, learn_mode_enabled: enabled }));
+    vi.mocked(transcribeAudio).mockReset().mockResolvedValue("dictated words");
+    stubMicrophone();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("sends the trimmed draft on Enter and clears the input", async () => {
@@ -409,6 +451,142 @@ describe("Composer", () => {
       await user.click(screen.getByRole("button", { name: "Save edit" }));
 
       expect(onSend).toHaveBeenCalledWith("edited wording");
+    });
+  });
+
+  // Speech-to-text in the MAIN composer. The transcribe endpoint and a working recorder
+  // implementation both already existed, but the only place a student could talk to
+  // Newton was the Notepad's lecture capture — the chat composer was keyboard-only.
+  // The recorder mechanics themselves are covered in lib/__tests__/useVoiceRecorder
+  // .test.tsx; this covers the composer's own half: the button's states and where the
+  // transcribed text actually lands.
+  describe("dictation (mic button)", () => {
+    async function record(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: /dictate a message/i }));
+      await waitFor(() => expect(recorders).toHaveLength(1));
+      await user.click(screen.getByRole("button", { name: /stop recording and transcribe/i }));
+      await waitFor(() => expect(transcribeAudio).toHaveBeenCalled());
+    }
+
+    it("offers a mic button in the composer itself, not only in the Notepad", () => {
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+      expect(screen.getByRole("button", { name: /dictate a message/i })).toBeInTheDocument();
+    });
+
+    it("clicking it starts a real recording and flips the button to a stop state", async () => {
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await user.click(screen.getByRole("button", { name: /dictate a message/i }));
+
+      await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }));
+      const stopButton = await screen.findByRole("button", { name: /stop recording and transcribe/i });
+      expect(stopButton).toHaveAttribute("aria-pressed", "true");
+      expect(screen.queryByRole("button", { name: /dictate a message/i })).not.toBeInTheDocument();
+    });
+
+    it("clicking it again transcribes and drops the text straight into the composer", async () => {
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await record(user);
+
+      await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("dictated words"));
+    });
+
+    it("never sends anything on the student's behalf — the text is theirs to edit first", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await record(user);
+      await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("dictated words"));
+
+      expect(onSend).not.toHaveBeenCalled();
+
+      // ...and it sends as an ordinary message once the student actually chooses to.
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith("dictated words");
+    });
+
+    it("inserts at the caret rather than always appending, so mid-sentence dictation lands where the student was looking", async () => {
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+      await user.type(textarea, "before after");
+      textarea.setSelectionRange(6, 6); // right after "before"
+
+      await record(user);
+
+      await waitFor(() => expect(textarea).toHaveValue("before dictated words after"));
+    });
+
+    it("leaves the caret after the dictated words so the student can just keep typing", async () => {
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+      await record(user);
+      await waitFor(() => expect(textarea).toHaveValue("dictated words"));
+
+      expect(textarea.selectionStart).toBe("dictated words".length);
+      await user.keyboard(" and more");
+      expect(textarea).toHaveValue("dictated words and more");
+    });
+
+    it("appends to the end when the composer has never been focused (no live caret)", async () => {
+      const user = userEvent.setup();
+      vi.mocked(transcribeAudio).mockResolvedValue("second bit");
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+      await user.type(textarea, "typed first");
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+      await record(user);
+
+      await waitFor(() => expect(textarea).toHaveValue("typed first second bit"));
+    });
+
+    it("surfaces the Pro gate as the server's own plan message, dismissibly, not as a broken button", async () => {
+      const user = userEvent.setup();
+      vi.mocked(transcribeAudio).mockRejectedValue(
+        new ApiError("Voice is a Pro feature — upgrade to Newton Pro to use transcription and playback."),
+      );
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await record(user);
+
+      expect(await screen.findByText(/Voice is a Pro feature/)).toBeInTheDocument();
+      // The composer itself is untouched and still fully usable by keyboard.
+      expect(screen.getByRole("textbox")).toHaveValue("");
+
+      await user.click(screen.getByRole("button", { name: /dismiss/i }));
+      expect(screen.queryByText(/Voice is a Pro feature/)).not.toBeInTheDocument();
+    });
+
+    it("is disabled while the composer is (e.g. mid-reply), same as the rest of the controls", () => {
+      render(<Composer onSend={vi.fn()} disabled={true} token="test-token" sessionId="test-session" />);
+      expect(screen.getByRole("button", { name: /dictate a message/i })).toBeDisabled();
+    });
+
+    it("stops recording — and drops what it captured — when the student switches to a different chat", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="session-a" />,
+      );
+
+      await user.click(screen.getByRole("button", { name: /dictate a message/i }));
+      await waitFor(() => expect(recorders).toHaveLength(1));
+
+      rerender(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="session-b" />);
+
+      expect(recorders[0].state).toBe("inactive");
+      expect(screen.getByRole("button", { name: /dictate a message/i })).toBeInTheDocument();
+      // The old chat's half-sentence must not land in this chat's draft.
+      expect(transcribeAudio).not.toHaveBeenCalled();
+      expect(screen.getByRole("textbox")).toHaveValue("");
     });
   });
 });

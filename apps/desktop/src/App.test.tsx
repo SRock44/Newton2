@@ -79,6 +79,13 @@ vi.mock("./api", () => ({
     consented_at: ageBand === "under_13" ? null : new Date().toISOString(),
     needs_consent: ageBand === "under_13",
   })),
+  // The Home dashboard's "What to study next" widget (see HomeView.tsx). No weak areas
+  // for this fixture account — App.tsx's own tests are about chat/session/navigation
+  // behavior, and HomeView.test.tsx covers the widget's real content.
+  getWeakAreas: vi.fn(async () => []),
+  // MessageBubble's "Listen" action. Never actually clicked in this file; present so the
+  // component can import it (this is a full, non-partial module mock).
+  synthesizeSpeech: vi.fn(async () => new Blob([], { type: "audio/wav" })),
 }));
 
 vi.mock("./notifications", () => ({

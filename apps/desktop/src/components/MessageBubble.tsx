@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { ApiError, synthesizeSpeech } from "../api";
 import type { ChatMessage } from "../types";
 import MessageContent from "./MessageContent";
 import AttachedImage from "./AttachedImage";
@@ -74,6 +76,103 @@ function extractAttachedDocuments(content: string): { text: string; documents: A
     })
     .trim();
   return { text, documents };
+}
+
+type ListenStatus = "idle" | "loading" | "playing" | "paused";
+
+/** "Listen" — reads a finished Newton reply aloud via the real POST /voice/synthesize
+ * (see app/routers/voice.py), which returns WAV bytes this plays through the browser's
+ * Audio API. The endpoint existed and worked, with a custom Piper TTS service behind it,
+ * but nothing in the app had ever called it.
+ *
+ * Plan gating follows the precedent NotepadWindow.tsx already set for the sibling
+ * /voice/transcribe endpoint, rather than inventing a second convention: the control is
+ * offered to everyone and a free account gets the server's own honest message ("Voice is
+ * a Pro feature — upgrade to Newton Pro…") in place of audio, shown as a quiet inline
+ * note next to the button. The alternative — hiding it behind a getBillingStatus check —
+ * would mean one billing fetch per message bubble on screen (there's no shared billing
+ * context in this app; every consumer fetches its own), to hide a feature free students
+ * would then have no way to discover.
+ *
+ * The synthesized audio is kept for the life of the bubble, so replaying a message
+ * costs nothing and doesn't re-run real TTS compute on the server. */
+function ListenButton({ token, text }: { token: string; text: string }) {
+  const [status, setStatus] = useState<ListenStatus>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+
+  function release() {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+  }
+
+  // Stop and discard cached audio if this bubble's text changes out from under it (a
+  // re-rendered/edited history entry) — playing stale narration of text no longer on
+  // screen would be worse than simply re-synthesizing on the next click.
+  useEffect(() => {
+    release();
+    setStatus("idle");
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  // Never leave audio playing into a conversation the student has navigated away from.
+  useEffect(() => release, []);
+
+  async function handleClick() {
+    if (status === "loading") return;
+    if (status === "playing") {
+      audioRef.current?.pause();
+      setStatus("paused");
+      return;
+    }
+    setError(null);
+    try {
+      let audio = audioRef.current;
+      if (!audio) {
+        setStatus("loading");
+        const blob = await synthesizeSpeech(token, text);
+        const url = URL.createObjectURL(blob);
+        urlRef.current = url;
+        audio = new Audio(url);
+        audio.onended = () => setStatus("idle");
+        audioRef.current = audio;
+      }
+      await audio.play();
+      setStatus("playing");
+    } catch (err) {
+      setStatus("idle");
+      setError(err instanceof ApiError ? err.message : "Couldn't read that message aloud.");
+    }
+  }
+
+  const label = status === "loading" ? "Preparing…" : status === "playing" ? "Pause" : status === "paused" ? "Resume" : "Listen";
+
+  return (
+    <div className="message-actions">
+      <button
+        type="button"
+        className={`message-listen${status === "playing" ? " message-listen--playing" : ""}`}
+        onClick={handleClick}
+        disabled={status === "loading"}
+        aria-label={status === "playing" ? "Pause reading this message aloud" : "Read this message aloud"}
+        title="Have Newton read this reply out loud"
+      >
+        <span aria-hidden="true">{status === "playing" ? "❚❚" : "▶"}</span>
+        {label}
+      </button>
+      {error && (
+        <span className="message-listen-note" role="status">
+          {error}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function formatTime(iso?: string): string | null {
@@ -231,6 +330,12 @@ function MessageBubble({
         )}
         {message.stoppedByUser && <div className="message-stopped-note">Stopped</div>}
         {showStreamingDots && <ThinkingIndicator />}
+        {/* Only on a finished Newton reply with real text: there's nothing to read aloud
+            for a still-streaming (or empty/errored) message, and a control that appears
+            mid-stream and then changes what it would say is worse than one that waits. */}
+        {!isUser && message.role === "assistant" && !message.streaming && !message.error && displayContent.trim() && (
+          <ListenButton token={token} text={displayContent} />
+        )}
       </div>
     </div>
   );
