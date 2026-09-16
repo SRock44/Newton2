@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import NotepadWindow from "../NotepadWindow";
 import * as api from "../api";
+import { emit } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 const listeners: Record<string, Array<(event: { payload: unknown }) => void>> = {};
 
@@ -13,6 +15,11 @@ vi.mock("@tauri-apps/api/event", () => ({
       listeners[event] = (listeners[event] ?? []).filter((cb) => cb !== callback);
     });
   }),
+  emit: vi.fn(async () => undefined),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(async () => undefined),
 }));
 
 vi.mock("../api", async () => {
@@ -67,6 +74,8 @@ describe("NotepadWindow", () => {
     annotateNoteSelection.mockReset();
     window.localStorage.clear();
     vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(emit).mockClear();
+    vi.mocked(invoke).mockClear();
   });
 
   afterEach(() => {
@@ -77,6 +86,50 @@ describe("NotepadWindow", () => {
     render(<NotepadWindow />);
     await fireAuth(null);
     expect(screen.getByText(/waiting for the main newton window to sign in/i)).toBeInTheDocument();
+  });
+
+  // Notepad auth race fix (ROADMAP.md "stuck on Waiting... even when signed in"): Tauri
+  // events aren't queued for late listeners, so a Notepad opened well after sign-in
+  // would otherwise miss the one-and-only "notepad-auth" broadcast that already
+  // happened. This asserts the request half of the fix: the window asks for the current
+  // token the moment its listener is ready, instead of just passively waiting.
+  it("asks the main window for the current token on mount via notepad-ready", async () => {
+    render(<NotepadWindow />);
+    await waitFor(() => expect(vi.mocked(emit)).toHaveBeenCalledWith("notepad-ready"));
+  });
+
+  it("does not show the Sign in fallback button while the notepad-ready round trip is still in flight", async () => {
+    render(<NotepadWindow />);
+    await fireAuth(null); // still no token, but well within the round-trip window
+    expect(screen.getByText(/waiting for the main newton window to sign in/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
+  it("shows a Sign in fallback button once the wait genuinely times out with no token, and it focuses the main window", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ delay: null });
+    render(<NotepadWindow />);
+
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    const signInButton = await screen.findByRole("button", { name: "Sign in" });
+    await user.click(signInButton);
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("focus_main_window");
+
+    vi.useRealTimers();
+  });
+
+  it("never shows the Sign in fallback once a real token arrives before the timeout", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    listNotes.mockResolvedValue([]);
+    render(<NotepadWindow />);
+    await fireAuth("tok");
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 
   it("loads and displays the note picker once authenticated", async () => {

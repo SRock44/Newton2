@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import MessageContent from "./components/MessageContent";
 import ContextMenu from "./components/ContextMenu";
@@ -42,6 +43,15 @@ const ANNOTATE_CONTEXT_CHARS = 4000;
 // under a minute, long enough that whisper-asr isn't called on a constant stream of
 // tiny near-silent clips.
 const RECORDING_SEGMENT_MS = 45_000;
+
+// Notepad auth race fix (ROADMAP.md "stuck on Waiting... even when signed in"): how long
+// to wait for the main window to answer this window's "notepad-ready" request (see the
+// auth effect below) before showing a "Sign in" fallback button instead of just sitting
+// on the plain waiting text. The round trip should resolve almost instantly for the
+// (overwhelmingly common) genuinely-signed-in case -- this is a real timeout for the
+// genuinely-signed-out case, not a guess at typical IPC latency, so it's set with real
+// headroom above what a healthy round trip should ever take.
+const AUTH_FALLBACK_TIMEOUT_MS = 4_000;
 
 type EditorMode = "write" | "preview";
 
@@ -108,15 +118,34 @@ function NotepadWindow() {
   const latestRef = useRef({ title, content });
   latestRef.current = { title, content };
 
+  // Shown once AUTH_FALLBACK_TIMEOUT_MS elapses with no answer to "notepad-ready" below
+  // -- the genuine "actually not signed in yet" case, as opposed to the late-mount race
+  // the request/response pattern itself already eliminates for the signed-in case.
+  const [showSignInFallback, setShowSignInFallback] = useState(false);
+
   // Auth: the main window pushes a live, valid token via this event — fired once when
   // it's known to be open/opening and again on every background refresh (see App.tsx).
+  // Also asks for it directly: Tauri events aren't queued for late listeners, so a
+  // Notepad opened well after sign-in (the normal case) would otherwise have missed the
+  // one-and-only broadcast that already happened and be stuck waiting for up to an hour,
+  // until the next incidental background refresh -- even though the main window is
+  // genuinely signed in the whole time. Emitting "notepad-ready" the moment this
+  // listener is ready asks App.tsx to immediately re-broadcast the CURRENT token (see
+  // its own "notepad-ready" responder), closing that race.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     import("@tauri-apps/api/event")
-      .then(({ listen }) =>
-        listen<NotepadAuthPayload>("notepad-auth", (event) => setToken(event.payload.token)),
-      )
+      .then(({ listen, emit }) => {
+        const subscribed = listen<NotepadAuthPayload>("notepad-auth", (event) => {
+          setToken(event.payload.token);
+          setShowSignInFallback(false);
+        });
+        emit("notepad-ready").catch(() => {
+          // No Tauri context — nothing listening on the other end.
+        });
+        return subscribed;
+      })
       .then((fn) => {
         if (cancelled) fn();
         else unlisten = fn;
@@ -124,11 +153,25 @@ function NotepadWindow() {
       .catch(() => {
         // No Tauri context (e.g. this file under a test runner) — nothing to listen to.
       });
+    const fallbackTimer = setTimeout(() => setShowSignInFallback(true), AUTH_FALLBACK_TIMEOUT_MS);
     return () => {
       cancelled = true;
+      clearTimeout(fallbackTimer);
       unlisten?.();
     };
   }, []);
+
+  // "Sign in" fallback button (see showSignInFallback above): brings the main window to
+  // front via the same show+focus Tauri command the tray's "Open Newton" menu item uses,
+  // so the student can actually reach a sign-in screen instead of being stuck on a
+  // dead-end waiting message.
+  async function handleSignInClick() {
+    try {
+      await invoke("focus_main_window");
+    } catch {
+      // No Tauri context (e.g. under a test runner) — nothing to focus.
+    }
+  }
 
   const refreshNotes = useCallback(async () => {
     if (!token) return;
@@ -521,7 +564,14 @@ function NotepadWindow() {
       <TitleBar title="Newton Notepad" variant="notepad" />
       <div className="notepad-window">
         {!token ? (
-          <div className="notepad-window__empty">Waiting for the main Newton window to sign in…</div>
+          <div className="notepad-window__empty notepad-window__auth-wait">
+            <p>Waiting for the main Newton window to sign in…</p>
+            {showSignInFallback && (
+              <button type="button" className="btn-primary" onClick={handleSignInClick}>
+                Sign in
+              </button>
+            )}
+          </div>
         ) : showPicker ? (
           <div className="notepad-window__picker">
             <button type="button" className="btn-primary notepad-window__new" onClick={handleNewNote}>

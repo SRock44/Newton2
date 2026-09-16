@@ -155,11 +155,22 @@ fn capture_and_emit_snip(app: &tauri::AppHandle) {
     let encoded = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
     let data_url = format!("data:image/png;base64,{}", encoded);
 
+    focus_main_window(app.clone());
+    let _ = app.emit("newton-snip-captured", serde_json::json!({ "dataUrl": data_url }));
+}
+
+/// Brings the main window to front — the same show+focus pair the tray's "Open Newton"
+/// menu item and `capture_and_emit_snip` already use inline, exposed as an invokable
+/// command so the frontend can trigger it too. Backs the Notepad window's "Sign in"
+/// fallback button (see NotepadWindow.tsx): if the Notepad genuinely can't get a token
+/// from the main window within a short timeout, this is how the student gets to an
+/// actual sign-in screen instead of being stuck on a dead-end "waiting" message.
+#[tauri::command]
+fn focus_main_window(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
     }
-    let _ = app.emit("newton-snip-captured", serde_json::json!({ "dataUrl": data_url }));
 }
 
 /// Shows (creating if needed) the always-on-top companion Notepad window — a second,
@@ -199,7 +210,11 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![greet, wait_for_oauth_callback])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            wait_for_oauth_callback,
+            focus_main_window
+        ])
         .setup(|app| {
             // "Newton Snip": Ctrl+Alt+N from anywhere captures the screen and hands it to
             // the frontend's crop UI. Deliberately not Win+Shift+S / Ctrl+Shift+N, which
@@ -230,17 +245,9 @@ pub fn run() {
                 .tooltip("Newton")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
+                    "show" => focus_main_window(app.clone()),
                     "flashcards" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        focus_main_window(app.clone());
                         let _ = app.emit("tray-open-flashcards", ());
                     }
                     "snip" => capture_and_emit_snip(app),
