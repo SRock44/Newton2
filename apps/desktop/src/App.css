@@ -171,6 +171,44 @@ button {
   cursor: pointer;
 }
 
+/* Themed scrollbars — every scroll container in the app (sidebar, chat log, Notepad,
+   Documents/Flashcards panels, this Home dashboard) previously fell back to the raw
+   OS/WebView2 default gray scrollbar, which reads as an unstyled placeholder against
+   the ink-and-paper palette everywhere else. `scrollbar-width`/`scrollbar-color` cover
+   Firefox; WebView2 is Chromium, so the `::-webkit-scrollbar` rules below are what
+   actually render here. The thumb is inset from the track via a transparent border +
+   background-clip trick (rather than a full-width bar) so it reads as a thin accent
+   rather than a chunky OS control, and it uses the same border/muted-text tokens that
+   already flip for dark mode, so no separate dark-mode block is needed. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-faint);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Fraunces display treatment — the wordmark, panel/section headings, and
    dialog titles all use this, not just an isolated <h1>. The variable font's
    optical-size and "soft" axes are dialed up for a warm, confident display
@@ -547,6 +585,22 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  border: none;
+  background: transparent;
+  padding: var(--space-1);
+  margin: calc(var(--space-1) * -1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-brand:hover,
+.sidebar-brand:focus-visible {
+  background-color: var(--color-surface-2);
+}
+
+.sidebar-brand--active .sidebar-brand-mark {
+  box-shadow: 0 0 0 2px var(--color-accent-tint-strong);
 }
 
 .sidebar-brand-mark {
@@ -769,12 +823,6 @@ textarea:focus-visible,
   background-color: var(--color-accent-tint);
 }
 
-.sidebar-home-link {
-  border-top: 1px solid var(--color-border-2);
-  margin-top: var(--space-1);
-  padding-top: 9px;
-}
-
 /* ---------- Collapsible sidebar ---------- */
 
 .sidebar-header-actions {
@@ -815,8 +863,34 @@ textarea:focus-visible,
 }
 
 .sidebar-header--collapsed {
+  flex-direction: column;
   justify-content: center;
+  gap: var(--space-2);
   padding: var(--space-3) 0;
+}
+
+.sidebar-rail-brand {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sidebar-rail-brand:hover,
+.sidebar-rail-brand:focus-visible {
+  background-color: var(--color-accent-hover);
+}
+
+.sidebar-rail-brand.sidebar-rail-btn--active {
+  box-shadow: 0 0 0 2px var(--color-accent-tint-strong);
 }
 
 .sidebar-rail {
@@ -908,6 +982,10 @@ textarea:focus-visible,
 }
 
 .right-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-4) var(--space-3) var(--space-3);
   border-bottom: 1px solid var(--color-border);
   font-size: var(--font-size-2xs);
@@ -915,6 +993,22 @@ textarea:focus-visible,
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-text-faint);
+}
+
+/* ---------- Collapsible right panel (mirrors the sidebar's own collapse rail) ---------- */
+
+.right-panel--collapsed {
+  width: 40px;
+  flex-shrink: 0;
+  align-items: center;
+  padding: var(--space-3) 0;
+  gap: var(--space-3);
+}
+
+.right-panel-collapsed-streak {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .panel-section {
@@ -1083,6 +1177,49 @@ textarea:focus-visible,
   max-width: 640px;
 }
 
+.documents-page-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+/* Grid (thumbnail tiles) vs. list (compact rows) — see lib/preferences.ts. */
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.view-toggle-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.view-toggle-btn + .view-toggle-btn {
+  border-left: 1px solid var(--color-border-2);
+}
+
+.view-toggle-btn:hover {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.view-toggle-btn--active {
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+}
+
 .documents-drive {
   display: flex;
   gap: var(--space-4);
@@ -1092,11 +1229,36 @@ textarea:focus-visible,
 }
 
 .documents-list-pane {
-  width: 260px;
-  flex-shrink: 0;
   overflow-y: auto;
   border-right: 1px solid var(--color-border);
+}
+
+/* List mode keeps the original narrow file-list-beside-a-preview layout. */
+.documents-list-pane--list {
+  width: 260px;
+  flex-shrink: 0;
   padding-right: var(--space-3);
+}
+
+/* Grid mode gives the thumbnails most of the width instead — a Drive-style grid
+   cramped into a 260px rail would defeat the point of a grid. */
+.documents-list-pane--grid {
+  flex: 2 1 0;
+  min-width: 0;
+  padding-right: var(--space-4);
+}
+
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+  align-content: start;
+}
+
+.documents-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .documents-detail-pane {
@@ -1106,6 +1268,132 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+/* ---------- Document entry "⋮" overflow menu (grid tiles and list rows alike) ---------- */
+
+.doc-entry {
+  position: relative;
+}
+
+.doc-entry--card {
+  height: 100%;
+}
+
+.doc-entry-renaming {
+  height: 100%;
+}
+
+.doc-rename-input {
+  width: 100%;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.doc-menu-wrap {
+  position: absolute;
+  z-index: 2;
+}
+
+.doc-entry--card .doc-menu-wrap {
+  top: 6px;
+  right: 6px;
+}
+
+.doc-entry--row .doc-menu-wrap {
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+}
+
+.doc-menu-trigger {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+/* The trigger only fully reveals on hover/focus/open — same hover-reveal pattern as
+   the sidebar's session-item-delete "×" — but stays reachable by keyboard at all times
+   since focus-visible always shows it regardless of hover. */
+.doc-entry:hover .doc-menu-trigger,
+.doc-menu-trigger:focus-visible,
+.doc-menu-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.doc-entry--card .doc-menu-trigger {
+  background-color: rgba(0, 0, 0, 0.4);
+  color: #fff;
+}
+
+.doc-entry--card .doc-menu-trigger:hover,
+.doc-entry--card .doc-menu-trigger[aria-expanded="true"] {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.doc-entry--row .doc-menu-trigger {
+  background-color: transparent;
+  color: var(--color-text-faint);
+}
+
+.doc-entry--row .doc-menu-trigger:hover,
+.doc-entry--row .doc-menu-trigger[aria-expanded="true"] {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.doc-menu-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.doc-menu-popover button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px var(--space-2);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.doc-menu-popover button:hover {
+  background-color: var(--color-surface-2);
+}
+
+.doc-menu-popover .doc-menu-item--danger {
+  color: var(--color-danger);
+}
+
+.doc-menu-popover .doc-menu-item--danger:hover {
+  background-color: var(--color-danger-tint);
 }
 
 /* ---------- RecentItemCard (shared by DocumentsPanel's file list, as
@@ -1186,22 +1474,23 @@ textarea:focus-visible,
 
 .recent-item-card--card {
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
   border: 1px solid var(--color-border-2);
+  border-radius: var(--radius-md);
   background-color: var(--color-surface);
   height: 100%;
+  overflow: hidden;
 }
 
 .recent-item-card--card:hover {
   border-color: var(--color-border);
 }
 
-.recent-item-card--card .recent-item-card-icon {
-  width: 32px;
-  height: 32px;
-  font-size: 10px;
+.recent-item-card--card .recent-item-card-body {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  gap: 2px;
 }
 
 .recent-item-card--card .recent-item-card-title {
@@ -1210,13 +1499,70 @@ textarea:focus-visible,
   overflow: visible;
 }
 
-.recent-item-card-snippet {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+/* The "thumbnail": a fixed white page (deliberately not a theme color — see the
+   file-header comment) showing the item's own leading text at a tiny size, so it reads
+   as an actual preview of the content rather than a colored file-type swatch. Real
+   documents/notes render believable "ink on paper"; a brand-new empty note (no snippet
+   yet) falls back to a few gray skeleton bars standing in for not-yet-written lines. */
+.recent-item-thumb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  aspect-ratio: 4 / 3;
+  padding: 10px 12px;
+  background-color: #fdfbf5;
+  border-bottom: 1px solid var(--color-border-2);
   overflow: hidden;
+}
+
+.recent-item-thumb-badge {
+  align-self: flex-start;
+  flex-shrink: 0;
+  font-size: 8.5px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.03em;
+  color: #8a8368;
+  background-color: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.recent-item-thumb-text {
+  flex: 1;
+  font-size: 6.5px;
+  line-height: 1.55;
+  color: #4a4636;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 8;
+  -webkit-box-orient: vertical;
+}
+
+.recent-item-thumb-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.recent-item-thumb-lines span {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+.recent-item-thumb-lines span:nth-child(1) {
+  width: 88%;
+}
+
+.recent-item-thumb-lines span:nth-child(2) {
+  width: 95%;
+}
+
+.recent-item-thumb-lines span:nth-child(3) {
+  width: 65%;
 }
 
 .recent-item-card-tags {
@@ -3573,6 +3919,32 @@ textarea:focus-visible,
   margin-top: 5px;
 }
 
+.progress-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-2);
+}
+
+.progress-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.progress-detail-value {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.progress-detail-label {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+}
+
 /* ---------- Practice exams ---------- */
 
 .exam-list-title {
@@ -4218,7 +4590,7 @@ textarea:focus-visible,
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: var(--space-4) var(--space-6) var(--space-5);
+  padding: var(--space-5) var(--space-6) var(--space-8);
   overflow-y: auto;
 }
 
@@ -4228,6 +4600,8 @@ textarea:focus-visible,
   justify-content: space-between;
   gap: var(--space-4);
   flex-shrink: 0;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-2);
 }
 
 .home-view-toolbar .modal-subtitle {
@@ -4264,11 +4638,17 @@ textarea:focus-visible,
   cursor: pointer;
 }
 
+/* A fixed 3-column grid, not the previous auto-fit track — auto-fit reflowed
+   whichever widget landed alone in the last row into an oversized stretched card
+   depending on window width, which read as accidental rather than composed. Every
+   widget below gets an explicit span instead, so the layout is the same shape at
+   every window size: full-width quick actions, full-width recent grid, then
+   conversations/due-soon/progress as one deliberate row of three. */
 .home-widgets {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: var(--space-4);
-  margin-top: var(--space-4);
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+  margin-top: var(--space-5);
 }
 
 .home-widget {
@@ -4276,6 +4656,11 @@ textarea:focus-visible,
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  box-shadow: var(--shadow-sm);
 }
 
 .home-widget--quick-actions,
@@ -4289,6 +4674,8 @@ textarea:focus-visible,
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
   margin: 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-2);
 }
 
 .home-quick-actions {
@@ -4303,6 +4690,19 @@ textarea:focus-visible,
   gap: var(--space-3);
 }
 
+/* Recent item tiles sit one level "inside" the surrounding widget card, which
+   otherwise shares the exact same background/border tokens — a step down to
+   surface-2 (the same tone the sidebar and hover states already use elsewhere)
+   keeps the nesting readable instead of two same-color boxes blurring together. */
+.home-recent-grid .recent-item-card--card {
+  background-color: var(--color-surface-2);
+  border-color: transparent;
+}
+
+.home-recent-grid .recent-item-card--card:hover {
+  background-color: var(--color-surface-3);
+}
+
 .home-conversation-list,
 .home-due-list {
   display: flex;
@@ -4312,9 +4712,6 @@ textarea:focus-visible,
 
 .home-conversation-item,
 .home-due-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   width: 100%;
   border: none;
   background: transparent;
@@ -4325,13 +4722,36 @@ textarea:focus-visible,
   transition: background-color 0.15s ease;
 }
 
+.home-conversation-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Stacked, not a single flex row — a due item's title can be a full flashcard
+   question or assignment name, which a fixed-width badge+date+title row (the
+   previous layout) truncated down to one or two illegible characters once this
+   widget became one of a 3-across row rather than a full-width column. Wrapping the
+   title onto its own line means it always gets the card's full width, at any size. */
+.home-due-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-due-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .home-conversation-item:hover,
 .home-due-item:hover {
   background-color: var(--color-surface-2);
 }
 
-.home-conversation-title,
-.home-due-title {
+.home-conversation-title {
   flex: 1;
   min-width: 0;
   font-size: var(--font-size-sm);
@@ -4339,6 +4759,15 @@ textarea:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.home-due-title {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .home-conversation-date,
@@ -4364,6 +4793,12 @@ textarea:focus-visible,
 .home-due-badge--flashcard {
   background-color: var(--color-warning-tint);
   color: var(--color-warning);
+}
+
+@media (max-width: 1100px) {
+  .home-widget--progress {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 720px) {

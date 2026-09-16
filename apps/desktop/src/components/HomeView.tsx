@@ -4,6 +4,7 @@ import { getDocumentContent, getGamificationStats, getNote, listDocuments, listF
 import type { ChatSession, GamificationStats } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
 import { documentTypeLabel } from "../lib/fileType";
+import { toSnippet } from "../lib/snippet";
 import {
   HOME_WIDGET_IDS,
   HOME_WIDGET_LABELS,
@@ -38,7 +39,6 @@ interface HomeViewProps {
 const RECENT_LIMIT = 6;
 const CONVERSATIONS_LIMIT = 5;
 const DUE_SOON_LIMIT = 6;
-const SNIPPET_MAX_LENGTH = 140;
 
 type RecentItem = {
   kind: "document" | "note";
@@ -56,12 +56,6 @@ type DueItem = {
   title: string;
   due: string;
 };
-
-function toSnippet(raw: string): string {
-  const cleaned = raw.replace(/\s+/g, " ").trim();
-  if (!cleaned) return "";
-  return cleaned.length > SNIPPET_MAX_LENGTH ? `${cleaned.slice(0, SNIPPET_MAX_LENGTH).trim()}…` : cleaned;
-}
 
 function formatShortDate(iso: string): string {
   const date = new Date(iso);
@@ -171,19 +165,32 @@ function HomeView({
   // "Due soon" — study plan items with a due date, plus already-due flashcards (FSRS
   // scheduling, see app/services/flashcard_generation.py), combined and sorted client-
   // side from the two existing endpoints App.tsx's own reminder effect already calls —
-  // no new backend aggregation endpoint needed.
+  // no new backend aggregation endpoint needed. A freshly-generated deck is due for its
+  // FIRST review immediately (correct FSRS behavior, not a bug), which used to mean the
+  // whole deck flooded this widget as individually near-unreadable rows at this card's
+  // width — collapsed into one summary row instead, since "review your new deck" is one
+  // action, not N rows that all say "Flashcard".
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const [studyItems, dueFlashcards] = await Promise.all([listStudyPlan(token), listFlashcards(token, true)]);
         if (cancelled) return;
-        const combined: DueItem[] = [
-          ...studyItems
-            .filter((item) => !!item.due_date)
-            .map((item) => ({ kind: "study" as const, id: item.id, title: item.title, due: item.due_date! })),
-          ...dueFlashcards.map((card) => ({ kind: "flashcard" as const, id: card.id, title: card.front, due: card.due })),
-        ];
+        const combined: DueItem[] = studyItems
+          .filter((item) => !!item.due_date)
+          .map((item) => ({ kind: "study" as const, id: item.id, title: item.title, due: item.due_date! }));
+        if (dueFlashcards.length > 0) {
+          const earliestDue = dueFlashcards.reduce(
+            (earliest, card) => (new Date(card.due) < new Date(earliest) ? card.due : earliest),
+            dueFlashcards[0].due,
+          );
+          combined.push({
+            kind: "flashcard",
+            id: "flashcard-summary",
+            title: `${dueFlashcards.length} flashcard${dueFlashcards.length === 1 ? "" : "s"} ready to review`,
+            due: earliestDue,
+          });
+        }
         combined.sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime());
         setDueItems(combined.slice(0, DUE_SOON_LIMIT));
       } catch {
@@ -339,11 +346,13 @@ function HomeView({
                       className="home-due-item"
                       onClick={() => (item.kind === "study" ? onOpenStudyPlan() : onOpenFlashcards())}
                     >
-                      <span className={`home-due-badge home-due-badge--${item.kind}`}>
-                        {item.kind === "study" ? "Study plan" : "Flashcard"}
+                      <span className="home-due-item-top">
+                        <span className={`home-due-badge home-due-badge--${item.kind}`}>
+                          {item.kind === "study" ? "Study plan" : "Flashcards"}
+                        </span>
+                        <span className="home-due-date">{formatShortDate(item.due)}</span>
                       </span>
                       <span className="home-due-title">{item.title}</span>
-                      <span className="home-due-date">{formatShortDate(item.due)}</span>
                     </button>
                   </li>
                 ))}
@@ -373,6 +382,24 @@ function HomeView({
             </div>
             <div className="progress-bar-caption">
               {stats.xp_to_next_level} XP to level {stats.level + 1}
+            </div>
+            <div className="progress-detail-grid">
+              <div className="progress-detail-item">
+                <span className="progress-detail-value">{stats.messages_sent}</span>
+                <span className="progress-detail-label">Messages sent</span>
+              </div>
+              <div className="progress-detail-item">
+                <span className="progress-detail-value">{stats.flashcards_reviewed}</span>
+                <span className="progress-detail-label">Cards reviewed</span>
+              </div>
+              <div className="progress-detail-item">
+                <span className="progress-detail-value">{stats.flashcards_created}</span>
+                <span className="progress-detail-label">Cards created</span>
+              </div>
+              <div className="progress-detail-item">
+                <span className="progress-detail-value">{stats.study_plan_items}</span>
+                <span className="progress-detail-label">Plan items</span>
+              </div>
             </div>
           </section>
         )}

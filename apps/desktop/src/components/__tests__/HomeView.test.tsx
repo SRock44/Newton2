@@ -71,7 +71,16 @@ describe("HomeView", () => {
     listFlashcards.mockReset().mockResolvedValue([
       { id: "fc-1", document_id: null, front: "What is F=ma?", back: "Newton's second law", due: "2026-02-20T00:00:00Z", state: "review", last_review: null, created_at: "2026-01-01T00:00:00Z" },
     ]);
-    getGamificationStats.mockReset().mockResolvedValue({ streak_days: 4, xp: 120, level: 2, xp_to_next_level: 80 });
+    getGamificationStats.mockReset().mockResolvedValue({
+      streak_days: 4,
+      xp: 120,
+      level: 2,
+      xp_to_next_level: 80,
+      messages_sent: 30,
+      flashcards_reviewed: 5,
+      flashcards_created: 12,
+      study_plan_items: 3,
+    });
     vi.mocked(invoke).mockClear();
   });
 
@@ -96,11 +105,15 @@ describe("HomeView", () => {
     expect(await screen.findByText(/differentiate composite functions/)).toBeInTheDocument();
   });
 
-  it("shows due soon items combining study plan and due flashcards", async () => {
+  it("shows due soon items combining study plan and due flashcards, with due flashcards collapsed into one summary row", async () => {
     render(<HomeView {...baseProps()} />);
 
     expect(await screen.findByText("Problem set 3")).toBeInTheDocument();
-    expect(await screen.findByText("What is F=ma?")).toBeInTheDocument();
+    // A freshly-generated deck is due for its first review immediately (correct FSRS
+    // behavior) — shown as one summary row, not one row per raw flashcard front, which
+    // used to flood this widget with near-illegible truncated question text.
+    expect(await screen.findByText("1 flashcard ready to review")).toBeInTheDocument();
+    expect(screen.queryByText("What is F=ma?")).not.toBeInTheDocument();
   });
 
   it("shows the progress widget using the same gamification stats endpoint", async () => {
@@ -178,7 +191,7 @@ describe("HomeView", () => {
     const onOpenFlashcards = vi.fn();
     render(<HomeView {...baseProps({ onOpenFlashcards })} />);
 
-    await user.click(await screen.findByText("What is F=ma?"));
+    await user.click(await screen.findByText("1 flashcard ready to review"));
     expect(onOpenFlashcards).toHaveBeenCalledTimes(1);
   });
 

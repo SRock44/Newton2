@@ -1,10 +1,12 @@
 /** A single document/note preview — shared by DocumentsPanel.tsx's file list (as a
  * compact `variant="row"`) and HomeView.tsx's "Recent documents & notes" widget (as
  * the default `variant="card"`), so both get the same visual treatment instead of two
- * separately-built styles (see ROADMAP.md). "Thumbnail" here is deliberately a
- * file-type badge + a short text-snippet preview of real content, never a rendered
- * image of a PDF's first page — a confirmed, deliberate scoping decision, not a
- * missing feature. */
+ * separately-built styles (see ROADMAP.md). The "card" variant renders a Google
+ * Drive-style thumbnail: a fixed white "page" (deliberately not theme-colored — real
+ * paper doesn't go dark in dark mode any more than a Drive thumbnail does) showing the
+ * item's actual leading text at a tiny size, with the type badge as a small tab in the
+ * corner — real content, not a rendered PDF-engine screenshot, but a genuine preview of
+ * what's inside rather than a flat color swatch with three letters on it. */
 
 export interface RecentItemCardProps {
   /** Short badge text, e.g. "PDF", "TXT", "MD", "DOC", "NOTE". */
@@ -42,31 +44,60 @@ function RecentItemCard({
   variant = "card",
   onClick,
 }: RecentItemCardProps) {
-  const isRow = variant === "row";
+  const metaRow = (
+    <span className="recent-item-card-meta">
+      <span className="recent-item-card-date">{formatTimestamp(timestamp)}</span>
+      {tags && tags.length > 0 && (
+        <span className="recent-item-card-tags">
+          {tags.map((tag) => (
+            <span key={tag} className="recent-item-card-tag">
+              {tag}
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+
+  if (variant === "row") {
+    return (
+      <button
+        type="button"
+        className={`recent-item-card recent-item-card--row${active ? " recent-item-card--active" : ""}`}
+        onClick={onClick}
+      >
+        <span className="recent-item-card-icon" aria-hidden="true">
+          {typeLabel}
+        </span>
+        <span className="recent-item-card-body">
+          <span className="recent-item-card-title">{title}</span>
+          {metaRow}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
-      className={`recent-item-card recent-item-card--${variant}${active ? " recent-item-card--active" : ""}`}
+      className={`recent-item-card recent-item-card--card${active ? " recent-item-card--active" : ""}`}
       onClick={onClick}
     >
-      <span className="recent-item-card-icon" aria-hidden="true">
-        {typeLabel}
+      <span className="recent-item-thumb">
+        <span className="recent-item-thumb-badge">{typeLabel}</span>
+        {snippet ? (
+          <span className="recent-item-thumb-text">{snippet}</span>
+        ) : (
+          <span className="recent-item-thumb-lines" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        )}
       </span>
       <span className="recent-item-card-body">
         <span className="recent-item-card-title">{title}</span>
-        {!isRow && snippet && <span className="recent-item-card-snippet">{snippet}</span>}
-        <span className="recent-item-card-meta">
-          <span className="recent-item-card-date">{formatTimestamp(timestamp)}</span>
-          {tags && tags.length > 0 && (
-            <span className="recent-item-card-tags">
-              {tags.map((tag) => (
-                <span key={tag} className="recent-item-card-tag">
-                  {tag}
-                </span>
-              ))}
-            </span>
-          )}
-        </span>
+        {metaRow}
       </span>
     </button>
   );

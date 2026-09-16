@@ -102,6 +102,15 @@ function Sidebar({
         <div className="sidebar-header sidebar-header--collapsed">
           <button
             type="button"
+            className={`sidebar-rail-brand${mainView === "home" ? " sidebar-rail-btn--active" : ""}`}
+            onClick={onOpenHome}
+            aria-label="Home"
+            title="Home"
+          >
+            <NewtonMark size={15} />
+          </button>
+          <button
+            type="button"
             className="sidebar-collapse-toggle"
             onClick={toggleCollapsed}
             aria-label="Expand sidebar"
@@ -113,7 +122,6 @@ function Sidebar({
 
         <div className="sidebar-rail">
           <CollapsedNavButton label="New chat" onClick={onNewChat} />
-          <CollapsedNavButton label="Home" active={mainView === "home"} onClick={onOpenHome} />
           <CollapsedNavButton label="Documents" active={mainView === "documents"} onClick={onOpenDocuments} />
           <CollapsedNavButton label="Study plan" onClick={onOpenStudyPlan} />
           <CollapsedNavButton label="Flashcards" onClick={onOpenFlashcards} />
@@ -132,12 +140,18 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div className="sidebar-brand">
+        <button
+          type="button"
+          className={`sidebar-brand${mainView === "home" ? " sidebar-brand--active" : ""}`}
+          onClick={onOpenHome}
+          aria-label="Home"
+          title="Home"
+        >
           <span className="sidebar-brand-mark">
             <NewtonMark size={15} />
           </span>
           <span className="sidebar-brand-name">Newton</span>
-        </div>
+        </button>
         <div className="sidebar-header-actions">
           <button
             type="button"
@@ -173,14 +187,6 @@ function Sidebar({
       <div className="sidebar-nav">
         <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
           <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
-        </button>
-
-        <button
-          type="button"
-          className={`sidebar-nav-more sidebar-nav-more--active sidebar-home-link${mainView === "home" ? " sidebar-nav-more--current" : ""}`}
-          onClick={onOpenHome}
-        >
-          Home
         </button>
 
         <nav className="session-list" aria-label="Chat sessions">
