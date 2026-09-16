@@ -344,6 +344,15 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                 recv_task = None
 
                 frame_type = frame.get("type")
+                if frame_type == "ping":
+                    # Application-level keepalive (ROADMAP.md): the desktop client sends
+                    # one of these every ~20-25s so real traffic keeps flowing over an
+                    # otherwise-idle socket, defeating any idle-timeout closure sitting on
+                    # the real network path between client and server (background-tab
+                    # power throttling, an SSH tunnel's own idle timeout, a proxy, ...) --
+                    # deliberately a plain no-op ack, never counted as a chat turn.
+                    await websocket.send_json({"type": "pong"})
+                    continue
                 if frame_type == "stop":
                     continue  # nothing is generating — no-op
                 if frame_type != "user_message":
@@ -497,6 +506,15 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
                             if incoming.get("type") == "stop":
                                 stopped = True
                                 break
+                            # A ping landing here (a long reply can easily outlast one
+                            # ~20-25s ping interval) deliberately gets no explicit pong:
+                            # _drain_generation is already streaming real chunk frames
+                            # over this exact socket concurrently with this recv loop, so
+                            # the keepalive's whole purpose -- real traffic flowing while
+                            # otherwise idle -- is already satisfied without one, and
+                            # sending from here too would race _drain_generation's own
+                            # concurrent sends on the same socket (see the comment just
+                            # below on why nothing else replies from this branch either).
                             # Anything else arriving mid-generation (e.g. a stray
                             # user_message) is ignored — only one reply generates at a
                             # time, and there's no safe way to interleave a second send

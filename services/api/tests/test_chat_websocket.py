@@ -252,6 +252,83 @@ async def test_websocket_stop_mid_generation_truncates_and_persists_partial(
         await db_session.commit()
 
 
+async def test_websocket_ping_while_idle_gets_a_pong_and_stays_healthy(
+    http_client, auth_headers, keycloak_token, db_session
+):
+    """Application-level keepalive (ROADMAP.md): the desktop client pings an otherwise-
+    idle socket every ~20-25s specifically so real traffic keeps flowing and defeats any
+    idle-timeout closure sitting on the network path. Also proves a ping never desyncs
+    the protocol -- a real message right after still gets a normal reply, same
+    "harmless no-op" bar test_websocket_stop_with_nothing_generating_is_a_harmless_noop
+    holds "stop" to."""
+    create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = create_resp.json()["session_id"]
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            await ws.send(json.dumps({"type": "ping"}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=5)
+            assert json.loads(raw) == {"type": "pong"}
+
+            await ws.send(json.dumps({"type": "user_message", "content": "still there?"}))
+            saw_chunk_or_done = False
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                frame = json.loads(raw)
+                if frame["type"] == "done":
+                    saw_chunk_or_done = True
+                    break
+                if frame["type"] in ("chunk", "tool_start", "tool_end"):
+                    saw_chunk_or_done = True
+            assert saw_chunk_or_done
+    finally:
+        session_uuid = uuid.UUID(session_id)
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.commit()
+
+
+async def test_websocket_ping_mid_generation_is_a_harmless_noop(
+    http_client, auth_headers, keycloak_token, db_session
+):
+    """A ping landing while a reply is still streaming (the recv/gen race loop, not the
+    idle branch above) deliberately gets no explicit pong -- _drain_generation is already
+    streaming real chunk frames concurrently on this same socket, which already satisfies
+    the keepalive's purpose, and replying from the recv loop too would race
+    _drain_generation's own concurrent sends (see chat.py's comment on this). This just
+    proves it's never mistaken for a "stop" or a stray user_message -- the in-progress
+    reply must still complete normally."""
+    create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = create_resp.json()["session_id"]
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            await ws.send(json.dumps({"type": "user_message", "content": "what is a derivative?"}))
+
+            # user_message_saved always fires first -- proof generation is underway.
+            first = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
+            assert first["type"] == "user_message_saved"
+
+            await ws.send(json.dumps({"type": "ping"}))
+
+            saw_done = False
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                frame = json.loads(raw)
+                assert frame["type"] != "pong"  # see the no-explicit-pong rationale above
+                if frame["type"] == "done":
+                    saw_done = True
+                    break
+            assert saw_done
+    finally:
+        session_uuid = uuid.UUID(session_id)
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.commit()
+
+
 @pytest.mark.live_smoke
 async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishes(
     http_client, auth_headers, keycloak_token, db_session
