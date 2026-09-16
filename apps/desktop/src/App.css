@@ -3014,6 +3014,63 @@ body.is-resizing-panel * {
   color: var(--color-text-faint);
 }
 
+/* ---------- Per-message actions ("Listen") ----------
+   A quiet row under a finished Newton reply. Deliberately low-contrast and revealed on
+   hover of the transcript row, the same restraint .transcript-time already shows: it's
+   an occasional action, not a permanent fixture next to every single message. Kept
+   fully visible while it's actually doing something (and always visible to keyboard
+   focus) so nothing disappears mid-interaction. */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  opacity: 0;
+  transition: opacity var(--transition-fast, 120ms) ease;
+}
+
+.transcript-entry:hover .message-actions,
+.message-actions:focus-within,
+.message-actions:has(.message-listen--playing) {
+  opacity: 1;
+}
+
+.message-listen {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  padding: 2px var(--space-3);
+  cursor: pointer;
+}
+
+.message-listen:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.message-listen:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.message-listen--playing {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* The Pro-gate message lives here. Muted, not danger-red — see ListenButton's comment
+   in MessageBubble.tsx for why a plan limit is stated rather than alarmed about. */
+.message-listen-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-faint);
+}
+
 /* ---------- Suggested actions ("Open Flashcards" etc.) ----------
    The deterministic "check the panel" call to action the backend attaches right after
    a generation tool finishes (see App.tsx's "suggested_action" handling) — a real
@@ -3957,6 +4014,82 @@ body.is-resizing-panel * {
   color: var(--color-danger);
   font-size: var(--font-size-xs);
   margin-bottom: var(--space-2);
+}
+
+/* ---------- Composer dictation (speech-to-text) ----------
+   The mic sits with the other composer-row controls and matches .composer-attach's
+   quiet, text-muted treatment when idle. While recording it picks up the same
+   danger-tinted "live" treatment .notepad-window__record-btn--active uses, so the two
+   recording surfaces in this app read identically. See Composer.tsx. */
+.composer-mic {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  align-self: flex-end;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  line-height: 1;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.composer-mic:hover:not(:disabled) {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.composer-mic:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.composer-mic--recording,
+.composer-mic--recording:hover:not(:disabled) {
+  background-color: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+.composer-mic-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-danger);
+  animation: composer-mic-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes composer-mic-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Deliberately not .banner--error red-alarm chrome: the most common message here is
+   the /voice/transcribe Pro gate, which is information, not a fault. */
+.composer-voice-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  margin-bottom: var(--space-2);
+}
+
+.composer-voice-error-dismiss {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
 }
 
 .composer-hint {
@@ -5245,6 +5378,95 @@ body.is-resizing-panel * {
 .home-due-badge--flashcard {
   background-color: var(--color-warning-tint);
   color: var(--color-warning);
+}
+
+/* ---------- "What to study next" (weak areas) ----------
+   Real per-topic performance data from GET /weak-areas (see HomeView.tsx). Defaults to
+   a wide footprint, so this lays out as a row of topic cards that collapses to a stack
+   at narrower widths — the example text is real flashcard fronts and missed exam
+   questions, which need room to stay legible. */
+.home-weak-area-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--space-3);
+}
+
+.home-weak-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-2);
+}
+
+.home-weak-area-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.home-weak-area-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-weak-area-count {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+}
+
+.home-weak-area-examples {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.home-weak-area-example {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.home-weak-area-kind {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-medium);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.home-weak-area-kind--card {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning);
+}
+
+.home-weak-area-kind--question {
+  background-color: var(--color-danger-tint);
+  color: var(--color-danger);
+}
+
+.home-weak-area-example-text {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.home-weak-area-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: auto;
 }
 
 /* Narrower windows drop to two columns rather than pinning one specific widget full

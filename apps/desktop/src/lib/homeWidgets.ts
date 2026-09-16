@@ -15,9 +15,16 @@
  * the same prefix, so a corrupt/unparseable order can't also take visibility down with
  * it, and an older build that only knows about visibility keeps working unchanged. */
 
-export type HomeWidgetId = "recent" | "conversations" | "dueSoon" | "progress" | "quickActions";
+export type HomeWidgetId = "recent" | "conversations" | "dueSoon" | "progress" | "quickActions" | "weakAreas";
 
-export const HOME_WIDGET_IDS: HomeWidgetId[] = ["recent", "conversations", "dueSoon", "progress", "quickActions"];
+export const HOME_WIDGET_IDS: HomeWidgetId[] = [
+  "recent",
+  "conversations",
+  "dueSoon",
+  "progress",
+  "quickActions",
+  "weakAreas",
+];
 
 export const HOME_WIDGET_LABELS: Record<HomeWidgetId, string> = {
   recent: "Recent documents & notes",
@@ -25,6 +32,7 @@ export const HOME_WIDGET_LABELS: Record<HomeWidgetId, string> = {
   dueSoon: "Due soon",
   progress: "Your progress",
   quickActions: "Quick actions",
+  weakAreas: "What to study next",
 };
 
 /** The dashboard's original top-to-bottom VISUAL order, which is deliberately not the
@@ -39,6 +47,14 @@ export const DEFAULT_HOME_WIDGET_ORDER: HomeWidgetId[] = [
   "conversations",
   "dueSoon",
   "progress",
+  // "What to study next" ships LAST on purpose, even though it's arguably the most
+  // actionable widget here. normalizeHomeWidgetOrder appends an id a saved order has
+  // never seen to the end, so any student who has already touched Customize will find
+  // it at the bottom regardless of what this array says. Putting it anywhere else would
+  // mean the same release lands the same widget in two different places depending on
+  // whether a student had ever dragged anything — and a student who wants it at the top
+  // can now simply drag it there, which is the whole point of that feature.
+  "weakAreas",
 ];
 
 /** A widget's footprint in HomeView's 3-column grid: "wide" spans all three columns,
@@ -56,6 +72,13 @@ export const DEFAULT_HOME_WIDGET_SIZES: Record<HomeWidgetId, HomeWidgetSize> = {
   conversations: "compact",
   dueSoon: "compact",
   progress: "compact",
+  // The three compact widgets above already fill one row of three exactly, so a sixth
+  // compact widget would open a new row and leave two visibly empty cells next to it —
+  // the exact hole this size setting exists to let students close. Defaulting it wide
+  // means there's no hole to close in the first place, and it suits the content: real
+  // example flashcard fronts and missed exam questions are long strings that read badly
+  // in a one-third-width column.
+  weakAreas: "wide",
 };
 
 const KEY_PREFIX = "newton:prefs:homeWidgets:";

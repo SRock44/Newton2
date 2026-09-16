@@ -21,6 +21,7 @@ from app.routers import (
     study_plan,
     tools,
     voice,
+    weak_areas,
 )
 
 settings = get_settings()
@@ -101,6 +102,7 @@ app.include_router(study_plan.router)
 app.include_router(classroom.router)
 app.include_router(flashcards.router)
 app.include_router(gamification.router)
+app.include_router(weak_areas.router)
 app.include_router(practice_exams.router)
 app.include_router(voice.router)
 app.include_router(billing.router)

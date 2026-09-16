@@ -18,8 +18,17 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { getDocumentContent, getGamificationStats, getNote, listDocuments, listFlashcards, listNotes, listStudyPlan } from "../api";
-import type { ChatSession, GamificationStats } from "../types";
+import {
+  getDocumentContent,
+  getGamificationStats,
+  getNote,
+  getWeakAreas,
+  listDocuments,
+  listFlashcards,
+  listNotes,
+  listStudyPlan,
+} from "../api";
+import type { ChatSession, GamificationStats, WeakArea } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
 import { documentTypeLabel } from "../lib/fileType";
 import { toSnippet } from "../lib/snippet";
@@ -71,7 +80,15 @@ const WIDGET_CLASS_SUFFIX: Record<HomeWidgetId, string> = {
   conversations: "conversations",
   dueSoon: "due-soon",
   progress: "progress",
+  weakAreas: "weak-areas",
 };
+
+/** How many topics the "What to study next" widget lists, and how many real examples it
+ * shows per topic. The backend already caps examples at 5 per group; this trims further
+ * because the point of the widget is "here's where to start", not an exhaustive report —
+ * the full picture is what asking Newton in chat is for. */
+const WEAK_AREA_LIMIT = 3;
+const WEAK_AREA_EXAMPLES = 2;
 
 type RecentItem = {
   kind: "document" | "note";
@@ -166,7 +183,7 @@ function CustomizeRow({
 
 /** The real dashboard / home screen — the default landing view (see App.tsx's
  * mainView), replacing an empty chat as the first thing a student sees. A curated,
- * fixed set of five widgets, each independently show/hide-able, drag-reorderable, and
+ * fixed set of six widgets, each independently show/hide-able, drag-reorderable, and
  * switchable between a full-width and a single-column footprint via "Customize" (see
  * lib/homeWidgets.ts for how all three are persisted, and for why size is exposed at
  * all). Untouched, it renders the exact layout it always has. */
@@ -187,6 +204,7 @@ function HomeView({
   const [recentItems, setRecentItems] = useState<RecentItem[] | null>(null);
   const [dueItems, setDueItems] = useState<DueItem[] | null>(null);
   const [stats, setStats] = useState<GamificationStats | null>(null);
+  const [weakAreas, setWeakAreas] = useState<WeakArea[] | null>(null);
   const [visibility, setVisibility] = useState(() => getHomeWidgetVisibility(userId));
   const [order, setOrder] = useState(() => getHomeWidgetOrder(userId));
   const [sizes, setSizes] = useState(() => getHomeWidgetSizes(userId));
@@ -318,6 +336,28 @@ function HomeView({
     };
   }, [token]);
 
+  // "What to study next" — the real per-topic weak-area analysis the backend has always
+  // computed from actual flashcard review ratings and missed practice-exam questions
+  // (see services/api/app/services/weak_areas.py), previously reachable only if the chat
+  // tutor happened to call its tool mid-conversation. An empty array is a normal answer
+  // (a student with no review/exam history yet), so it's kept distinct from the null
+  // "still loading" state and from a failed fetch, which also lands as [] — the widget
+  // then shows the same honest "not enough history yet" note either way rather than an
+  // error the student can't act on.
+  useEffect(() => {
+    let cancelled = false;
+    getWeakAreas(token)
+      .then((areas) => {
+        if (!cancelled) setWeakAreas(areas);
+      })
+      .catch(() => {
+        if (!cancelled) setWeakAreas([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const toggleWidget = useCallback(
     (id: HomeWidgetId) => {
       setVisibility((prev) => {
@@ -361,7 +401,7 @@ function HomeView({
   /** Each widget's inner content, keyed by id, so the render below can lay them out in
    * whatever order the student dragged them into rather than a hardcoded JSX sequence.
    * The <section> wrapper, title and aria-label are applied uniformly at the call site
-   * — they were already identical in shape for all five. `progress` is null until its
+   * — they were already identical in shape for all of them. `progress` is null until its
    * stats arrive, which is how it has always behaved (it renders nothing rather than an
    * empty shell). */
   const widgetBodies: Record<HomeWidgetId, ReactNode> = {
@@ -482,6 +522,65 @@ function HomeView({
         </div>
       </>
     ),
+    /** Deliberately shows the REAL example card fronts and missed questions the backend
+     * returns, not just "3 weak topics" — a count tells a student nothing about what to
+     * actually do, and the concrete text is what makes the topic recognisable. Grouped
+     * by source document (that's the only real topic label that exists; cards with no
+     * source come back as the literal "general"). */
+    weakAreas:
+      weakAreas === null ? (
+        <p className="empty-state-text">Loading…</p>
+      ) : weakAreas.length === 0 ? (
+        <p className="empty-state-text">
+          Review some flashcards or take a practice exam, and Newton will show you exactly where you're
+          losing marks.
+        </p>
+      ) : (
+        <ul className="home-weak-area-list">
+          {weakAreas.slice(0, WEAK_AREA_LIMIT).map((area, i) => {
+            const examples = [
+              ...area.weak_flashcards.map((text) => ({ kind: "card" as const, text })),
+              ...area.missed_questions.map((text) => ({ kind: "question" as const, text })),
+            ].slice(0, WEAK_AREA_EXAMPLES);
+            return (
+              <li key={`${area.label}-${i}`} className="home-weak-area">
+                <div className="home-weak-area-top">
+                  <span className="home-weak-area-label">
+                    {area.label === "general" ? "Unfiled cards & questions" : area.label}
+                  </span>
+                  <span className="home-weak-area-count">
+                    {area.weak_count} to revisit
+                  </span>
+                </div>
+                <ul className="home-weak-area-examples">
+                  {examples.map((example, j) => (
+                    <li key={j} className="home-weak-area-example">
+                      <span className={`home-weak-area-kind home-weak-area-kind--${example.kind}`}>
+                        {example.kind === "card" ? "Card" : "Missed"}
+                      </span>
+                      <span className="home-weak-area-example-text">{example.text}</span>
+                    </li>
+                  ))}
+                </ul>
+                {/* The same existing panel navigation every other widget here uses — no
+                    new "start a targeted session" mechanism was invented for this. */}
+                <div className="home-weak-area-actions">
+                  {area.weak_flashcards.length > 0 && (
+                    <button type="button" className="btn-secondary-sm" onClick={onOpenFlashcards}>
+                      Review flashcards
+                    </button>
+                  )}
+                  {area.missed_questions.length > 0 && (
+                    <button type="button" className="btn-secondary-sm" onClick={onOpenPracticeExams}>
+                      Practice again
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ),
   };
 
   return (
@@ -528,7 +627,7 @@ function HomeView({
 
       {/* Laid out in the student's own order; each widget's grid footprint comes from
           its persisted size (see lib/homeWidgets.ts). The wrapper/title/aria-label are
-          identical for all five, so they're applied here once rather than repeated. */}
+          identical for every widget, so they're applied here once rather than repeated. */}
       <div className="home-widgets">
         {order.map((id) => {
           if (!visibility[id]) return null;

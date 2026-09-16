@@ -3,6 +3,7 @@ import {
   DEFAULT_HOME_WIDGET_SIZES,
   DEFAULT_HOME_WIDGET_ORDER,
   HOME_WIDGET_IDS,
+  HOME_WIDGET_LABELS,
   getHomeWidgetOrder,
   getHomeWidgetSizes,
   getHomeWidgetVisibility,
@@ -22,11 +23,29 @@ describe("widget id lists", () => {
     expect(DEFAULT_HOME_WIDGET_ORDER[0]).toBe("quickActions");
     expect(DEFAULT_HOME_WIDGET_ORDER[1]).toBe("recent");
   });
+
+  it("every canonical widget has a label and a default size — no half-registered widget", () => {
+    for (const id of HOME_WIDGET_IDS) {
+      expect(HOME_WIDGET_LABELS[id]).toBeTruthy();
+      expect(["wide", "compact"]).toContain(DEFAULT_HOME_WIDGET_SIZES[id]);
+    }
+    expect(Object.keys(HOME_WIDGET_LABELS).sort()).toEqual([...HOME_WIDGET_IDS].sort());
+    expect(Object.keys(DEFAULT_HOME_WIDGET_SIZES).sort()).toEqual([...HOME_WIDGET_IDS].sort());
+  });
+
+  it("'What to study next' ships last, where normalizeHomeWidgetOrder also puts it for existing accounts", () => {
+    // Both a brand-new account (this array) and an account with a saved 5-widget order
+    // (normalizeHomeWidgetOrder's append-unknown-ids-at-the-end rule) must find the new
+    // widget in the same place — see DEFAULT_HOME_WIDGET_ORDER's own comment.
+    expect(DEFAULT_HOME_WIDGET_ORDER[DEFAULT_HOME_WIDGET_ORDER.length - 1]).toBe("weakAreas");
+    const preExistingOrder = ["quickActions", "recent", "conversations", "dueSoon", "progress"];
+    expect(normalizeHomeWidgetOrder(preExistingOrder)).toEqual(DEFAULT_HOME_WIDGET_ORDER);
+  });
 });
 
 describe("normalizeHomeWidgetOrder", () => {
   it("keeps a complete, valid order exactly as given", () => {
-    const order: HomeWidgetId[] = ["progress", "dueSoon", "recent", "quickActions", "conversations"];
+    const order: HomeWidgetId[] = ["progress", "dueSoon", "recent", "weakAreas", "quickActions", "conversations"];
     expect(normalizeHomeWidgetOrder(order)).toEqual(order);
   });
 
@@ -66,7 +85,7 @@ describe("home widget order persistence", () => {
   });
 
   it("round-trips a dragged order", () => {
-    const order: HomeWidgetId[] = ["dueSoon", "progress", "quickActions", "conversations", "recent"];
+    const order: HomeWidgetId[] = ["dueSoon", "weakAreas", "progress", "quickActions", "conversations", "recent"];
     setHomeWidgetOrder("user-1", order);
     expect(getHomeWidgetOrder("user-1")).toEqual(order);
   });
@@ -106,6 +125,9 @@ describe("home widget sizes", () => {
     expect(sizes.conversations).toBe("compact");
     expect(sizes.dueSoon).toBe("compact");
     expect(sizes.progress).toBe("compact");
+    // The sixth widget defaults wide: three compacts already fill a row exactly, so a
+    // compact sixth would open a new row with two visibly empty cells.
+    expect(sizes.weakAreas).toBe("wide");
   });
 
   it("round-trips a changed size", () => {

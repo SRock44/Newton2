@@ -29,6 +29,7 @@ vi.mock("../../api", async () => {
     listStudyPlan: vi.fn(),
     listFlashcards: vi.fn(),
     getGamificationStats: vi.fn(),
+    getWeakAreas: vi.fn(),
   };
 });
 
@@ -39,6 +40,25 @@ const getNote = api.getNote as ReturnType<typeof vi.fn>;
 const listStudyPlan = api.listStudyPlan as ReturnType<typeof vi.fn>;
 const listFlashcards = api.listFlashcards as ReturnType<typeof vi.fn>;
 const getGamificationStats = api.getGamificationStats as ReturnType<typeof vi.fn>;
+const getWeakAreas = api.getWeakAreas as ReturnType<typeof vi.fn>;
+
+// Exactly the shape GET /weak-areas returns (see services/api/app/routers/weak_areas.py
+// and app/services/weak_areas.py's WeakArea): real example card fronts and real missed
+// exam questions, grouped by source document, worst first.
+const WEAK_AREAS = [
+  {
+    label: "biology-ch4.pdf",
+    weak_flashcards: ["What is the Krebs cycle?"],
+    missed_questions: ["What produces the most ATP?"],
+    weak_count: 2,
+  },
+  {
+    label: "general",
+    weak_flashcards: ["What is a derivative?"],
+    missed_questions: [],
+    weak_count: 1,
+  },
+];
 
 const SESSIONS: ChatSession[] = [
   { id: "s1", title: "Physics review", status: "active", created_at: "2026-01-01T00:00:00Z" },
@@ -88,16 +108,18 @@ describe("HomeView", () => {
       flashcards_created: 12,
       study_plan_items: 3,
     });
+    getWeakAreas.mockReset().mockResolvedValue(WEAK_AREAS);
     vi.mocked(invoke).mockClear();
   });
 
-  it("renders all five widgets by default", async () => {
+  it("renders all six widgets by default", async () => {
     render(<HomeView {...baseProps()} />);
 
     expect(screen.getByRole("heading", { name: "Quick actions" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recent documents & notes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Continue a conversation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Due soon" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "What to study next" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Your progress" })).toBeInTheDocument();
   });
 
@@ -251,17 +273,19 @@ describe("HomeView", () => {
         "Continue a conversation",
         "Due soon",
         "Your progress",
+        "What to study next",
       ]);
     });
 
     it("renders widgets in a persisted custom order", async () => {
-      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "quickActions", "conversations", "recent"]);
+      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "weakAreas", "quickActions", "conversations", "recent"]);
       const { container } = render(<HomeView {...baseProps()} />);
       await screen.findByRole("heading", { name: "Your progress" });
 
       expect(renderedWidgetOrder(container)).toEqual([
         "Your progress",
         "Due soon",
+        "What to study next",
         "Quick actions",
         "Continue a conversation",
         "Recent documents & notes",
@@ -269,13 +293,14 @@ describe("HomeView", () => {
     });
 
     it("keeps a hidden widget out of the layout without disturbing the order of the rest", async () => {
-      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "quickActions", "conversations", "recent"]);
+      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "weakAreas", "quickActions", "conversations", "recent"]);
       setHomeWidgetVisibility("user-1", { ...getHomeWidgetVisibility("user-1"), dueSoon: false });
       const { container } = render(<HomeView {...baseProps()} />);
       await screen.findByRole("heading", { name: "Your progress" });
 
       expect(renderedWidgetOrder(container)).toEqual([
         "Your progress",
+        "What to study next",
         "Quick actions",
         "Continue a conversation",
         "Recent documents & notes",
@@ -284,7 +309,7 @@ describe("HomeView", () => {
 
     it("the Customize popover lists every widget with a drag handle, in the current order", async () => {
       const user = userEvent.setup();
-      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "quickActions", "conversations", "recent"]);
+      setHomeWidgetOrder("user-1", ["progress", "dueSoon", "weakAreas", "quickActions", "conversations", "recent"]);
       render(<HomeView {...baseProps()} />);
 
       await user.click(screen.getByRole("button", { name: /customize/i }));
@@ -293,6 +318,7 @@ describe("HomeView", () => {
       expect(handles.map((h) => h.getAttribute("aria-label"))).toEqual([
         "Reorder Your progress",
         "Reorder Due soon",
+        "Reorder What to study next",
         "Reorder Quick actions",
         "Reorder Continue a conversation",
         "Reorder Recent documents & notes",
@@ -353,7 +379,93 @@ describe("HomeView", () => {
         "Continue a conversation",
         "Due soon",
         "Your progress",
+        "What to study next",
       ]);
+    });
+  });
+
+  // "What to study next" — the Home surface for the real per-topic weak-area analysis
+  // the backend computes from actual flashcard review ratings and missed practice-exam
+  // questions (GET /weak-areas). It is a full, ordinary widget, not a special case: the
+  // show/hide, reorder and resize tests above already cover it via the shared lists.
+  describe("What to study next", () => {
+    it("shows the real weak topics with concrete example cards and missed questions", async () => {
+      render(<HomeView {...baseProps()} />);
+
+      await waitFor(() => expect(getWeakAreas).toHaveBeenCalledWith("tok"));
+      expect(await screen.findByText("biology-ch4.pdf")).toBeInTheDocument();
+      // Real example text, not just a count — that's the whole point of the widget.
+      expect(screen.getByText("What is the Krebs cycle?")).toBeInTheDocument();
+      expect(screen.getByText("What produces the most ATP?")).toBeInTheDocument();
+      expect(screen.getByText("2 to revisit")).toBeInTheDocument();
+    });
+
+    it("renders the backend's 'general' bucket under a human label, not the raw key", async () => {
+      render(<HomeView {...baseProps()} />);
+
+      expect(await screen.findByText("Unfiled cards & questions")).toBeInTheDocument();
+      expect(screen.queryByText("general")).not.toBeInTheDocument();
+    });
+
+    it("offers 'Review flashcards' only where there are weak cards, and 'Practice again' only where questions were missed", async () => {
+      render(<HomeView {...baseProps()} />);
+      await screen.findByText("biology-ch4.pdf");
+
+      // Both topics have weak cards; only the first has missed exam questions.
+      expect(screen.getAllByRole("button", { name: /review flashcards/i })).toHaveLength(2);
+      expect(screen.getAllByRole("button", { name: /practice again/i })).toHaveLength(1);
+    });
+
+    it("its actions reuse the existing panel navigation rather than a new mechanism", async () => {
+      const user = userEvent.setup();
+      const onOpenFlashcards = vi.fn();
+      const onOpenPracticeExams = vi.fn();
+      render(<HomeView {...baseProps({ onOpenFlashcards, onOpenPracticeExams })} />);
+      await screen.findByText("biology-ch4.pdf");
+
+      await user.click(screen.getAllByRole("button", { name: /review flashcards/i })[0]);
+      expect(onOpenFlashcards).toHaveBeenCalledTimes(1);
+
+      await user.click(screen.getByRole("button", { name: /practice again/i }));
+      expect(onOpenPracticeExams).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows an honest, actionable empty state for a student with no review history yet", async () => {
+      getWeakAreas.mockResolvedValue([]);
+      render(<HomeView {...baseProps()} />);
+
+      expect(await screen.findByText(/review some flashcards or take a practice exam/i)).toBeInTheDocument();
+    });
+
+    it("degrades to that same empty state (never an error) if the endpoint fails", async () => {
+      getWeakAreas.mockRejectedValue(new Error("network down"));
+      render(<HomeView {...baseProps()} />);
+
+      expect(await screen.findByText(/review some flashcards or take a practice exam/i)).toBeInTheDocument();
+      // The rest of the dashboard is completely unaffected.
+      expect(screen.getByRole("heading", { name: "Quick actions" })).toBeInTheDocument();
+    });
+
+    it("defaults to a wide footprint so it doesn't leave two empty cells in the grid", async () => {
+      const { container } = render(<HomeView {...baseProps()} />);
+      await screen.findByText("biology-ch4.pdf");
+
+      expect(container.querySelector(".home-widget--weak-areas")).toHaveClass("home-widget--wide");
+    });
+
+    it("can be hidden from Customize like any other widget, and stays hidden", async () => {
+      const user = userEvent.setup();
+      const { unmount } = render(<HomeView {...baseProps()} />);
+      await screen.findByText("biology-ch4.pdf");
+
+      await user.click(screen.getByRole("button", { name: /customize/i }));
+      await user.click(screen.getByRole("checkbox", { name: /what to study next/i }));
+      expect(screen.queryByRole("heading", { name: "What to study next" })).not.toBeInTheDocument();
+
+      unmount();
+      render(<HomeView {...baseProps()} />);
+      await waitFor(() => expect(listDocuments).toHaveBeenCalled());
+      expect(screen.queryByRole("heading", { name: "What to study next" })).not.toBeInTheDocument();
     });
   });
 });

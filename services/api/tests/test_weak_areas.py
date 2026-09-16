@@ -239,3 +239,49 @@ async def test_tool_registered_with_no_required_params():
     tool = GetWeakAreasTool()
     assert tool.name == "get_weak_areas"
     assert tool.parameters["properties"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Router-level -- real HTTP against the live server (app/routers/weak_areas.py).
+# Same shape of coverage as test_gamification.py's router section: this endpoint is the
+# direct, non-chat way into the exact same service function the tool above uses, so the
+# real logic is already covered up top; what needs proving here is that it's reachable,
+# authenticated, and shaped the way the Home widget expects.
+# ---------------------------------------------------------------------------
+
+
+async def test_weak_areas_endpoint_requires_auth(http_client):
+    resp = await http_client.get("/weak-areas")
+    assert resp.status_code == 401
+
+
+async def test_weak_areas_endpoint_returns_a_list_of_the_expected_shape(http_client, auth_headers):
+    resp = await http_client.get("/weak-areas", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    # An empty list is a perfectly valid answer (a student with no review/exam history);
+    # what matters is that it's a list, and that any entry carries the full shape.
+    assert isinstance(body, list)
+    for area in body:
+        assert set(area.keys()) == {"label", "weak_flashcards", "missed_questions", "weak_count"}
+        assert isinstance(area["label"], str)
+        assert isinstance(area["weak_flashcards"], list)
+        assert isinstance(area["missed_questions"], list)
+        assert area["weak_count"] == len(area["weak_flashcards"]) + len(area["missed_questions"])
+
+
+async def test_weak_areas_endpoint_is_worst_first(http_client, auth_headers):
+    """The widget renders them top-down as-is, so ordering is part of the contract, not
+    an incidental detail of the service's implementation."""
+    resp = await http_client.get("/weak-areas", headers=auth_headers)
+    assert resp.status_code == 200
+    counts = [area["weak_count"] for area in resp.json()]
+    assert counts == sorted(counts, reverse=True)
+
+
+async def test_weak_areas_endpoint_is_not_plan_gated(http_client, auth_headers):
+    """Unlike /voice/*, this is the student's own already-recorded data with no expensive
+    compute behind it -- student1 is plan="free" by default and must still get a 200."""
+    resp = await http_client.get("/weak-areas", headers=auth_headers)
+    assert resp.status_code != 402
+    assert resp.status_code == 200

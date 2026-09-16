@@ -17,6 +17,7 @@ import type {
   StudyPlanItem,
   ToolInfo,
   UploadedDocument,
+  WeakArea,
 } from "./types";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:58001";
@@ -581,6 +582,37 @@ export async function transcribeAudio(token: string, blob: Blob): Promise<string
   }
   const data = await res.json();
   return data.text as string;
+}
+
+/** Synthesizes an assistant message to speech via POST /voice/synthesize (see
+ * app/routers/voice.py), which returns raw WAV bytes — NOT a URL and NOT JSON — so this
+ * hands back the Blob directly for the caller to wrap in an object URL and play through
+ * the browser's Audio API (see MessageBubble's "Listen" action). Pro-gated server-side
+ * with a 402 exactly like transcribeAudio above; the same non-punitive "this is a Pro
+ * feature" detail comes back from the server, so it's surfaced as-is rather than
+ * replaced with a generic failure message. */
+export async function synthesizeSpeech(token: string, text: string): Promise<Blob> {
+  const res = await fetch(`${API_URL}/voice/synthesize`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const fallback = res.status === 402 ? "Listening is a Pro feature." : "Couldn't read that message aloud.";
+    throw new ApiError(await detailOrFallback(res, fallback));
+  }
+  return await res.blob();
+}
+
+/** The student's real per-topic weak areas, computed server-side from actual flashcard
+ * review ratings and missed practice-exam questions (see app/services/weak_areas.py) —
+ * the same data the chat tutor's `get_weak_areas` tool reads, now reachable directly
+ * for the Home dashboard's "What to study next" widget. An empty array is the normal
+ * answer for a student with no review/exam history yet, not an error. */
+export async function getWeakAreas(token: string): Promise<WeakArea[]> {
+  const res = await fetch(`${API_URL}/weak-areas`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't work out what to study next."));
+  return (await res.json()) as WeakArea[];
 }
 
 /** Returns a Stripe-hosted billing portal URL (manage payment method, cancel) to open

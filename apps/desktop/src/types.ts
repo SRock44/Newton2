@@ -139,6 +139,21 @@ export interface GamificationStats {
   study_plan_items: number;
 }
 
+/** One genuinely low-performing topic, straight from GET /weak-areas (see
+ * services/api/app/services/weak_areas.py's WeakArea dataclass). `label` is the source
+ * document's filename, or the literal "general" for cards/questions with no source
+ * document — the backend groups by real Document, it does not invent topic names. The
+ * two example lists are capped server-side (5 each) and are REAL card fronts / missed
+ * question text, not summaries. */
+export interface WeakArea {
+  label: string;
+  weak_flashcards: string[];
+  missed_questions: string[];
+  /** weak_flashcards.length + missed_questions.length as the server counted it — the
+   * list arrives sorted by this, worst first. */
+  weak_count: number;
+}
+
 export interface PracticeExamQuestion {
   id: string;
   question_index: number;
