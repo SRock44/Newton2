@@ -5,6 +5,9 @@
      fixtures checked in or a mocked library call.
   2. GET /documents/{id}/bibliography.bib -- the .bib a research paper's own sources
      assemble into.
+  3. GET /documents/{id}/export.docx -- a real Word file built from a document's own
+     Markdown content (app/services/docx_export.py), verified by unzipping the produced
+     package and reading its word/document.xml.
 
 Endpoint behavior is exercised by calling the router coroutine directly with a synthetic
 claims dict, exactly the way the real request would reach it after auth, so every test
@@ -15,6 +18,8 @@ tests/test_gamification.py's throwaway-user fixture + explicit-teardown conventi
 
 import io
 import uuid
+import zipfile
+from xml.etree import ElementTree
 
 import pytest
 import pytest_asyncio
@@ -25,9 +30,10 @@ from sqlalchemy import delete, select
 import docx
 import pptx
 from app.db.models import Document, DocumentChunk, User
-from app.routers.documents import get_bibliography, list_documents
+from app.routers.documents import export_docx, get_bibliography, list_documents
 from app.services import documents as documents_service
 from app.services.documents import _extract_text, upload_document_bytes
+from app.services.docx_export import DOCX_MEDIA_TYPE, build_document_docx
 
 # ---------------------------------------------------------------------------
 # Real .pptx / .docx files, built here with the same libraries that parse them.
@@ -354,3 +360,220 @@ def _minimal_pdf() -> bytes:
     writer.add_blank_page(width=200, height=200)
     writer.write(buffer)
     return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# GET /documents/{id}/export.docx
+# ---------------------------------------------------------------------------
+
+# The WordprocessingML namespace every paragraph, run, and style reference lives under.
+_W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def _docx_document_xml(data: bytes) -> str:
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        return archive.read("word/document.xml").decode("utf-8")
+
+
+def _docx_paragraphs(data: bytes) -> list[tuple[str, str]]:
+    """(style name, text) for every paragraph in the produced package, read straight out
+    of its own word/document.xml -- not via python-docx, so this is evidence about the
+    file's real XML rather than a round trip through the library that wrote it. A
+    paragraph with no explicit style reports "" (Word's default "Normal")."""
+    root = ElementTree.fromstring(_docx_document_xml(data))
+    paragraphs: list[tuple[str, str]] = []
+    for node in root.iter(f"{{{_W_NS}}}p"):
+        style = ""
+        properties = node.find(f"{{{_W_NS}}}pPr")
+        if properties is not None:
+            reference = properties.find(f"{{{_W_NS}}}pStyle")
+            if reference is not None:
+                style = reference.get(f"{{{_W_NS}}}val") or ""
+        text = "".join(run.text or "" for run in node.iter(f"{{{_W_NS}}}t"))
+        paragraphs.append((style, text))
+    return paragraphs
+
+
+MARKDOWN_NOTE = """# Causes of the French Revolution
+
+Fiscal crisis was the **proximate** trigger, but the *structural* causes ran deeper.
+
+## Immediate causes
+
+- Bankruptcy after the American war
+- The 1788 harvest failure
+
+1. Estates-General convened
+2. Tennis Court Oath
+
+> Nothing was more inevitable, and nothing less foreseen.
+
+| Year | Event |
+| --- | --- |
+| 1789 | Bastille |
+| 1793 | Terror |
+
+Reference: [the archive](https://example.org/fr) has the primary sources.
+"""
+
+
+def test_build_docx_produces_a_real_word_package():
+    data = build_document_docx("Revolution notes", MARKDOWN_NOTE)
+
+    assert data
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        parts = archive.namelist()
+    # A .docx is a real OOXML zip: a content-type map plus the main document part.
+    assert "[Content_Types].xml" in parts, parts
+    assert "word/document.xml" in parts, parts
+
+
+def test_markdown_headings_become_real_word_heading_styles():
+    paragraphs = _docx_paragraphs(build_document_docx("Revolution notes", MARKDOWN_NOTE))
+    by_text = {text: style for style, text in paragraphs}
+
+    assert by_text["Revolution notes"] == "Title"
+    assert by_text["Causes of the French Revolution"] == "Heading1"
+    assert by_text["Immediate causes"] == "Heading2"
+    # ...and the "#" markers themselves are gone, not carried through as literal text.
+    assert not any(text.startswith("#") for _style, text in paragraphs)
+
+
+def test_markdown_lists_and_quotes_become_real_word_list_styles():
+    paragraphs = _docx_paragraphs(build_document_docx("Revolution notes", MARKDOWN_NOTE))
+    by_text = {text: style for style, text in paragraphs}
+
+    assert by_text["Bankruptcy after the American war"] == "ListBullet"
+    assert by_text["The 1788 harvest failure"] == "ListBullet"
+    assert by_text["Estates-General convened"] == "ListNumber"
+    assert by_text["Tennis Court Oath"] == "ListNumber"
+    assert by_text["Nothing was more inevitable, and nothing less foreseen."] == "Quote"
+
+
+def test_inline_emphasis_becomes_real_bold_and_italic_runs():
+    data = build_document_docx("Revolution notes", MARKDOWN_NOTE)
+    xml = _docx_document_xml(data)
+
+    # Real <w:b/>/<w:i/> run properties in the file...
+    assert "<w:b/>" in xml or "<w:b " in xml
+    assert "<w:i/>" in xml or "<w:i " in xml
+    # ...and the asterisks that produced them are gone from the text itself.
+    body = next(text for _style, text in _docx_paragraphs(data) if text.startswith("Fiscal crisis"))
+    assert body == "Fiscal crisis was the proximate trigger, but the structural causes ran deeper."
+
+
+def test_a_gfm_table_becomes_a_real_word_table():
+    data = build_document_docx("Revolution notes", MARKDOWN_NOTE)
+    xml = _docx_document_xml(data)
+    root = ElementTree.fromstring(xml)
+
+    tables = list(root.iter(f"{{{_W_NS}}}tbl"))
+    assert len(tables) == 1
+    cells = [
+        "".join(t.text or "" for t in cell.iter(f"{{{_W_NS}}}t"))
+        for cell in tables[0].iter(f"{{{_W_NS}}}tc")
+    ]
+    assert cells == ["Year", "Event", "1789", "Bastille", "1793", "Terror"]
+    # The pipe characters are gone -- this is a real table, not a line of literal markup.
+    assert "| 1789 |" not in xml
+
+
+def test_a_markdown_link_keeps_both_its_label_and_its_url():
+    paragraphs = _docx_paragraphs(build_document_docx("Notes", "See [the archive](https://example.org/fr)."))
+    assert any("the archive (https://example.org/fr)" in text for _style, text in paragraphs)
+
+
+def test_soft_wrapped_lines_join_into_one_paragraph_as_the_preview_renders_them():
+    paragraphs = _docx_paragraphs(build_document_docx("Notes", "One line\nand its continuation.\n\nSecond."))
+    bodies = [text for style, text in paragraphs if style == "" and text]
+    assert bodies == ["One line and its continuation.", "Second."]
+
+
+def test_plain_unstructured_text_still_produces_clean_paragraphs():
+    """The mapping is additive: content with no Markdown in it at all must come out as
+    an ordinary titled document, never mangled by a parser looking for structure."""
+    paragraphs = _docx_paragraphs(build_document_docx("Lab notebook", "Ran the assay twice.\n\nBoth agreed."))
+    assert paragraphs[0] == ("Title", "Lab notebook")
+    assert ("", "Ran the assay twice.") in paragraphs
+    assert ("", "Both agreed.") in paragraphs
+
+
+def test_an_empty_note_still_produces_a_valid_titled_document():
+    data = build_document_docx("Brand new note", "")
+    assert _docx_paragraphs(data)[0] == ("Title", "Brand new note")
+
+
+@pytest.mark.asyncio
+async def test_export_docx_endpoint_returns_a_real_downloadable_word_file(db_session, throwaway_user):
+    document = await upload_document_bytes(
+        db_session, throwaway_user.id, "Revolution notes.md", "text/markdown", MARKDOWN_NOTE.encode("utf-8")
+    )
+
+    response = await export_docx(document.id, claims=_claims(throwaway_user), db=db_session)
+
+    assert response.status_code == 200
+    assert response.media_type == DOCX_MEDIA_TYPE
+    # Named after the document itself, with its extension swapped -- same shape as the
+    # .bib download, so it lands beside the note it came from.
+    assert 'filename="Revolution notes.docx"' in response.headers["content-disposition"]
+    by_text = {text: style for style, text in _docx_paragraphs(response.body)}
+    # The student's real content, in the real word/document.xml of the real package.
+    assert by_text["Revolution notes"] == "Title"
+    assert by_text["Causes of the French Revolution"] == "Heading1"
+    assert by_text["Bankruptcy after the American war"] == "ListBullet"
+
+
+@pytest.mark.asyncio
+async def test_export_docx_filename_is_sanitized_for_the_content_disposition_header(db_session, throwaway_user):
+    document = await upload_document_bytes(
+        db_session, throwaway_user.id, 'we"ird/na\\me.md', "text/markdown", b"hello"
+    )
+
+    response = await export_docx(document.id, claims=_claims(throwaway_user), db=db_session)
+
+    assert 'filename="weirdname.docx"' in response.headers["content-disposition"]
+
+
+@pytest.mark.asyncio
+async def test_export_docx_404s_for_someone_elses_document(db_session, throwaway_user):
+    other = User(keycloak_sub=f"test-docx-export-other-{uuid.uuid4()}")
+    db_session.add(other)
+    await db_session.flush()
+    document = await upload_document_bytes(db_session, other.id, "Theirs.md", "text/markdown", b"# Private")
+    try:
+        with pytest.raises(HTTPException) as excinfo:
+            await export_docx(document.id, claims=_claims(throwaway_user), db=db_session)
+        assert excinfo.value.status_code == 404
+    finally:
+        await db_session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
+        await db_session.execute(delete(Document).where(Document.user_id == other.id))
+        await db_session.execute(delete(User).where(User.id == other.id))
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_export_docx_404s_for_a_document_that_does_not_exist(db_session, throwaway_user):
+    with pytest.raises(HTTPException) as excinfo:
+        await export_docx(uuid.uuid4(), claims=_claims(throwaway_user), db=db_session)
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_export_docx_is_available_on_the_free_plan_and_consumes_no_credit(db_session, throwaway_user):
+    """python-docx over text the user already owns -- no model, no sandbox -- so unlike
+    create_artifact this is deliberately NOT Pro-gated and bills nothing. Asserted so a
+    later "monetize the exports" change has to delete a test that says why not."""
+    assert throwaway_user.plan != "pro", "fixture must be free-plan for this to prove anything"
+    credits_before = throwaway_user.credits_used_cents
+    topup_before = throwaway_user.topup_credits_cents
+    document = await upload_document_bytes(
+        db_session, throwaway_user.id, "Free plan note.md", "text/markdown", b"# Works anyway"
+    )
+
+    response = await export_docx(document.id, claims=_claims(throwaway_user), db=db_session)
+
+    assert response.status_code == 200
+    await db_session.refresh(throwaway_user)
+    assert throwaway_user.plan == "free"
+    assert throwaway_user.credits_used_cents == credits_before
+    assert throwaway_user.topup_credits_cents == topup_before

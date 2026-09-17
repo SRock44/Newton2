@@ -281,6 +281,74 @@ describe("FlashcardsPanel", () => {
     expect(saveDialog).not.toHaveBeenCalled();
   });
 
+  // ---------------------------------------------------------------------------
+  // PowerPoint export — the same cards leaving the app as a real .pptx slide deck.
+  // ---------------------------------------------------------------------------
+
+  it("exports every card as a real .pptx through the native save dialog", async () => {
+    const user = userEvent.setup();
+    // A .pptx is an OOXML zip, same as the .apkg above — same zip magic, same
+    // binary-hostile bytes that no text round-trip would survive.
+    const pptx = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xfe, 0x21]);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(pptx.slice().buffer as ArrayBuffer, { status: 200 }));
+    saveDialog.mockResolvedValue("C:\\Users\\student\\Downloads\\newton-flashcards.pptx");
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+    await screen.findByText("What is FSRS?");
+
+    await user.click(screen.getByRole("button", { name: /export to powerpoint/i }));
+
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining("/flashcards/export.pptx"), {
+        headers: { Authorization: "Bearer test-token" },
+      }),
+    );
+    expect(saveDialog).toHaveBeenCalledWith({
+      defaultPath: "newton-flashcards.pptx",
+      filters: [{ name: "PowerPoint presentation", extensions: ["pptx"] }],
+    });
+    await waitFor(() => expect(writeFileMock).toHaveBeenCalled());
+    expect(Array.from(writeFileMock.mock.calls[0][1] as Uint8Array)).toEqual(Array.from(pptx));
+    expect(
+      await screen.findByText(/saved to c:\\users\\student\\downloads\\newton-flashcards\.pptx/i),
+    ).toBeInTheDocument();
+  });
+
+  it("sits on the toolbar row beside Export to Anki, with the same alignment class", async () => {
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+    await screen.findByText("What is FSRS?");
+
+    const button = screen.getByRole("button", { name: /export to powerpoint/i });
+    expect(button.closest(".flashcards-tabs")).not.toBeNull();
+    // The class that baseline-aligns a toolbar action against the taller tab buttons —
+    // omitting it is exactly the misalignment bug this row already had once.
+    expect(button).toHaveClass("flashcards-toolbar-btn");
+    // ...but NOT --first: only the leftmost action claims the row's leftover space, or
+    // the right-hand cluster splits apart.
+    expect(button).not.toHaveClass("flashcards-toolbar-btn--first");
+  });
+
+  it("shows a busy label only on the export that is actually running", async () => {
+    const user = userEvent.setup();
+    let release: (value: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch").mockReturnValue(
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+    );
+    render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+    await screen.findByText("What is FSRS?");
+
+    await user.click(screen.getByRole("button", { name: /export to powerpoint/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /exporting/i })).toBeDisabled());
+    // The Anki button is disabled meanwhile, but still says what it does.
+    const anki = screen.getByRole("button", { name: /export to anki/i });
+    expect(anki).toBeDisabled();
+    release(new Response(new Uint8Array([1, 2]), { status: 200 }));
+  });
+
   describe("share link", () => {
     it("mints a public link and copies its URL to the clipboard", async () => {
       const user = userEvent.setup();

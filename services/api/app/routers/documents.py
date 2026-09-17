@@ -1,3 +1,4 @@
+import asyncio
 import re
 import uuid
 
@@ -10,6 +11,7 @@ from app.core.auth import require_user
 from app.db.base import get_db
 from app.db.models import Document
 from app.services.bibliography import assemble_bib
+from app.services.docx_export import DOCX_MEDIA_TYPE, build_document_docx
 from app.services.documents import (
     delete_document,
     get_document_raw,
@@ -175,9 +177,70 @@ def _bib_filename(document: Document) -> str:
     Quotes, control characters, and path separators are stripped because this goes into a
     quoted Content-Disposition header -- PATCH /documents/{id} lets a student rename a
     document to anything at all, so the name reaching this header is user-controlled."""
+    return _filename_with_extension(document, "bib", "bibliography")
+
+
+def _filename_stem(document: Document) -> str:
+    """The document's name without its extension, with the characters that would break a
+    quoted Content-Disposition header (quotes, backslashes, slashes, control codes)
+    removed. May be empty -- callers supply their own fallback."""
     stem = document.filename.rsplit(".", 1)[0] if "." in document.filename else document.filename
-    stem = re.sub(r'[\x00-\x1f"\\/]', "", stem).strip()
-    return f"{stem or 'bibliography'}.bib"
+    return re.sub(r'[\x00-\x1f"\\/]', "", stem).strip()
+
+
+def _filename_with_extension(document: Document, extension: str, fallback: str) -> str:
+    return f"{_filename_stem(document) or fallback}.{extension}"
+
+
+@router.get("/{document_id}/export.docx")
+async def export_docx(
+    document_id: uuid.UUID,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """A real, properly-formatted Word document built from this document's own content --
+    the same text GET /documents/{id}/content hands the viewer, mapped onto real Word
+    heading/list/table styles by app/services/docx_export.py. Notes and documents in this
+    app are genuinely Markdown (see that module's docstring for the evidence), so this
+    preserves the structure the student can already see in the preview pane instead of
+    handing them a wall of "## Causes".
+
+    Available to every document this user owns, and never 404s for "wrong kind" the way
+    bibliography.bib does: every document has content, so there is always a real Word
+    file to produce -- including an empty note, which becomes a correctly-titled, nearly
+    empty .docx rather than an error.
+
+    Deliberately NOT Pro-gated and deliberately consuming no billing credit. Unlike
+    app/tools/create_artifact.py, which rents a real sandboxed coding agent per call,
+    nothing here calls a model or a sandbox -- it's python-docx assembling a fixed
+    document schema from text we already have, so its cost is ordinary request handling.
+    Please don't add a gate here; there is no extra compute to pay for.
+
+    Fetching from MinIO and re-extracting is async already; the python-docx assembly is
+    CPU-bound, so it goes to a worker thread like every other blocking call here."""
+    user = await get_or_create_user(db, claims)
+    document = await _get_owned_document(db, document_id, user.id)
+    content = await get_document_text(document)
+    # The heading inside the Word file is the document's name WITHOUT its extension --
+    # "Lecture notes", not "Lecture notes.md". A note's filename is already just its
+    # title, so this is a no-op there and only helps for real uploads.
+    title = _filename_stem(document) or document.filename
+    data = await asyncio.to_thread(build_document_docx, title, content)
+    return Response(
+        content=data,
+        media_type=DOCX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{_docx_filename(document)}"'
+        },
+    )
+
+
+def _docx_filename(document: Document) -> str:
+    """"Lecture notes.md" -> "Lecture notes.docx" -- the document's own name with its
+    extension swapped, exactly like _bib_filename above and sanitized for the same
+    reason (a student can rename a document to anything, and this lands inside a quoted
+    Content-Disposition header)."""
+    return _filename_with_extension(document, "docx", "document")
 
 
 @router.put("/{document_id}/content")

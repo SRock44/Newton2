@@ -4,6 +4,7 @@ import {
   createShareLink,
   deleteFlashcard,
   flashcardsApkgUrl,
+  flashcardsPptxUrl,
   listFlashcards,
   reviewFlashcard,
   revokeShareLink,
@@ -56,10 +57,13 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
 
   const [error, setError] = useState<string | null>(null);
 
-  // Anki export — a real .apkg written to the student's disk (see lib/download.ts).
-  // Held separately from `error` so "saved to …" and a failure can use the same line
-  // without either being mistaken for the panel-level error banner.
-  const [exporting, setExporting] = useState(false);
+  // File exports — a real .apkg (Anki) or .pptx (PowerPoint) written to the student's
+  // disk (see lib/download.ts). Held separately from `error` so "saved to …" and a
+  // failure can use the same line without either being mistaken for the panel-level
+  // error banner. `exporting` names WHICH export is running rather than being a plain
+  // boolean, so only the button that was actually pressed shows a busy label while the
+  // other is merely disabled.
+  const [exporting, setExporting] = useState<"anki" | "pptx" | null>(null);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
 
   // Public share link. `shareLinkId` is remembered so "Stop sharing" can revoke the exact
@@ -140,23 +144,48 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
    * wherever they choose. The point is that Newton's FSRS-scheduled cards can be
    * reviewed on a phone — so this is a first-class toolbar action here, not something
    * buried in a submenu. */
-  async function handleExportToAnki() {
-    if (exporting) return;
-    setExporting(true);
-    setExportStatus("Building your Anki deck…");
-    setError(null);
-    try {
-      const accessToken = await getAccessToken();
+  function handleExportToAnki() {
+    runExport("anki", "Building your Anki deck…", async (accessToken) => {
       const bytes = await fetchBytes(flashcardsApkgUrl(), accessToken);
-      const result = await saveBytesToDisk("newton-flashcards.apkg", bytes, [
+      return saveBytesToDisk("newton-flashcards.apkg", bytes, [
         { name: "Anki deck", extensions: ["apkg"] },
       ]);
+    });
+  }
+
+  /** Exports the same cards as a real PowerPoint deck: two slides per card (the question,
+   * then the answer), with a title slide per source document — i.e. something a student
+   * can actually present or click through full-screen, which an .apkg isn't. Built
+   * server-side with python-pptx from the same grouping the Anki export uses; no model
+   * and no sandbox is involved, so it's available on every plan. */
+  function handleExportToPowerPoint() {
+    runExport("pptx", "Building your slide deck…", async (accessToken) => {
+      const bytes = await fetchBytes(flashcardsPptxUrl(), accessToken);
+      return saveBytesToDisk("newton-flashcards.pptx", bytes, [
+        { name: "PowerPoint presentation", extensions: ["pptx"] },
+      ]);
+    });
+  }
+
+  /** Shared body of both export buttons — fetch real bytes from an auth-gated endpoint,
+   * hand them to the native save dialog, then report where the file landed. */
+  async function runExport(
+    kind: "anki" | "pptx",
+    busyMessage: string,
+    work: (accessToken: string) => Promise<{ path: string | null }>,
+  ) {
+    if (exporting) return;
+    setExporting(kind);
+    setExportStatus(busyMessage);
+    setError(null);
+    try {
+      const result = await work(await getAccessToken());
       // A cancelled save dialog is a normal outcome, not a failure.
       setExportStatus(result.path ? `Saved to ${result.path}` : null);
     } catch (err) {
       setExportStatus(err instanceof ApiError ? err.message : "Couldn't export your flashcards.");
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   }
 
@@ -245,10 +274,22 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
             type="button"
             className="btn-secondary-sm flashcards-toolbar-btn flashcards-toolbar-btn--first"
             onClick={handleExportToAnki}
-            disabled={exporting}
+            disabled={exporting !== null}
             title="Save these cards as a real Anki deck you can review on your phone"
           >
-            {exporting ? "Exporting…" : "Export to Anki"}
+            {exporting === "anki" ? "Exporting…" : "Export to Anki"}
+          </button>
+          {/* Same .flashcards-toolbar-btn as its neighbours (WITHOUT --first, which only
+              the leftmost action carries) — that class is what baseline-aligns a button
+              against the taller tab buttons on this row. See App.css. */}
+          <button
+            type="button"
+            className="btn-secondary-sm flashcards-toolbar-btn"
+            onClick={handleExportToPowerPoint}
+            disabled={exporting !== null}
+            title="Save these cards as a PowerPoint deck — one slide per question, the next slide reveals the answer"
+          >
+            {exporting === "pptx" ? "Exporting…" : "Export to PowerPoint"}
           </button>
           {shareLinkId ? (
             <button

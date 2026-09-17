@@ -218,6 +218,24 @@ export function flashcardsApkgUrl(documentId?: string): string {
   return url.toString();
 }
 
+/** The URL for a real PowerPoint deck of the student's flashcards — two slides per card
+ * (Question, then Answer) so it can be clicked through as a study slideshow, with a title
+ * slide per source document. Same optional `documentId` scoping and same auth as
+ * flashcardsApkgUrl above; fetch it with a bearer header. */
+export function flashcardsPptxUrl(documentId?: string): string {
+  const url = new URL(`${API_URL}/flashcards/export.pptx`);
+  if (documentId) url.searchParams.set("document_id", documentId);
+  return url.toString();
+}
+
+/** The URL for a real Word `.docx` built from a document's own content, with its Markdown
+ * structure (headings, lists, emphasis, tables) mapped onto real Word styles. Available
+ * for every document the student owns — unlike the bibliography URL above, this never
+ * 404s for the "wrong kind" of document. Auth-gated; fetch with a bearer header. */
+export function documentDocxUrl(documentId: string): string {
+  return `${API_URL}/documents/${documentId}/export.docx`;
+}
+
 export async function updateDocumentContent(
   token: string,
   documentId: string,

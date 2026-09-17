@@ -3,6 +3,7 @@ import {
   ApiError,
   deleteDocument,
   documentBibliographyUrl,
+  documentDocxUrl,
   documentRawUrl,
   generateFlashcards,
   generatePracticeExam,
@@ -372,6 +373,23 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     });
   }
 
+  /** A real, properly-formatted Word file built from this document's own content — its
+   * Markdown headings, lists, emphasis and tables mapped onto real Word styles
+   * server-side (see app/services/docx_export.py). Distinct from "Download" above, which
+   * hands back the original bytes: this is the version a student can hand in or open on
+   * a school computer that only has Word. Always offered — every document has content,
+   * so unlike the .bib action there's no case where this would come back empty. */
+  function handleDownloadDocx(doc: UploadedDocument) {
+    runDownload(doc, async () => {
+      const bytes = await fetchBytes(documentDocxUrl(doc.id), token);
+      const suggested = withExtension(doc.filename, "docx");
+      const result = await saveBytesToDisk(suggested, bytes, [
+        { name: "Word document", extensions: ["docx"] },
+      ]);
+      return result.path;
+    });
+  }
+
   function startEdit() {
     if (!contentState.data) return;
     setDraftText(contentState.data.content);
@@ -540,6 +558,9 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
               </button>
               <button type="button" role="menuitem" onClick={() => handleDownload(doc)}>
                 Download
+              </button>
+              <button type="button" role="menuitem" onClick={() => handleDownloadDocx(doc)}>
+                Download as Word (.docx)
               </button>
               {doc.has_bibliography && (
                 <button type="button" role="menuitem" onClick={() => handleDownloadBibliography(doc)}>

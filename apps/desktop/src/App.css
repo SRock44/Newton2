@@ -4277,7 +4277,8 @@ body.is-resizing-panel * {
 /* Sits on the tab row but is an action, not a tab — baseline-aligned with the tabs
    (they carry extra bottom padding plus a -1px margin trick for their underline, so a
    plain .btn-secondary-sm sits visibly higher without this). Shared by every toolbar
-   action on this row (Export to Anki, Share/Stop sharing), not just one. */
+   action on this row (Export to Anki, Export to PowerPoint, Share/Stop sharing), not
+   just one. */
 .flashcards-toolbar-btn {
   margin-bottom: var(--space-1);
 }

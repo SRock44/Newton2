@@ -559,6 +559,70 @@ describe("DocumentsPanel", () => {
     expect(new TextDecoder().decode(writeFileMock.mock.calls[0][1] as Uint8Array)).toBe(bib);
   });
 
+  // ---------------------------------------------------------------------------
+  // Word export — a real .docx built from the document's own content.
+  // ---------------------------------------------------------------------------
+
+  it("offers the Word download for every document, not just papers with a bibliography", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+
+    // Unlike the .bib item right below it, this one is unconditional — every document
+    // has content, so there's no case where it would come back empty.
+    expect(await screen.findByRole("menuitem", { name: /download as word/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /bibliography/i })).not.toBeInTheDocument();
+  });
+
+  it("downloads a real .docx named after the document it was built from", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    // A .docx is an OOXML zip — "PK\x03\x04" plus bytes no text round-trip survives.
+    const docxBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xfd, 0x09]);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(docxBytes.slice().buffer as ArrayBuffer, { status: 200 }));
+    saveDialog.mockResolvedValue("C:\\Users\\student\\Documents\\syllabus.docx");
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /download as word/i }));
+
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(api.documentDocxUrl("1"), {
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+    expect(saveDialog).toHaveBeenCalledWith({
+      defaultPath: "syllabus.docx",
+      filters: [{ name: "Word document", extensions: ["docx"] }],
+    });
+    await waitFor(() => expect(writeFileMock).toHaveBeenCalled());
+    expect(Array.from(writeFileMock.mock.calls[0][1] as Uint8Array)).toEqual(Array.from(docxBytes));
+    expect(await screen.findByText(/saved to c:\\users\\student\\documents\\syllabus\.docx/i)).toBeInTheDocument();
+  });
+
+  it("reports a failed Word export instead of silently doing nothing", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([SYLLABUS]);
+    getDocumentContent.mockResolvedValue({ content: "", editable: false });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 500 }));
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await screen.findByText("syllabus.pdf");
+
+    await user.click(await screen.findByRole("button", { name: /more actions for syllabus.pdf/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /download as word/i }));
+
+    expect(await screen.findByText(/couldn't save this file/i)).toBeInTheDocument();
+    expect(saveDialog).not.toHaveBeenCalled();
+  });
+
   // A .pptx/.docx comes back `editable: false` just like a PDF, but the webview can't
   // render binary Office XML — it would show an empty frame. Those must fall through to
   // the extracted text the content endpoint already returns (the same text RAG reads).
