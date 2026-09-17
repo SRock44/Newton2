@@ -109,12 +109,17 @@ def _patch_pipeline(monkeypatch, *, brief_text: str, build_result: artifact_buil
     # truthy before it even looks at the user's plan/credit -- real in every deployed
     # environment, but unset in the hermetic CI suite by design (no real secrets), so
     # every test here that expects a pro_user's real build to actually proceed needs
-    # this patched too, or it 402s before ever reaching get_provider/build_artifact
-    # below, no matter how much credit the fixture gives the user.
+    # this patched too, or it 402s before ever reaching _artifact_provider/build_artifact
+    # below, no matter how much credit the fixture gives the user. A plain str (not a
+    # real SecretStr) is fine ONLY because _artifact_provider itself is mocked below and
+    # never actually calls .get_secret_value() on it in this test process.
     monkeypatch.setattr(get_settings(), "openrouter_api_key", "test-key")
 
     provider = _FakeProvider(brief_text)
-    monkeypatch.setattr(artifact_tool, "get_provider", lambda: (provider, "deepseek/deepseek-v4-flash-0731"))
+    # _write_brief calls _artifact_provider() (not get_provider() directly) as of the
+    # dedicated artifact_generation_model change -- see that function's own docstring
+    # for why it bypasses get_provider()'s normal BYOK/Groq/OpenRouter priority order.
+    monkeypatch.setattr(artifact_tool, "_artifact_provider", lambda: (provider, "deepseek/deepseek-v4-flash-0731"))
 
     calls: list[tuple[str, str]] = []
 
@@ -278,7 +283,11 @@ async def test_successful_build_stores_a_real_artifact_document_and_returns_a_fe
     built_brief, built_model = calls[0]
     assert "first-year bio student" in built_brief
     assert "TITLE:" not in built_brief
-    assert built_model == "deepseek/deepseek-v4-flash-0731"
+    # The real build-stage model (settings.artifact_generation_model), not whatever
+    # _artifact_provider's mock above returns for the persona stage -- referencing the
+    # real setting rather than a hardcoded literal so this doesn't drift out of sync
+    # with it again.
+    assert built_model == get_settings().artifact_generation_model
 
     # A real Document row, kind="artifact", with the real HTML bytes in MinIO.
     doc = (
