@@ -29,37 +29,105 @@ Conversation:
 {transcript}
 """
 
+# Used instead of SUMMARY_PROMPT above whenever this session already has a summary (see
+# SessionSummary.last_message_created_at's docstring for why this split exists at all):
+# the model merges the NEW messages into the EXISTING summary rather than re-deriving one
+# from a transcript that would otherwise have to include everything said so far. Still
+# the same output shape, so _parse_summary and every downstream consumer need no
+# knowledge of which prompt produced it.
+INCREMENTAL_SUMMARY_PROMPT = """You are updating an existing summary of a tutoring \
+session with what has happened SINCE it was last written. Reply with ONLY a JSON object, \
+no prose, in this exact shape:
+{{
+  "topics": ["..."],
+  "problems_solved": ["..."],
+  "mistakes": ["..."],
+  "actions_taken": ["..."],
+  "profile_facts": [{{"subject_key": "<EXAMPLE_PLACEHOLDER_DO_NOT_COPY>", "value": "<EXAMPLE_PLACEHOLDER_DO_NOT_COPY>", "confidence": 0.0}}]
+}}
+subject_key should look like "course:MATH201", "skill:<topic>", or "pref:<preference>". The
+profile_facts entry above is a shape example only — never emit it verbatim; omit the field
+entirely (empty list) unless something genuinely new and durable came up below.
+Merge the new material into the existing summary: keep everything still relevant, drop \
+nothing that's still true, and fold in what's new. The result should read as one coherent \
+summary of the WHOLE session, not just the new part.
+
+Existing summary:
+{existing_summary}
+
+What happened since then:
+{transcript}
+"""
+
+# A defensive bound, matching every other "put user/conversation text into a prompt" call
+# site in this codebase (app/tools/create_artifact.py's MAX_PROMPT_CHARS/MAX_BRIEF_CHARS,
+# app/tools/write_research_paper.py's MAX_DOCUMENT_EXCERPT_CHARS). The incremental cursor
+# below already keeps a NORMAL run's transcript to roughly one consolidation interval's
+# worth of turns, but a single turn can itself be arbitrarily long (a pasted document, a
+# long generated answer), so this is a backstop, not the primary bound.
+MAX_TRANSCRIPT_CHARS = 12000
+
 
 async def consolidate_session(ctx: dict, session_id: str) -> None:
-    """Memory Tier 2: turn a session's full transcript so far into a structured
-    summary, then upsert any durable facts it revealed into Tier 3 (deduplicated
-    profile memory). Safe to call more than once for the same session -- both writes
-    below are upsert-safe (overwrite-in-place on a repeat run over a longer
-    transcript), not append-only -- since app/routers/chat.py's WS handler now
-    enqueues this periodically as a session grows (see app/memory/working.py's
-    CONSOLIDATION_INTERVAL_TURNS), not only from the original, still-supported
-    POST /chat/sessions/{id}/end path."""
-    async with SessionLocal() as db:
-        messages = (
-            (
-                await db.execute(
-                    select(ChatMessage)
-                    .where(ChatMessage.session_id == uuid.UUID(session_id))
-                    .order_by(ChatMessage.created_at)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if not messages:
-            return
+    """Memory Tier 2: fold whatever's new since the last run into a structured summary
+    of the session so far, then upsert any durable facts it revealed into Tier 3
+    (deduplicated profile memory). Safe to call more than once for the same session --
+    both writes below are upsert-safe (merge-in-place on a repeat run), not append-only
+    -- since app/routers/chat.py's WS handler now enqueues this periodically as a
+    session grows (see app/memory/working.py's CONSOLIDATION_INTERVAL_TURNS), not only
+    from the original, still-supported POST /chat/sessions/{id}/end path.
 
+    Reads only the ChatMessage rows created after SessionSummary.last_message_created_at
+    (None on a first run), and asks the model to MERGE them into the existing summary
+    rather than re-deriving one from the whole transcript -- see that column's own
+    docstring for why re-reading everything on every run doesn't scale."""
+    async with SessionLocal() as db:
         session = await db.get(ChatSession, uuid.UUID(session_id))
         if session is None:
             return
 
-        transcript = "\n".join(f"{m.role}: {m.content}" for m in messages)
-        prompt = SUMMARY_PROMPT.format(transcript=transcript)
+        # UPDATE-in-place, not a plain INSERT: session_summaries.session_id is UNIQUE
+        # (one summary per session -- migration 0001). That was never a problem while
+        # this job only ever ran once, at a real session's end, but it now also fires
+        # periodically DURING an active session (see CONSOLIDATION_INTERVAL_TURNS), so
+        # a second real run for the same session is an expected, normal case, not an
+        # edge case -- a plain db.add() here would raise a unique-constraint
+        # IntegrityError on that second run and roll back this whole transaction,
+        # including the profile-fact upserts below.
+        existing_summary = (
+            await db.execute(select(SessionSummary).where(SessionSummary.session_id == session.id))
+        ).scalar_one_or_none()
+
+        # Only messages since the last consolidation (None on a first run, or on a
+        # summary that predates migration 0020 -- both correctly read as "everything so
+        # far"). This is the whole fix: the old code re-read and re-summarized the
+        # ENTIRE transcript on every run, so total input tokens across a session's life
+        # grew with the square of its length, not linearly -- see
+        # SessionSummary.last_message_created_at's docstring.
+        cursor = existing_summary.last_message_created_at if existing_summary else None
+        query = select(ChatMessage).where(ChatMessage.session_id == session.id)
+        if cursor is not None:
+            query = query.where(ChatMessage.created_at > cursor)
+        messages = (await db.execute(query.order_by(ChatMessage.created_at))).scalars().all()
+        if not messages:
+            return  # nothing new to fold in since the last run
+
+        transcript = "\n".join(f"{m.role}: {m.content}" for m in messages)[-MAX_TRANSCRIPT_CHARS:]
+
+        if existing_summary is not None and cursor is not None:
+            existing_json = json.dumps(
+                {
+                    "topics": existing_summary.topics,
+                    "problems_solved": existing_summary.problems_solved,
+                    "mistakes": existing_summary.mistakes,
+                    "actions_taken": existing_summary.actions_taken,
+                }
+            )
+            prompt = INCREMENTAL_SUMMARY_PROMPT.format(existing_summary=existing_json, transcript=transcript)
+        else:
+            # First-ever consolidation for this session (or a pre-0020 summary with no
+            # cursor yet, which gets treated as a one-time catch-up read).
+            prompt = SUMMARY_PROMPT.format(transcript=transcript)
 
         provider, model = get_provider()
         raw = ""
@@ -69,26 +137,14 @@ async def consolidate_session(ctx: dict, session_id: str) -> None:
                 raw += event.text
 
         parsed = _parse_summary(raw)
+        newest_message_at = messages[-1].created_at
 
-        # UPDATE-in-place, not a plain INSERT: session_summaries.session_id is UNIQUE
-        # (one summary per session -- migration 0001). That was never a problem while
-        # this job only ever ran once, at a real session's end, but it now also fires
-        # periodically DURING an active session (see CONSOLIDATION_INTERVAL_TURNS), so
-        # a second real run for the same session is an expected, normal case, not an
-        # edge case -- a plain db.add() here would raise a unique-constraint
-        # IntegrityError on that second run and roll back this whole transaction,
-        # including the profile-fact upserts below. Re-summarizing the session's full
-        # transcript so far and overwriting the existing row with the latest version is
-        # exactly the desired behavior (a newer, more complete summary superseding the
-        # old one), not just crash-avoidance.
-        existing_summary = (
-            await db.execute(select(SessionSummary).where(SessionSummary.session_id == session.id))
-        ).scalar_one_or_none()
         if existing_summary is not None:
             existing_summary.topics = parsed["topics"]
             existing_summary.problems_solved = parsed["problems_solved"]
             existing_summary.mistakes = parsed["mistakes"]
             existing_summary.actions_taken = parsed["actions_taken"]
+            existing_summary.last_message_created_at = newest_message_at
         else:
             db.add(
                 SessionSummary(
@@ -97,6 +153,7 @@ async def consolidate_session(ctx: dict, session_id: str) -> None:
                     problems_solved=parsed["problems_solved"],
                     mistakes=parsed["mistakes"],
                     actions_taken=parsed["actions_taken"],
+                    last_message_created_at=newest_message_at,
                 )
             )
 

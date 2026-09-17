@@ -132,6 +132,61 @@ async def test_running_twice_on_a_growing_session_updates_the_summary_instead_of
     assert summaries[0].topics == ["derivatives and integrals"]
 
 
+async def test_a_second_run_sends_only_the_new_messages_not_the_whole_transcript_again(
+    db_session, throwaway_session, monkeypatch
+):
+    """The actual fix: consolidate_session used to re-read and re-summarize the ENTIRE
+    transcript on every run, so a session consolidated every 20 turns (see
+    app/memory/working.py's CONSOLIDATION_INTERVAL_TURNS) re-sent turns 1-20, then
+    1-40, then 1-60... -- total tokens processed over a session's life grew with the
+    SQUARE of its length. The fix reads only messages after
+    SessionSummary.last_message_created_at and merges them into the existing summary,
+    so each message is ever sent to the model once."""
+    user, session = throwaway_session
+    _add_messages(db_session, session.id, [("user", "What is a derivative?")])
+    await db_session.commit()
+
+    fake = ScriptedToolCallingProvider([[_summary_json("derivatives")]])
+    monkeypatch.setattr(consolidate, "get_provider", lambda **kwargs: (fake, "fake-model"))
+    await consolidate.consolidate_session({}, str(session.id))
+
+    _add_messages(db_session, session.id, [("user", "What about integrals?")])
+    await db_session.commit()
+
+    fake2 = ScriptedToolCallingProvider([[_summary_json("derivatives and integrals")]])
+    monkeypatch.setattr(consolidate, "get_provider", lambda **kwargs: (fake2, "fake-model"))
+    await consolidate.consolidate_session({}, str(session.id))
+
+    second_call_prompt = fake2.calls_seen[0]["messages"][0].content
+    assert "What about integrals?" in second_call_prompt
+    assert "What is a derivative?" not in second_call_prompt, (
+        "the already-consolidated first message must not be re-sent on the second run"
+    )
+    # ...but its substance survives -- carried forward via the existing-summary JSON the
+    # incremental prompt embeds, not by re-reading the original message.
+    assert "derivatives" in second_call_prompt
+
+
+async def test_a_run_with_nothing_new_since_the_last_one_makes_no_model_call(
+    db_session, throwaway_session, monkeypatch
+):
+    user, session = throwaway_session
+    _add_messages(db_session, session.id, [("user", "hi")])
+    await db_session.commit()
+
+    fake = ScriptedToolCallingProvider([[_summary_json("greeting")]])
+    monkeypatch.setattr(consolidate, "get_provider", lambda **kwargs: (fake, "fake-model"))
+    await consolidate.consolidate_session({}, str(session.id))
+
+    # Re-fired with no new messages persisted in between (e.g. a duplicate enqueue) --
+    # must not spend a second model call summarizing nothing.
+    fake2 = ScriptedToolCallingProvider([[_summary_json("should never be read")]])
+    monkeypatch.setattr(consolidate, "get_provider", lambda **kwargs: (fake2, "fake-model"))
+    await consolidate.consolidate_session({}, str(session.id))
+
+    assert fake2.calls_seen == []
+
+
 async def test_running_twice_reconfirms_rather_than_duplicates_a_profile_fact(
     db_session, throwaway_session, monkeypatch
 ):

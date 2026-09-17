@@ -157,6 +157,17 @@ class SessionSummary(Base):
     mistakes: Mapped[list] = mapped_column(JSONB, default=list)
     actions_taken: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # The incremental-consolidation cursor (see migration 0020): the created_at of the
+    # newest ChatMessage folded into topics/problems_solved/mistakes/actions_taken so
+    # far. NULL means "no cursor yet" -- either this row predates the cursor (migration
+    # ran on an existing summary) or this is a session's first-ever consolidation.
+    # app/jobs/consolidate.py reads only messages strictly after this on each run and
+    # merges them into the existing summary, rather than re-reading the whole transcript
+    # from turn 1 every time -- without it, a periodically-refired consolidation job
+    # (see app/memory/working.py's CONSOLIDATION_INTERVAL_TURNS) re-sends the ENTIRE
+    # transcript so far on every run, so total tokens processed over a session's life
+    # grows with the SQUARE of its length rather than linearly.
+    last_message_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProfileFact(Base):
