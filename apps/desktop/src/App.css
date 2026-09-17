@@ -2839,15 +2839,20 @@ body.is-resizing-panel * {
   background-clip: text;
   color: transparent;
   animation: thinking-text-shimmer 2.2s linear infinite;
-  /* text-clip + an animated background is real repaint work every frame in any
-     engine, but WebKit (the WKWebView Tauri renders in on macOS) is noticeably
-     slower at it than Chromium (WebView2 on Windows) is, and stalls it further
-     whenever the main thread is also busy re-parsing streamed markdown -- which is
-     exactly when this indicator is on screen. Forcing this onto its own compositor
-     layer up front (rather than leaving the engine to decide mid-animation) keeps
-     the sweep itself smooth even while the main thread is momentarily busy. */
+  /* Correction (independent engineering review caught this): background-position is
+     not a compositor-animatable property in ANY engine, so this does NOT move the
+     animation off the main thread -- an earlier version of this comment claimed it
+     did, which was wrong. `translateZ(0)` isolates this element's own paint surface
+     (a real, smaller benefit: its repaint can't spill into ancestors' paint via
+     .thinking-indicator's `contain: paint` above), but the underlying repaint-every-
+     frame cost on the main thread -- worse on WebKit than Chromium, and worst right
+     when the main thread is also busy re-parsing streamed markdown, which is exactly
+     when this indicator is on screen -- is still real. A genuine fix needs a
+     different technique (e.g. a separately-composited highlight layer via
+     mix-blend-mode + transform, instead of animating background-position under
+     background-clip: text) and a live visual check this session couldn't do; tracked
+     as a follow-up rather than guessed at blind. */
   transform: translateZ(0);
-  will-change: background-position;
 }
 
 .thinking-indicator-dots {
