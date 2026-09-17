@@ -10,7 +10,7 @@ import { fetchBytes, saveBytesToDisk } from "../lib/download";
  * {
  *   "document_id": "…uuid…",
  *   "title": "Nitrogen Cycle",
- *   "kind": "diagram" | "chart" | "slideshow" | "interactive",
+ *   "kind": "diagram" | "chart" | "slideshow" | "interactive" | "quiz",
  *   "attempts": 1
  * }
  * ```
@@ -59,11 +59,16 @@ export interface ArtifactBlockData {
   attempts: number;
 }
 
+/** One entry per kind in create_artifact.py's ARTIFACT_KINDS — kept in step with it, so a
+ * real kind never falls through to the bare "Artifact" default below (which exists for a
+ * kind this build of the app genuinely doesn't know about, not as a shrug for one it
+ * does). */
 const KIND_LABELS: Record<string, string> = {
   diagram: "Diagram",
   chart: "Chart",
   slideshow: "Slideshow",
   interactive: "Interactive",
+  quiz: "Quiz game",
 };
 
 /** The exact sandbox token list — exported so the test can assert on it directly and a

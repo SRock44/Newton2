@@ -22,14 +22,16 @@ import pytest_asyncio
 from sqlalchemy import delete, select
 
 from app.core.config import get_settings
-from app.db.models import Document, DocumentChunk, User
+from app.db.models import Document, DocumentChunk, Flashcard, User
 from app.providers.base import TextDelta
 from app.services import artifact_build
 from app.tools import create_artifact as artifact_tool
 from app.tools.create_artifact import (
     ARTIFACT_KINDS,
+    EMPTY_DOCUMENT_MESSAGE,
     FOCUS_MODE_MESSAGE,
     NO_CREDIT_MESSAGE,
+    NO_SUCH_DOCUMENT_MESSAGE,
     PRO_ONLY_MESSAGE,
     CreateArtifactTool,
     _parse_brief,
@@ -55,6 +57,8 @@ async def _cleanup_user(db_session, user_id: uuid.UUID) -> None:
     )
     if doc_ids:
         await db_session.execute(delete(DocumentChunk).where(DocumentChunk.document_id.in_(doc_ids)))
+    # Quiz artifacts are built from real Flashcard rows, so this suite now creates some.
+    await db_session.execute(delete(Flashcard).where(Flashcard.user_id == user_id))
     await db_session.execute(delete(Document).where(Document.user_id == user_id))
     await db_session.execute(delete(User).where(User.id == user_id))
     await db_session.commit()
@@ -169,9 +173,9 @@ def test_sanitize_filename_strips_path_separators_from_a_model_supplied_title():
 
 def test_every_declared_kind_has_a_real_distinct_persona_prompt():
     prompts = {k: artifact_tool._PERSONA_PROMPTS[k] for k in ARTIFACT_KINDS}
-    assert len(prompts) == 4
+    assert len(prompts) == 5
     # Genuinely distinct, not a template with the kind name substituted in.
-    assert len(set(prompts.values())) == 4
+    assert len(set(prompts.values())) == 5
     for kind, prompt in prompts.items():
         assert len(prompt) > 1500, f"{kind} persona is too thin to be real expertise"
         assert "TITLE:" in prompt  # every persona carries the shared output contract
@@ -183,9 +187,19 @@ def test_personas_encode_kind_specific_expertise_not_generic_filler():
     assert "arrow" in p["diagram"].lower()  # arrows are claims
     assert "slide" in p["slideshow"].lower()
     assert "slider" in p["interactive"].lower()
+    # The quiz persona's own opinions: immediate feedback, a visible score/streak,
+    # replayability, and a real end state -- the four things that make it a game rather
+    # than a list of Q&A pairs rendered flat.
+    quiz = p["quiz"].lower()
+    assert "streak" in quiz
+    assert "shuffle" in quiz
+    assert "immediate" in quiz
+    assert "retry" in quiz
+    assert "done state" in quiz
     # ...and each one's specific rule is NOT in the others.
     assert "bar charts start at zero" in p["chart"].lower()
     assert "bar charts start at zero" not in p["diagram"].lower()
+    assert "streak" not in p["slideshow"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +375,349 @@ async def test_a_timeout_is_reported_as_a_timeout_not_a_validation_failure(pro_u
 
 
 # ---------------------------------------------------------------------------
+# kind="quiz" -- the one kind whose CONTENT comes from the database rather than from
+# the student's free-text description.
+#
+# The whole risk this section exists to pin down: a quiz over "my Bio 101 deck" that
+# quietly contains plausible-looking Bio 101 questions the model wrote is a convincing
+# fake -- it looks completely fine, and the student reviews material that isn't theirs.
+# So these assert on the EXACT strings, never on a paraphrase or a "contains the word
+# mitosis" proxy.
+# ---------------------------------------------------------------------------
+
+CARD_FRONTS = [
+    "Which enzyme unwinds the DNA double helix at the replication fork?",
+    "What does the Krebs cycle produce per turn of acetyl-CoA?",
+    "Define allopatric speciation.",
+]
+CARD_BACKS = [
+    "Helicase.",
+    "3 NADH, 1 FADH2, 1 GTP and 2 CO2.",
+    "Speciation caused by a geographic barrier splitting one population.",
+]
+
+
+@pytest_asyncio.fixture
+async def deck_document(db_session, pro_user):
+    """A real source Document with real Flashcard rows hanging off it -- exactly the shape
+    the already-shipped generate_flashcards flow leaves behind, which is what a student
+    means by "my deck". No MinIO object is needed: a deck's quiz never reads the file,
+    only the cards."""
+    document = Document(
+        user_id=pro_user.id,
+        filename="bio-101-lecture-4.pdf",
+        mime_type="application/pdf",
+        minio_key="never-read/1",
+    )
+    db_session.add(document)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Flashcard(user_id=pro_user.id, document_id=document.id, front=front, back=back)
+            for front, back in zip(CARD_FRONTS, CARD_BACKS)
+        ]
+    )
+    await db_session.commit()
+    # Teardown is pro_user's own _cleanup_user, which now removes flashcards too.
+    return document
+
+
+async def test_quiz_is_accepted_as_a_real_kind_and_uses_its_own_persona(pro_user, monkeypatch):
+    provider, calls, _ = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: Photosynthesis Round\n\nA 10-question game.", build_result=_ok_result()
+    )
+    result = await CreateArtifactTool().run(
+        kind="quiz", prompt="quiz me on photosynthesis", user_id=str(pro_user.id)
+    )
+
+    assert "unsupported artifact kind" not in result
+    assert result.startswith("```newton-artifact\n")
+    assert '"kind": "quiz"' in result
+    assert provider.calls[0][0].content == artifact_tool._PERSONA_PROMPTS["quiz"]
+    assert len(calls) == 1
+
+
+async def test_quiz_with_no_document_id_reads_nothing_from_the_database(
+    pro_user, deck_document, monkeypatch
+):
+    """With no material named, this kind behaves exactly like the other four: the request
+    is the whole spec. In particular it must NOT helpfully grab the student's most recent
+    deck -- questions from a deck they didn't ask about would be just as wrong as
+    invented ones."""
+    provider, calls, _ = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: Photosynthesis Round\n\nA 10-question game.", build_result=_ok_result()
+    )
+    await CreateArtifactTool().run(
+        kind="quiz", prompt="quiz me on photosynthesis", user_id=str(pro_user.id)
+    )
+
+    assert provider.calls[0][1].content == "quiz me on photosynthesis"
+    built_brief = calls[0][0]
+    assert CARD_FRONTS[0] not in built_brief
+    assert "THE STUDENT'S OWN FLASHCARDS" not in built_brief
+
+
+async def test_quiz_over_a_real_deck_embeds_every_real_card_verbatim(
+    pro_user, deck_document, monkeypatch
+):
+    provider, calls, _ = _patch_pipeline(
+        monkeypatch,
+        brief_text="TITLE: Bio 101 Drill\n\nA shuffled 3-question game with a streak counter.",
+        build_result=_ok_result(),
+    )
+
+    result = await CreateArtifactTool().run(
+        kind="quiz",
+        prompt="turn my bio 101 deck into a game",
+        document_id=str(deck_document.id),
+        user_id=str(pro_user.id),
+    )
+    assert result.startswith("```newton-artifact\n")
+
+    built_brief = calls[0][0]
+    # The exact strings, character for character -- not paraphrased, not summarized.
+    for front, back in zip(CARD_FRONTS, CARD_BACKS):
+        assert front in built_brief, f"card front missing from the brief: {front}"
+        assert back in built_brief, f"card back missing from the brief: {back}"
+    # ...carried with the instruction that makes them binding rather than suggestive.
+    assert "Use ONLY these exact questions and answers" in built_brief
+    assert "do not invent" in built_brief.lower()
+    assert deck_document.filename in built_brief
+
+    # The persona saw them too -- it needs the real material to make real decisions about
+    # distractors and question format.
+    assert CARD_FRONTS[0] in provider.calls[0][1].content
+
+
+async def test_real_cards_reach_the_coding_agent_even_if_the_persona_never_mentions_them(
+    pro_user, deck_document, monkeypatch
+):
+    """The actual guarantee. The persona is a language model asked to carry 30 Q/A pairs
+    through a generation step that is also restructuring and summarizing, and its reply is
+    truncated at MAX_BRIEF_CHARS -- so the verbatim block is re-attached by code
+    (_ground_brief), not trusted to it. Here the persona returns a brief that mentions no
+    card at all, the worst realistic case, and the real cards must still be in what
+    opencode reads."""
+    _, calls, _ = _patch_pipeline(
+        monkeypatch,
+        brief_text="TITLE: A Game\n\nMake a quiz game. Questions: whatever seems relevant.",
+        build_result=_ok_result(),
+    )
+
+    await CreateArtifactTool().run(
+        kind="quiz",
+        prompt="game from my deck",
+        document_id=str(deck_document.id),
+        user_id=str(pro_user.id),
+    )
+
+    built_brief = calls[0][0]
+    for front, back in zip(CARD_FRONTS, CARD_BACKS):
+        assert front in built_brief
+        assert back in built_brief
+    assert len(built_brief) <= artifact_tool.MAX_BRIEF_CHARS
+
+
+async def test_a_big_deck_is_trimmed_by_whole_cards_never_mid_answer(
+    pro_user, db_session, monkeypatch
+):
+    """The brief has a real size budget, so a 60-card deck can't all fit. Dropping whole
+    cards is fine; slicing the block at a character count is not -- a half-written answer
+    carried under "use these exact answers" is a WRONG answer presented to the student as
+    their own."""
+    document = Document(
+        user_id=pro_user.id, filename="big-deck.pdf", mime_type="application/pdf", minio_key="x/big"
+    )
+    db_session.add(document)
+    await db_session.flush()
+    backs = [f"Answer number {i} " + "y" * 120 + f" END{i}" for i in range(60)]
+    db_session.add_all(
+        [
+            Flashcard(
+                user_id=pro_user.id,
+                document_id=document.id,
+                front=f"Question number {i}?",
+                back=backs[i],
+            )
+            for i in range(60)
+        ]
+    )
+    await db_session.commit()
+
+    _, calls, _ = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: Big\n\nA game.", build_result=_ok_result()
+    )
+    await CreateArtifactTool().run(
+        kind="quiz", prompt="game", document_id=str(document.id), user_id=str(pro_user.id)
+    )
+    built_brief = calls[0][0]
+
+    assert len(built_brief) <= artifact_tool.MAX_BRIEF_CHARS
+    # Some cards were dropped...
+    assert backs[59] not in built_brief
+    # ...but every card that IS there is there in full, terminator and all.
+    included = [i for i in range(60) if f"Question number {i}?" in built_brief]
+    assert included, "the whole deck was dropped"
+    for i in included:
+        assert backs[i] in built_brief, f"card {i}'s answer was cut off mid-string"
+    assert "complete set for this artifact" in built_brief
+
+
+async def test_a_deck_can_be_named_by_filename_because_the_tutor_never_sees_ids(
+    pro_user, deck_document, monkeypatch
+):
+    """Retrieved RAG chunks carry filenames, never document ids, so the model's only real
+    handle on a document is its name -- the same substring hint generate_flashcards and
+    generate_practice_exam take through resolve_document."""
+    _, calls, _ = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: Bio Drill\n\nA game.", build_result=_ok_result()
+    )
+
+    await CreateArtifactTool().run(
+        kind="quiz",
+        prompt="quiz me on the bio lecture",
+        document_id="bio-101",
+        user_id=str(pro_user.id),
+    )
+    assert CARD_FRONTS[0] in calls[0][0]
+
+
+async def test_quiz_over_a_note_with_no_flashcards_falls_back_to_its_real_text(
+    pro_user, db_session, monkeypatch
+):
+    """A plain note is not a deck -- there are no cards to embed. The grounding is then the
+    document's own real extracted text, fetched through documents.get_document_text (a
+    real MinIO round trip here, not a stub), with instructions to write questions from it
+    and fabricate nothing."""
+    from app.services.documents import create_note, update_document_content
+
+    note_text = (
+        "Lab 7 notes. The titration endpoint was reached at 24.30 mL of 0.100 M NaOH. "
+        "Phenolphthalein turned faint pink and held for 30 seconds."
+    )
+    note = await create_note(db_session, pro_user.id, "lab-7-notes.md")
+    await update_document_content(db_session, note, note_text)
+
+    _, calls, _ = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: Lab 7 Recall\n\nA game.", build_result=_ok_result()
+    )
+
+    result = await CreateArtifactTool().run(
+        kind="quiz",
+        prompt="make my lab 7 notes into a review game",
+        document_id=str(note.id),
+        user_id=str(pro_user.id),
+    )
+    assert result.startswith("```newton-artifact\n")
+
+    built_brief = calls[0][0]
+    assert note_text in built_brief  # the real text, verbatim
+    assert "THE STUDENT'S OWN DOCUMENT" in built_brief
+    assert "Never fabricate" in built_brief
+    assert "THE STUDENT'S OWN FLASHCARDS" not in built_brief  # it has no cards
+
+
+async def test_quiz_over_a_document_that_doesnt_exist_refuses_before_spending_anything(
+    pro_user, monkeypatch
+):
+    """Refusing is the point. Falling back to "build it from general knowledge anyway"
+    would produce a quiz with the student's deck name on it and none of their cards in
+    it -- the exact failure this kind exists to avoid."""
+    provider, calls, charged = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result()
+    )
+
+    result = await CreateArtifactTool().run(
+        kind="quiz",
+        prompt="quiz me on my deck",
+        document_id=str(uuid.uuid4()),
+        user_id=str(pro_user.id),
+    )
+
+    assert result == NO_SUCH_DOCUMENT_MESSAGE
+    assert provider.calls == []
+    assert calls == []
+    assert charged == []
+
+
+async def test_quiz_never_reads_another_students_document(pro_user, free_user, db_session, monkeypatch):
+    """db.get() by primary key is not user-scoped; the ownership check is explicit."""
+    other = Document(
+        user_id=free_user.id, filename="someone-elses.pdf", mime_type="application/pdf", minio_key="x/9"
+    )
+    db_session.add(other)
+    await db_session.flush()
+    db_session.add(
+        Flashcard(user_id=free_user.id, document_id=other.id, front="Their card", back="Their answer")
+    )
+    await db_session.commit()
+
+    _, calls, _ = _patch_pipeline(monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result())
+    result = await CreateArtifactTool().run(
+        kind="quiz", prompt="quiz me", document_id=str(other.id), user_id=str(pro_user.id)
+    )
+
+    assert result == NO_SUCH_DOCUMENT_MESSAGE
+    assert calls == []
+
+
+async def test_quiz_over_an_empty_note_says_so_instead_of_inventing_a_quiz(
+    pro_user, db_session, monkeypatch
+):
+    from app.services.documents import create_note
+
+    note = await create_note(db_session, pro_user.id, "empty-note.md")
+    _, calls, _ = _patch_pipeline(monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result())
+
+    result = await CreateArtifactTool().run(
+        kind="quiz", prompt="quiz me on this note", document_id=str(note.id), user_id=str(pro_user.id)
+    )
+    assert result == EMPTY_DOCUMENT_MESSAGE
+    assert calls == []
+
+
+async def test_document_id_is_ignored_for_the_other_four_kinds(pro_user, deck_document, monkeypatch):
+    """The other kinds are specified entirely by the request -- that IS the difference
+    between them and a quiz -- so a stray document_id must not start dumping flashcards
+    into a diagram brief."""
+    _, calls, _ = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result()
+    )
+    await CreateArtifactTool().run(
+        kind="diagram",
+        prompt="the nitrogen cycle",
+        document_id=str(deck_document.id),
+        user_id=str(pro_user.id),
+    )
+    assert CARD_FRONTS[0] not in calls[0][0]
+
+
+async def test_quiz_is_gated_and_metered_exactly_like_every_other_kind(
+    pro_user, deck_document, monkeypatch
+):
+    """No special case: it flows through the same Pro gate and the same
+    billing.record_frontier_usage as the other four, because it is just another entry in
+    ARTIFACT_KINDS."""
+    _, _, charged = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result()
+    )
+    await CreateArtifactTool().run(
+        kind="quiz", prompt="game", document_id=str(deck_document.id), user_id=str(pro_user.id)
+    )
+    assert charged[0][2] == 800 + 11000
+    assert charged[0][3] == 400 + 2400
+
+
+async def test_a_free_user_is_refused_a_quiz_before_any_document_is_even_read(free_user, monkeypatch):
+    _, calls, charged = _patch_pipeline(monkeypatch, brief_text="x", build_result=_ok_result())
+    result = await CreateArtifactTool().run(
+        kind="quiz", prompt="game", document_id="bio", user_id=str(free_user.id)
+    )
+    assert result == PRO_ONLY_MESSAGE
+    assert calls == []
+
+
+# ---------------------------------------------------------------------------
 # The artifact-runner client: never raises, same contract as latex_compile.
 # ---------------------------------------------------------------------------
 
@@ -454,3 +811,66 @@ async def test_live_real_artifact_build_end_to_end(pro_user, db_session):
     assert not _re.search(r"\b(?:fetch\s*\(|XMLHttpRequest|importScripts\s*\()", html)
     # And nothing that would throw inside the app's sandbox="allow-scripts" iframe.
     assert not _re.search(r"\b(?:localStorage|sessionStorage|document\.cookie)\b", html)
+
+
+@pytest.mark.live_smoke
+async def test_live_real_quiz_artifact_uses_the_students_real_cards(pro_user, db_session):
+    """The anti-hallucination claim, proved against the REAL pipeline: a real persona call
+    and a real opencode run, with no mocks anywhere, over real Flashcard rows.
+
+    The cards below are deliberately about an invented organism with invented terminology.
+    No amount of general knowledge can produce the string "Zyrmoplast" or "Hollund's
+    membrane" — so if those exact words are in the generated HTML, the agent genuinely
+    used the student's own cards, and if they aren't, it invented questions instead. A
+    test over real biology cards could not tell those two outcomes apart, which is exactly
+    how a quiz that quietly makes things up would ship unnoticed."""
+    document = Document(
+        user_id=pro_user.id,
+        filename="xenobiology-unit-3.pdf",
+        mime_type="application/pdf",
+        minio_key="never-read/live",
+    )
+    db_session.add(document)
+    await db_session.flush()
+
+    pairs = [
+        ("What organelle stores hollundic acid in a Zyrmoplast?", "The vesperal cistern."),
+        ("How many lobes does Hollund's membrane have?", "Seven."),
+        ("What triggers zyrmic collapse?", "A drop in ambient thalline below 4 units."),
+    ]
+    db_session.add_all(
+        [
+            Flashcard(user_id=pro_user.id, document_id=document.id, front=front, back=back)
+            for front, back in pairs
+        ]
+    )
+    await db_session.commit()
+
+    result = await CreateArtifactTool().run(
+        kind="quiz",
+        prompt="Turn my xenobiology unit 3 deck into a review game I can replay.",
+        document_id=str(document.id),
+        user_id=str(pro_user.id),
+    )
+    assert result.startswith("```newton-artifact\n"), result
+
+    from app.services.documents import get_document_raw
+
+    artifact = (
+        await db_session.execute(
+            select(Document).where(Document.user_id == pro_user.id, Document.kind == "artifact")
+        )
+    ).scalar_one()
+    html = (await get_document_raw(artifact)).decode("utf-8")
+
+    # THE assertion this whole kind exists for: the student's own words, in the artifact.
+    for front, back in pairs:
+        assert front in html, f"the agent did not use the student's real question: {front}"
+        assert back in html, f"the agent did not use the student's real answer: {back}"
+
+    # ...and it is a real game, not the cards rendered flat: something scores, something
+    # responds to being answered, and it can be played again.
+    lowered = html.lower()
+    assert any(word in lowered for word in ("score", "streak")), "no visible score or streak"
+    assert "addeventlistener" in lowered or "onclick" in lowered, "nothing to interact with"
+    assert any(word in lowered for word in ("again", "restart", "retry", "replay")), "not replayable"

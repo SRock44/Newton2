@@ -29,6 +29,40 @@ describe("ArtifactPlanCard", () => {
     expect(screen.getByText("sculpture")).toBeInTheDocument();
   });
 
+  // Every kind create_artifact.py actually supports gets a real label. A kind that fell
+  // through to the raw-string fallback above would render as a lowercase "quiz" badge
+  // beside "Diagram"/"Chart" — visibly a bug, and the same for any kind added later.
+  it.each([
+    ["diagram", "Diagram"],
+    ["chart", "Chart"],
+    ["slideshow", "Slideshow"],
+    ["interactive", "Interactive"],
+    ["quiz", "Quiz game"],
+  ])("labels the %s kind as %s", (kind, label) => {
+    const json = JSON.stringify({ kind, title: "T", summary: "S." });
+    render(<ArtifactPlanCard json={json} onApprove={vi.fn()} onRequestChanges={vi.fn()} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it("renders a quiz plan as a real, approvable card with the same cost note", async () => {
+    const onApprove = vi.fn();
+    const user = userEvent.setup();
+    const json = JSON.stringify({
+      kind: "quiz",
+      title: "Bio 101 drill",
+      summary: "A shuffled, scored round over your Bio 101 deck, with retry-what-you-missed.",
+    });
+    render(<ArtifactPlanCard json={json} onApprove={onApprove} onRequestChanges={vi.fn()} />);
+
+    expect(screen.getByText("Quiz game")).toBeInTheDocument();
+    expect(screen.getByText(/retry-what-you-missed/i)).toBeInTheDocument();
+    // A quiz build is the same persona call plus the same opencode run as any other
+    // kind, so it carries the same spend warning — no cheaper-looking special case.
+    expect(screen.getByText(COST_NOTE)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /build it/i }));
+    expect(onApprove).toHaveBeenCalledWith(BUILD_MESSAGE);
+  });
+
   // ─── The cost-transparency requirement: the student is told BEFORE they spend. ───
   describe("cost note", () => {
     it("shows the honest cost note before anything is built", () => {

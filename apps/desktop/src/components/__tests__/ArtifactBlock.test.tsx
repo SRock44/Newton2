@@ -172,6 +172,58 @@ describe("ArtifactBlock", () => {
     });
   });
 
+  // One real label per kind in create_artifact.py's ARTIFACT_KINDS. The default here is
+  // the bare word "Artifact", so a kind that isn't in the map doesn't look broken — it
+  // just silently loses its name, which is exactly why this is asserted per kind.
+  describe("kind labels", () => {
+    it.each([
+      ["diagram", "Diagram"],
+      ["chart", "Chart"],
+      ["slideshow", "Slideshow"],
+      ["interactive", "Interactive"],
+      ["quiz", "Quiz game"],
+    ])("labels a %s artifact as %s", (kind, label) => {
+      mockRawFetch();
+      render(
+        <ArtifactBlock
+          json={JSON.stringify({ document_id: "d-1", title: "T", kind, attempts: 1 })}
+          token="tok-123"
+        />,
+      );
+      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.queryByText("Artifact")).not.toBeInTheDocument();
+    });
+
+    it("still falls back to a generic label for a kind this build doesn't know", () => {
+      mockRawFetch();
+      render(
+        <ArtifactBlock
+          json={JSON.stringify({ document_id: "d-1", title: "T", kind: "hologram" })}
+          token="tok-123"
+        />,
+      );
+      expect(screen.getByText("Artifact")).toBeInTheDocument();
+    });
+  });
+
+  it("renders a real quiz artifact's HTML into the same sandboxed frame", async () => {
+    const quizHtml =
+      "<!DOCTYPE html><html><body><h1>Bio 101 drill</h1>" +
+      "<script>const Q=[{q:'Which enzyme unwinds DNA?',a:'Helicase.'}]</script></body></html>";
+    mockRawFetch(quizHtml);
+    const { container } = render(
+      <ArtifactBlock
+        json={JSON.stringify({ document_id: "d-9", title: "Bio 101 drill", kind: "quiz", attempts: 1 })}
+        token="tok-123"
+      />,
+    );
+    const frame = await findFrame(container);
+    // A quiz is arbitrary agent-written JS like every other artifact — same sandbox, no
+    // allow-same-origin, and the same srcdoc path.
+    expect(frame.getAttribute("sandbox")).toBe(ARTIFACT_SANDBOX);
+    await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("Helicase."));
+  });
+
   describe("failure states", () => {
     it("shows an error instead of throwing for malformed JSON", () => {
       render(<ArtifactBlock json="not valid json" token="tok-123" />);

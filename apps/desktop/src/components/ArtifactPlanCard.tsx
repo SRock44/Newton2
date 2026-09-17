@@ -7,7 +7,7 @@
  *
  * ```artifact-plan
  * {
- *   "kind": "diagram" | "chart" | "slideshow" | "interactive",
+ *   "kind": "diagram" | "chart" | "slideshow" | "interactive" | "quiz",
  *   "title": "Short title",
  *   "summary": "1-2 sentences on what it will show and what the student can do with it"
  * }
@@ -50,11 +50,15 @@ interface ArtifactPlanBlock {
   summary: string;
 }
 
+/** One entry per kind in create_artifact.py's ARTIFACT_KINDS, matching ArtifactBlock's
+ * labels exactly — the badge a student approves here and the badge on the finished
+ * artifact must read the same, or the plan looks like it built something else. */
 const KIND_LABELS: Record<string, string> = {
   diagram: "Diagram",
   chart: "Chart",
   slideshow: "Slideshow",
   interactive: "Interactive",
+  quiz: "Quiz game",
 };
 
 /** What "Build it" sends on the student's behalf — a plain chat message, exactly like

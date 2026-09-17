@@ -26,7 +26,7 @@ with the four transformation stages arranged clockwise, each arrow labelled with
 organism responsible, the two human-input arrows visually distinguished from the natural
 ones, because the thing students actually get wrong here is which step fixes and which
 step releases" -- real subject expertise about what makes a *good* artifact of that
-specific kind, which is what the four personas below encode.
+specific kind, which is what the five personas below encode.
 
 Structurally this tool is the sibling of app/tools/write_research_paper.py: a Pro-gated,
 genuinely multi-stage generation tool that makes its own direct provider calls (never
@@ -49,15 +49,19 @@ import re
 import uuid
 from typing import Any, Literal
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.base import SessionLocal
-from app.db.models import User
+from app.db.models import Document, Flashcard, User
 from app.core.config import get_settings
 from app.providers.base import ChatTurn, TextDelta
 from app.providers.registry import get_provider
 from app.services import billing as billing_service
+from app.services.anki import build_flashcard_decks
 from app.services.artifact_build import ArtifactBuildResult, build_artifact
-from app.services.documents import store_artifact_html
+from app.services.documents import get_document_text, store_artifact_html
 from app.tools.base import Tool
+from app.tools.document_resolution import resolve_document
 
 # Gated exactly like start_study_session (app/tools/study_session.py) and
 # write_research_paper (app/tools/write_research_paper.py), whose wording this follows:
@@ -93,7 +97,7 @@ FOCUS_MODE_MESSAGE = (
     "the concept behind it. Turn Focus Mode off in Settings if you'd like the artifact."
 )
 
-ARTIFACT_KINDS = ("diagram", "chart", "slideshow", "interactive")
+ARTIFACT_KINDS = ("diagram", "chart", "slideshow", "interactive", "quiz")
 
 # Bounded like every other "put user text into a prompt" call site in this codebase
 # (write_research_paper.MAX_DOCUMENT_EXCERPT_CHARS, flashcards.MAX_MATERIAL_CHARS).
@@ -104,6 +108,25 @@ MAX_PROMPT_CHARS = 4000
 MAX_BRIEF_CHARS = 6000
 MAX_TITLE_CHARS = 80
 
+# ---------------------------------------------------------------------------
+# GROUNDED SOURCE MATERIAL -- the one thing "quiz" needs that no other kind does.
+#
+# The other four kinds invent all of their content from the student's free-text
+# description: a diagram "about the nitrogen cycle" is a diagram the persona and the
+# coding agent make up between them, and that's correct -- the request IS the spec.
+#
+# A quiz over "my Bio 101 deck" is not. If the coding agent writes plausible-looking
+# Bio 101 questions instead of the student's OWN cards, the artifact is a convincing
+# fake: the student reviews material they never wrote, believing it's their deck. So
+# when a document is named, the REAL rows are read out of the database and carried
+# verbatim into the brief, with an explicit instruction not to invent anything. See
+# _quiz_source_block below for the fetch and _ground_brief for why the block is
+# appended by CODE after the persona has spoken, rather than trusted to the persona's
+# own copying.
+# ---------------------------------------------------------------------------
+MAX_QUIZ_CARDS = 30
+MAX_QUIZ_SOURCE_CHARS = 3000
+
 
 # ---------------------------------------------------------------------------
 # The artifact-agent personas.
@@ -111,7 +134,7 @@ MAX_TITLE_CHARS = 80
 # Each is a real system prompt for one kind of artifact, written around what actually
 # makes THAT kind good and what makes it bad. They share a common instruction block
 # (_BRIEF_CONTRACT) about the output format and the hard constraints of the medium, and
-# differ completely in their expertise. All four are deliberately opinionated: a brief
+# differ completely in their expertise. All five are deliberately opinionated: a brief
 # that says "include relevant elements" is worthless to a coding agent, so each persona
 # is told, explicitly, to make concrete decisions rather than hedge.
 # ---------------------------------------------------------------------------
@@ -286,6 +309,57 @@ _PERSONA_PROMPTS: dict[str, str] = {
         "or plotting library is available.\n"
         + _BRIEF_CONTRACT
     ),
+    "quiz": (
+        "You are an expert at retrieval-practice games — the small, fast, replayable "
+        "review loop that actually moves a student's recall, not a worksheet with a "
+        "Submit button at the bottom.\n\n"
+        "What you know that a coding agent doesn't:\n"
+        "- Retrieval is the whole mechanism. The student must commit to an answer BEFORE "
+        "seeing it — type it, pick it, or say 'I know this' and then self-grade. A page "
+        "that shows the question and the answer together teaches nothing; it is a list "
+        "with extra steps. Specify the commit step explicitly.\n"
+        "- Feedback is immediate and specific, never deferred to the end. The instant an "
+        "answer is committed: say right or wrong, show the correct answer in full, and "
+        "when it was wrong show it NEXT TO what they said so the difference is visible. "
+        "A score revealed only on the last screen is a test, not practice.\n"
+        "- A visible running state is what makes it a game rather than a form. Commit to "
+        "one in the brief: a streak plus a position ('4 of 12') is the strongest pair — "
+        "the streak gives the student something to protect, the position tells them how "
+        "much is left.\n"
+        "- Replayability is a design requirement, not a nice-to-have. Shuffle the order "
+        "every run (Fisher-Yates at start, never a fixed sequence), and offer 'Retry the N "
+        "you missed' on the end screen alongside 'Play again' — the missed ones are "
+        "exactly the ones worth another pass, and making a student replay all twelve to "
+        "redrill three is how they stop using it.\n"
+        "- Multiple choice needs real distractors: other plausible answers from the SAME "
+        "material — the neighbouring term, the commonly confused pair, another card's "
+        "answer — never obviously-wrong filler, and never options whose length or grammar "
+        "gives it away. A question that can't be given three honest distractors should be "
+        "a type-in or a self-graded reveal instead; say which.\n"
+        "- Check typed answers forgivingly (trim, case-fold, ignore punctuation and a "
+        "leading 'the'/'a'). A student marked wrong over a capital letter closes the tab "
+        "and doesn't come back, so when a strict compare would be unreliable, prefer "
+        "reveal-then-self-grade ('I got it' / 'I missed it').\n"
+        "- There must be an unmistakable done state: final score, the list of what they "
+        "missed with the right answers, and the two buttons above. Ending by silently "
+        "disabling Next is a broken game.\n\n"
+        "Specify: the exact question format(s), the exact interaction on submit, the "
+        "scoring/streak rule, the shuffle, the end screen's contents and buttons, and "
+        "keyboard support (one question on screen at a time, Enter to submit and to "
+        "advance). Everything is plain inline JS with the questions written into the file "
+        "as a JS array — there is no storage, so a high score cannot persist between "
+        "reloads; do not specify one.\n\n"
+        "ABOUT THE QUESTIONS THEMSELVES: if the request comes with the student's own "
+        "material — real flashcards or a real document excerpt, marked as such below the "
+        "request — those questions and answers are the content, exactly as given. Design "
+        "the game around them; do not rewrite them, do not add topics they don't cover, "
+        "and do not pad the set to a rounder number. (You do not need to re-list the "
+        "cards in your brief — the verbatim list is attached to it automatically. Refer "
+        "to them by number.) With no material attached, you may write questions from "
+        "general knowledge of the topic, but only claims you'd stand behind: no invented "
+        "dates, figures, or definitions presented as fact.\n"
+        + _BRIEF_CONTRACT
+    ),
 }
 
 _TITLE_LINE_RE = re.compile(r"^\s*TITLE:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
@@ -318,18 +392,174 @@ def _fallback_title(prompt: str) -> str:
     return " ".join(words[:8])[:MAX_TITLE_CHARS] or "Artifact"
 
 
-async def _write_brief(kind: str, prompt: str) -> tuple[str, str, int, int]:
+# The exact instruction that travels with real student material. Deliberately blunt and
+# repeated at both ends of the block: this is the one place in the Artifacts pipeline
+# where an invented answer is not a quality problem but a correctness one -- a student
+# reviewing fabricated "their own" cards is worse off than if the build had failed. The
+# register matches tutor.py's SYSTEM_PROMPT rule about research papers ("Never fabricate
+# data, statistics, experimental results, or quotations that don't trace back to the
+# student's own material... say so rather than inventing support").
+_CARDS_PREAMBLE = (
+    "THE STUDENT'S OWN FLASHCARDS — THIS IS THE CONTENT OF THE QUIZ.\n"
+    "Use ONLY these exact questions and answers. Do not invent, add, remove, reword, "
+    "translate, or 'improve' any of them, and do not pad the set with extra questions of "
+    "your own. Every question in the finished artifact must be one of the cards below, "
+    "with its front as the question and its back as the correct answer, character for "
+    "character. Distractors for a multiple-choice question must be drawn from the OTHER "
+    "cards' backs below, never made up. If you think a card is wrong or badly worded, "
+    "use it anyway — it is the student's own material, not yours to edit."
+)
+
+_TEXT_PREAMBLE = (
+    "THE STUDENT'S OWN DOCUMENT — THIS IS THE SOURCE MATERIAL FOR THE QUIZ.\n"
+    "This document has no flashcards, so write the questions yourself — but every "
+    "question and every correct answer must be grounded in the text below and traceable "
+    "to a specific line of it. Never fabricate a fact, figure, date, definition, or "
+    "quotation that isn't in this text, and don't reach for outside knowledge of the "
+    "topic to fill gaps: if the text doesn't support enough questions, write fewer. "
+    "Prefer answers that are a word or phrase appearing in the text itself."
+)
+
+_CARDS_CLOSER = (
+    "END OF THE STUDENT'S CARDS. Those are all of them and they are the only questions "
+    "this artifact may contain."
+)
+
+_TEXT_CLOSER = "END OF THE STUDENT'S DOCUMENT. Every question must come from the text above."
+
+# Honest refusals, in the same register as the rest of this module's messages: say what
+# actually happened and what the student can do instead, rather than silently building
+# something adjacent to what was asked for.
+NO_SUCH_DOCUMENT_MESSAGE = (
+    "I couldn't find that document in your library, and I'd rather not build a quiz out "
+    "of made-up questions and call it yours. Tell me the file or note name as it appears "
+    "in your Documents panel and I'll build it from the real thing."
+)
+
+EMPTY_DOCUMENT_MESSAGE = (
+    "That document has no flashcards and no readable text in it, so there's nothing real "
+    "to quiz you on — and a quiz I invented wouldn't be your material. Generate "
+    "flashcards from it first (or tell me a topic to quiz you on instead) and I'll build "
+    "the game from those."
+)
+
+
+async def _quiz_source_block(
+    db: AsyncSession, user_id: uuid.UUID, document_id: str
+) -> tuple[str | None, str | None]:
+    """The student's REAL material for a grounded quiz, as a block of text destined for
+    the coding brief verbatim. Returns (block, error_message) -- exactly one is non-None.
+
+    `document_id` is a document id when the caller has one, and otherwise a filename hint,
+    resolved through app/tools/document_resolution.resolve_document -- the same single
+    place generate_flashcards, generate_practice_exam and start_study_session already use
+    to answer "which of this student's documents did they mean". Both forms are accepted
+    because the tutor model genuinely only ever sees filenames (retrieved RAG chunks carry
+    no ids), so a strictly-uuid parameter would be a parameter it could never fill.
+
+    Card fetching is app/services/anki.py's build_flashcard_decks, unchanged and not
+    reimplemented: it is already the codebase's one answer to "this user's flashcards for
+    this document, grouped by source document, with a `general` bucket for cards with no
+    source", it is already user-scoped at the query level, and reusing it means a quiz and
+    an Anki export can never disagree about what is in a deck.
+    """
+    document: Document | None = None
+    try:
+        document = await db.get(Document, uuid.UUID(document_id))
+    except ValueError:
+        # Not a uuid -- treat it as the filename hint every other generation tool takes.
+        document = await resolve_document(db, user_id, document_id)
+    # The ownership check is explicit rather than implied: db.get() by primary key is not
+    # user-scoped, and a quiz must never be built from another student's document.
+    if document is None or document.user_id != user_id:
+        return None, NO_SUCH_DOCUMENT_MESSAGE
+
+    decks = await build_flashcard_decks(db, user_id, document_id=document.id)
+    cards: list[Flashcard] = [card for _label, group in decks for card in group]
+    if cards:
+        lines = [_CARDS_PREAMBLE, "", f"Deck: {document.filename}", ""]
+        used = 0
+        budget = MAX_QUIZ_SOURCE_CHARS
+        for card in cards[:MAX_QUIZ_CARDS]:
+            entry = f"{used + 1}. FRONT: {card.front}\n   BACK: {card.back}"
+            # Bounded by whole cards, never by a character count. Slicing the joined block
+            # at MAX_QUIZ_SOURCE_CHARS would be the obvious thing and would be a real bug:
+            # it can cut a card mid-answer, and a truncated answer handed to the coding
+            # agent under "use these exact answers" is a WRONG answer presented as the
+            # student's own -- worse than dropping the card outright.
+            if used and len(entry) + 1 > budget:
+                break
+            lines.append(entry)
+            budget -= len(entry) + 1
+            used += 1
+        if used < len(cards):
+            lines.append("")
+            lines.append(
+                f"(This deck has {len(cards)} cards. The {used} above are the ones to use; "
+                "they are the complete set for this artifact.)"
+            )
+        lines.extend(["", _CARDS_CLOSER])
+        return "\n".join(lines), None
+
+    # No cards: a plain note or an uploaded file the student never generated a deck from.
+    # Its real text is the grounding instead -- fetched through the same
+    # documents.get_document_text every other tool that needs a document's content uses.
+    try:
+        text = (await get_document_text(document)).strip()
+    except Exception:  # noqa: BLE001 - an unreadable object is "no material", not a 500
+        text = ""
+    if not text:
+        return None, EMPTY_DOCUMENT_MESSAGE
+    block = "\n".join(
+        [_TEXT_PREAMBLE, "", f"Document: {document.filename}", "", text[:MAX_QUIZ_SOURCE_CHARS], "", _TEXT_CLOSER]
+    )
+    return block, None
+
+
+def _ground_brief(brief: str, source_block: str | None) -> str:
+    """Appends the student's real material to the persona's brief, so the exact strings
+    reach the coding agent.
+
+    Why this is done in code and not left to the persona: the persona is a language model
+    being asked to copy 30 question/answer pairs through a generation step that is also
+    summarizing and restructuring, and _parse_brief truncates its reply at
+    MAX_BRIEF_CHARS. Both of those are places a card can quietly change a word or fall off
+    the end, and the failure is invisible -- the artifact still looks like a working quiz.
+    The persona is shown the cards (it needs them to make real design decisions about
+    distractors and question format) and told not to re-list them; this function is what
+    actually guarantees the verbatim text is in what opencode reads. The block gets its
+    budget FIRST and the persona's prose is trimmed around it, for the same reason.
+    """
+    if not source_block:
+        return brief[:MAX_BRIEF_CHARS]
+    room = MAX_BRIEF_CHARS - len(source_block) - 2
+    if room <= 0:
+        return source_block
+    return f"{brief[:room].rstrip()}\n\n{source_block}"
+
+
+async def _write_brief(
+    kind: str, prompt: str, source_block: str | None = None
+) -> tuple[str, str, int, int]:
     """Stage 1: one direct provider call (never through run_tutor's tool loop -- the same
     "call a provider directly" pattern app/tools/write_research_paper.py's _draft_section
     and app/services/flashcards use) turning the student's request into a real coding
     brief. Returns (title, brief, prompt_tokens, completion_tokens); the token counts are
-    real usage read off the provider, for the metering in _charge_usage below."""
+    real usage read off the provider, for the metering in _charge_usage below.
+
+    `source_block` is the student's own material for a grounded quiz (see
+    _quiz_source_block). It is appended AFTER the MAX_PROMPT_CHARS truncation rather than
+    concatenated before it, so a long chat-derived prompt can never push the real cards
+    out of the persona's view; it has its own bound already."""
     provider, model = get_provider()
+    user_content = prompt[:MAX_PROMPT_CHARS]
+    if source_block:
+        user_content = f"{user_content}\n\n{source_block}"
     raw = ""
     async for event in provider.stream_chat(
         [
             ChatTurn(role="system", content=_PERSONA_PROMPTS[kind]),
-            ChatTurn(role="user", content=prompt[:MAX_PROMPT_CHARS]),
+            ChatTurn(role="user", content=user_content),
         ],
         model,
     ):
@@ -400,7 +630,7 @@ class CreateArtifactTool(Tool):
     name = "create_artifact"
     description = (
         "Builds a real interactive artifact — a self-contained mini web page (diagram, "
-        "chart, slideshow, or interactive demo) — that renders live in the chat. A real "
+        "chart, slideshow, interactive demo, or quiz game) — that renders live in the chat. A real "
         "coding agent writes it, so it takes 1-3 minutes and costs meaningfully more "
         "than a normal reply: only call it after the student has confirmed they want "
         "it (offer an ```artifact-plan block first). Prefer plot_function for a plain "
@@ -417,7 +647,8 @@ class CreateArtifactTool(Tool):
                     "diagram = an explanatory figure showing how parts relate; chart = a "
                     "data visualization of real values; slideshow = a stepped visual "
                     "explanation; interactive = a demo where manipulating a control is "
-                    "what teaches the idea."
+                    "what teaches the idea; quiz = a playable review game with scoring "
+                    "and immediate feedback, built from a deck or note when one is named."
                 ),
             },
             "prompt": {
@@ -428,14 +659,27 @@ class CreateArtifactTool(Tool):
                     "better artifact — this is the only thing the artifact agent sees."
                 ),
             },
+            "document_id": {
+                "type": "string",
+                "description": (
+                    "For kind='quiz' only: the deck or note to build the game from, as "
+                    "its filename or a substring of it (e.g. 'bio 101'), exactly like "
+                    "generate_flashcards' document_filename. Pass this whenever the "
+                    "student points at specific material ('quiz me on my Bio 101 deck', "
+                    "'turn this note into a game') — the real cards or the real text get "
+                    "used, instead of questions being invented. Omit it when they name "
+                    "only a topic."
+                ),
+            },
         },
         "required": ["kind", "prompt"],
     }
 
     async def run(
         self,
-        kind: Literal["diagram", "chart", "slideshow", "interactive"],
+        kind: Literal["diagram", "chart", "slideshow", "interactive", "quiz"],
         prompt: str,
+        document_id: str | None = None,
         user_id: str | None = None,
     ) -> str:
         if not user_id:
@@ -450,6 +694,7 @@ class CreateArtifactTool(Tool):
         if not prompt or not prompt.strip():
             return "Error: prompt must not be empty."
 
+        source_block: str | None = None
         async with SessionLocal() as db:
             user = await db.get(User, uid)
             if user is None or not billing_service.is_pro(user):
@@ -465,7 +710,26 @@ class CreateArtifactTool(Tool):
             ):
                 return NO_CREDIT_MESSAGE
 
-        title, brief, brief_prompt_tokens, brief_completion_tokens = await _write_brief(kind, prompt)
+            # A quiz over named material reads that material here, inside the same
+            # pre-spend session as the gate, so a document that doesn't exist or has
+            # nothing in it costs the student nothing and -- much more importantly --
+            # never silently becomes a quiz of invented questions with their deck's name
+            # on it. Other kinds ignore document_id: they are specified entirely by the
+            # request, which is the real difference between them and this one.
+            # str() because tool arguments are model-authored JSON: a filename that looks
+            # numeric ("101") can arrive as a number, and .strip() on an int is a crash.
+            named = str(document_id).strip() if document_id is not None else ""
+            if kind == "quiz" and named:
+                source_block, error = await _quiz_source_block(db, uid, named)
+                if error:
+                    return error
+
+        title, brief, brief_prompt_tokens, brief_completion_tokens = await _write_brief(
+            kind, prompt, source_block
+        )
+        # The student's real cards/text are re-attached to the brief by code, never left
+        # to the persona to have copied faithfully. See _ground_brief.
+        brief = _ground_brief(brief, source_block)
 
         result = await build_artifact(brief, get_settings().openrouter_model)
 
