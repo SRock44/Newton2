@@ -8,6 +8,8 @@ import PaperPlanCard from "./PaperPlanCard";
 import StepCheck from "./StepCheck";
 import Checkpoint from "./Checkpoint";
 import NewtonNoteBlock from "./NewtonNoteBlock";
+import ArtifactBlock from "./ArtifactBlock";
+import ArtifactPlanCard from "./ArtifactPlanCard";
 import { hashString } from "../lib/hashString";
 
 type PreProps = ComponentPropsWithoutRef<"pre"> & {
@@ -16,6 +18,10 @@ type PreProps = ComponentPropsWithoutRef<"pre"> & {
    * to build a math-steps block's reveal-progress storage key. Undefined when the
    * containing message has no stable identity yet (still streaming in). */
   mathStepsPersistKeyPrefix?: string;
+  /** From MessageContent — the bearer token, needed only by a "newton-artifact" block,
+   * which fetches the artifact's real HTML from the auth-gated GET /documents/{id}/raw
+   * rather than carrying the whole page inline in the chat message. See ArtifactBlock. */
+  token?: string;
   /** From MessageContent — sends a plain-text chat message on the student's behalf, for
    * an "options" pick or a "paper-plan" approval. Undefined in a context with nowhere
    * for such a message to go (falls back to a no-op so those blocks never throw). */
@@ -66,7 +72,10 @@ function extractText(node: ReactNode): string {
  * block (Learn Mode), which renders as an attempt-this-step-yourself card, or a
  * "checkpoint" block (Learn Mode), which renders as a comprehension-check card, or a
  * "newton-note" block (Newton Notepad's highlight-to-act insertion), which renders as
- * a small read-only card. The middle two reuse the exact same `onSend`/
+ * a small read-only card, an "artifact-plan" block (Artifacts), which renders as a
+ * confirm-before-you-spend card carrying this app's cost note, or a "newton-artifact"
+ * block, which renders the finished artifact live in a sandboxed iframe. The middle two
+ * reuse the exact same `onSend`/
  * `nextMessageContent` plumbing "options" already uses (see StepCheck.tsx/
  * Checkpoint.tsx's own contract comments) — no new props or WebSocket protocol
  * needed; "newton-note" needs neither, since it's read-only (see
@@ -75,6 +84,7 @@ function CodeBlock({
   children,
   node: _node,
   mathStepsPersistKeyPrefix,
+  token,
   onSend,
   onFocusComposer,
   nextMessageContent,
@@ -124,6 +134,19 @@ function CodeBlock({
   }
   if (language === "newton-note") {
     return <NewtonNoteBlock json={extractText(children)} />;
+  }
+  if (language === "artifact-plan") {
+    return (
+      <ArtifactPlanCard
+        json={extractText(children)}
+        onApprove={onSend ?? (() => {})}
+        onRequestChanges={onFocusComposer ?? (() => {})}
+        answeredWith={nextMessageContent}
+      />
+    );
+  }
+  if (language === "newton-artifact") {
+    return <ArtifactBlock json={extractText(children)} token={token} />;
   }
 
   async function handleCopy() {

@@ -3064,6 +3064,13 @@ body.is-resizing-panel * {
   color: var(--color-accent);
 }
 
+/* The always-available hard stop, shown beside Listen/Pause whenever there is anything
+   to stop — including while a long reply is still being synthesized. Deliberately quiet
+   (it sits next to the primary control, it isn't one). */
+.message-listen--stop {
+  color: var(--color-text-muted);
+}
+
 /* The Pro-gate message lives here. Muted, not danger-red — see ListenButton's comment
    in MessageBubble.tsx for why a plan limit is stated rather than alarmed about. */
 .message-listen-note {
@@ -5559,4 +5566,155 @@ body.is-resizing-panel * {
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+/* ---------- Artifact plan card (confirm-before-you-spend) ----------
+   Same card shell as .paper-plan-card above — this is the same plan → approve flow
+   applied to the one action in the app that costs meaningfully more than the rest, so
+   it should read as the same kind of moment, not a new one. */
+
+.artifact-plan-card {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.artifact-plan-card--error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.artifact-plan-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.artifact-plan-card__kind-badge {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  color: var(--color-accent-contrast);
+  background-color: var(--color-accent);
+  border-radius: var(--radius-full);
+  padding: 3px var(--space-3);
+}
+
+.artifact-plan-card__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-lg);
+}
+
+.artifact-plan-card__summary {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: var(--line-height-relaxed);
+}
+
+/* Matches .doc-generation-note (the Documents panel's free-plan heads-up) exactly —
+   same size, same faint color. This app already has one visual language for "here's
+   what this costs you, decide freely", and this is it. */
+.artifact-plan-card__cost-note {
+  margin: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+  line-height: var(--line-height-relaxed);
+}
+
+.artifact-plan-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* Replaces the actions once a build has been approved — see ArtifactPlanCard.tsx's
+   "Build it is one-shot" contract. Same faint register as the cost note above it. */
+.artifact-plan-card__locked-note {
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  color: var(--color-text-faint);
+}
+
+/* ---------- Artifact block (the finished, live-rendered artifact) ---------- */
+
+.artifact-block {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.artifact-block--error {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
+.artifact-block__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.artifact-block__kind {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  color: var(--color-accent-contrast);
+  background-color: var(--color-accent);
+  border-radius: var(--radius-full);
+  padding: 3px var(--space-3);
+}
+
+.artifact-block__title {
+  font-weight: var(--font-weight-semibold);
+}
+
+.artifact-block__actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.artifact-block__loading {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+/* The artifact's own page decides its look; this only gives it a predictable box.
+   `background: white` because an artifact is authored as a standalone light-theme page
+   and an opaque-origin iframe can't inherit the app's theme tokens anyway. */
+.artifact-block__frame {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: #ffffff;
+  display: block;
+}
+
+.artifact-block--expanded .artifact-block__frame {
+  height: 720px;
+}
+
+.artifact-block__footnote {
+  margin: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
 }

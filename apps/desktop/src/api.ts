@@ -738,11 +738,18 @@ export async function transcribeAudio(token: string, blob: Blob): Promise<string
  * with a 402 exactly like transcribeAudio above; the same non-punitive "this is a Pro
  * feature" detail comes back from the server, so it's surfaced as-is rather than
  * replaced with a generic failure message. */
-export async function synthesizeSpeech(token: string, text: string): Promise<Blob> {
+/** `signal` lets the caller abort a synthesis that's still in flight. Real TTS of a long
+ * reply takes real server time (Piper, on CPU), and without this the student had no way
+ * to take it back once they'd asked for it — see MessageBubble's ListenButton, which
+ * treats a click during "Preparing…" as a cancel. An aborted fetch rejects with a
+ * DOMException named "AbortError", which callers are expected to treat as a normal
+ * outcome, not an error worth showing. */
+export async function synthesizeSpeech(token: string, text: string, signal?: AbortSignal): Promise<Blob> {
   const res = await fetch(`${API_URL}/voice/synthesize`, {
     method: "POST",
     headers: { ...authHeaders(token), "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
+    signal,
   });
   if (!res.ok) {
     const fallback = res.status === 402 ? "Listening is a Pro feature." : "Couldn't read that message aloud.";

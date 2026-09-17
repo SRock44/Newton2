@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, synthesizeSpeech } from "../api";
+import { splitForSpeech } from "../lib/speech";
 import type { ChatMessage } from "../types";
 import MessageContent from "./MessageContent";
 import AttachedImage from "./AttachedImage";
@@ -99,16 +100,54 @@ type ListenStatus = "idle" | "loading" | "playing" | "paused";
 function ListenButton({ token, text }: { token: string; text: string }) {
   const [status, setStatus] = useState<ListenStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  // The current chunk's audio element (see lib/speech.ts for why a reply is spoken in
+  // chunks at all) and the index of the chunk it belongs to.
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const urlRef = useRef<string | null>(null);
+  const indexRef = useRef(0);
+  // Synthesized chunks, kept for the life of the bubble so replaying — or resuming after
+  // a stop — never re-spends real TTS compute on words already rendered.
+  const urlsRef = useRef<Map<number, string>>(new Map());
+  const pendingRef = useRef<Map<number, Promise<string>>>(new Map());
+  // Aborts in-flight synthesize calls. Real TTS takes real server time, and the student
+  // must be able to take the request back during that wait rather than being locked out
+  // until the voice starts on its own.
+  const abortRef = useRef<AbortController | null>(null);
+  // Bumped by stop()/release() so an async continuation that was already in flight can
+  // tell it has been superseded and must not start talking over the student.
+  const runRef = useRef(0);
+
+  const chunks = useMemo(() => splitForSpeech(text), [text]);
 
   function release() {
+    runRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
     audioRef.current?.pause();
     audioRef.current = null;
-    if (urlRef.current) {
-      URL.revokeObjectURL(urlRef.current);
-      urlRef.current = null;
+    pendingRef.current.clear();
+    for (const url of urlsRef.current.values()) URL.revokeObjectURL(url);
+    urlsRef.current.clear();
+    indexRef.current = 0;
+  }
+
+  /** Hard stop: silence it now and rewind to the first chunk, so the next "Listen"
+   * starts from the top instead of resuming mid-sentence. Deliberately distinct from
+   * pause — "make it stop talking" is the thing a student actually wants a button for,
+   * and pause alone (which leaves it poised mid-word) doesn't read as that. Cached
+   * audio is KEPT, so starting again is instant. */
+  function stop() {
+    runRef.current += 1;
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
     }
+    audioRef.current = null;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    pendingRef.current.clear();
+    indexRef.current = 0;
+    setStatus("idle");
   }
 
   // Stop and discard cached audio if this bubble's text changes out from under it (a
@@ -124,34 +163,142 @@ function ListenButton({ token, text }: { token: string; text: string }) {
   // Never leave audio playing into a conversation the student has navigated away from.
   useEffect(() => release, []);
 
+  /** Synthesizes one chunk, de-duplicated: asking twice for the same index (which
+   * happens whenever playback reaches a chunk that prefetch already started) joins the
+   * one in flight rather than paying for it twice. */
+  function fetchChunk(index: number): Promise<string> {
+    const cached = urlsRef.current.get(index);
+    if (cached) return Promise.resolve(cached);
+    const inFlight = pendingRef.current.get(index);
+    if (inFlight) return inFlight;
+
+    const controller = abortRef.current ?? new AbortController();
+    abortRef.current = controller;
+    const promise = synthesizeSpeech(token, chunks[index], controller.signal).then((blob) => {
+      const url = URL.createObjectURL(blob);
+      urlsRef.current.set(index, url);
+      pendingRef.current.delete(index);
+      return url;
+    });
+    promise.catch(() => pendingRef.current.delete(index));
+    pendingRef.current.set(index, promise);
+    return promise;
+  }
+
+  /** Plays chunk `index`, and — this is the whole point — kicks off synthesis of the
+   * NEXT chunk without waiting for it, so by the time this one finishes speaking the
+   * next is usually already rendered. Only the first chunk's synthesis is ever a wait
+   * the student actually sits through. */
+  async function playFrom(index: number, run: number) {
+    if (index >= chunks.length) {
+      indexRef.current = 0;
+      setStatus("idle");
+      return;
+    }
+    if (!urlsRef.current.has(index)) setStatus("loading");
+
+    const url = await fetchChunk(index);
+    if (run !== runRef.current) return; // stopped/released while we were synthesizing
+
+    // Build a buffer AHEAD of playback, two chunks deep. One deep isn't always enough:
+    // the response is uncompressed WAV (~44KB per second of speech), so on a slow link a
+    // chunk can still be downloading when the one before it finishes speaking —
+    // measured on the dev box, chunk 1 ended at 3.35s while chunk 2 landed at 4.44s, an
+    // audible gap. Two deep means each chunk has a full chunk's playback time to arrive.
+    for (const ahead of [index + 1, index + 2]) {
+      if (ahead < chunks.length) void fetchChunk(ahead).catch(() => {});
+    }
+
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    indexRef.current = index;
+
+    // Advance exactly once, on whichever event this engine actually delivers at the end
+    // of a track. WebView2 fires `pause` immediately before `ended`, and was observed
+    // delivering the `pause` WITHOUT a following `ended` — which stalled playback
+    // permanently after the first chunk. Listening to both, with a latch, makes
+    // continuation independent of that difference.
+    let advanced = false;
+    const advance = () => {
+      if (advanced || run !== runRef.current) return;
+      advanced = true;
+      void playFrom(index + 1, run);
+    };
+    audio.onended = advance;
+    // Keep the label honest if playback stops for a reason we didn't initiate (an audio
+    // device change, the element being interrupted) — otherwise the button would keep
+    // claiming "Pause" over silence.
+    //
+    // ...but a pause AT the end of a chunk is not a pause, it's the seam. WebView2 fires
+    // it immediately before `ended` (confirmed against the real app: "+7760ms pause /
+    // +7761ms ended"), so without this guard every seam flashed the button to "Resume".
+    // `ended` isn't reliably set yet when `pause` fires, so the remaining-time check is
+    // what actually does the work — and this is also the path that keeps playback moving
+    // when `ended` never arrives at all (see `advance` above).
+    audio.onpause = () => {
+      const finished = audio.ended || (audio.duration > 0 && audio.currentTime >= audio.duration - 0.25);
+      if (finished) {
+        advance();
+        return;
+      }
+      setStatus((s) => (s === "playing" ? "paused" : s));
+    };
+    await audio.play();
+    if (run !== runRef.current) return;
+    setStatus("playing");
+  }
+
   async function handleClick() {
-    if (status === "loading") return;
+    // A click while a chunk is still being synthesized CANCELS it. Previously the button
+    // was simply disabled for this whole stretch, which on a long reply meant the student
+    // had asked for narration and then had to sit and wait for it with no way out.
+    if (status === "loading") {
+      stop();
+      return;
+    }
     if (status === "playing") {
       audioRef.current?.pause();
       setStatus("paused");
       return;
     }
-    setError(null);
-    try {
-      let audio = audioRef.current;
-      if (!audio) {
-        setStatus("loading");
-        const blob = await synthesizeSpeech(token, text);
-        const url = URL.createObjectURL(blob);
-        urlRef.current = url;
-        audio = new Audio(url);
-        audio.onended = () => setStatus("idle");
-        audioRef.current = audio;
-      }
-      await audio.play();
+    if (status === "paused" && audioRef.current) {
+      await audioRef.current.play();
       setStatus("playing");
+      return;
+    }
+    if (chunks.length === 0) return;
+
+    setError(null);
+    abortRef.current = null;
+    runRef.current += 1;
+    const run = runRef.current;
+    try {
+      await playFrom(indexRef.current, run);
     } catch (err) {
+      if (run !== runRef.current) return;
+      // A cancel is a normal outcome the student asked for, not a failure to report.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setStatus("idle");
+        return;
+      }
       setStatus("idle");
       setError(err instanceof ApiError ? err.message : "Couldn't read that message aloud.");
     }
   }
 
-  const label = status === "loading" ? "Preparing…" : status === "playing" ? "Pause" : status === "paused" ? "Resume" : "Listen";
+  const label =
+    status === "loading" ? "Preparing… Cancel" : status === "playing" ? "Pause" : status === "paused" ? "Resume" : "Listen";
+  const ariaLabel =
+    status === "loading"
+      ? "Cancel preparing this message to be read aloud"
+      : status === "playing"
+        ? "Pause reading this message aloud"
+        : status === "paused"
+          ? "Resume reading this message aloud"
+          : "Read this message aloud";
+  // A hard stop is offered the moment there's anything to stop — while it's being
+  // prepared as well as while it's talking.
+  const canStop = status !== "idle";
 
   return (
     <div className="message-actions">
@@ -159,13 +306,28 @@ function ListenButton({ token, text }: { token: string; text: string }) {
         type="button"
         className={`message-listen${status === "playing" ? " message-listen--playing" : ""}`}
         onClick={handleClick}
-        disabled={status === "loading"}
-        aria-label={status === "playing" ? "Pause reading this message aloud" : "Read this message aloud"}
-        title="Have Newton read this reply out loud"
+        aria-label={ariaLabel}
+        title={
+          status === "loading"
+            ? "Cancel — this reply is still being prepared"
+            : "Have Newton read this reply out loud"
+        }
       >
-        <span aria-hidden="true">{status === "playing" ? "❚❚" : "▶"}</span>
+        <span aria-hidden="true">{status === "playing" ? "❚❚" : status === "loading" ? "✕" : "▶"}</span>
         {label}
       </button>
+      {canStop && (
+        <button
+          type="button"
+          className="message-listen message-listen--stop"
+          onClick={stop}
+          aria-label="Stop reading this message aloud"
+          title="Stop"
+        >
+          <span aria-hidden="true">■</span>
+          Stop
+        </button>
+      )}
       {error && (
         <span className="message-listen-note" role="status">
           {error}
@@ -306,6 +468,7 @@ function MessageBubble({
           content={displayContent || " "}
           persistKey={persistKey}
           streaming={message.streaming}
+          token={token}
           onSend={onSend}
           onFocusComposer={onFocusComposer}
           nextMessageContent={nextMessageContent}

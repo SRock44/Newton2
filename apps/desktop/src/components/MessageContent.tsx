@@ -6,6 +6,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import CodeBlock from "./CodeBlock";
+import { normalizeFencedBlocks } from "../lib/fencedBlocks";
 
 interface MessageContentProps {
   content: string;
@@ -19,6 +20,10 @@ interface MessageContentProps {
    * every single incoming token. Omit (or false) for history/finished replies, which
    * always render immediately — the debounce path is opt-in, never the default. */
   streaming?: boolean;
+  /** Bearer token, threaded down to CodeBlock for a "newton-artifact" block — that one
+   * fetches the artifact's real HTML bytes from GET /documents/{id}/raw, which is
+   * auth-gated (see ArtifactBlock.tsx). No other block type needs it. */
+  token?: string;
   /** Threaded down to CodeBlock for "options"/"paper-plan" blocks — see CodeBlock.tsx
    * for what each one means. */
   onSend?: (text: string) => void;
@@ -40,6 +45,7 @@ function MessageContent({
   content,
   persistKey,
   streaming,
+  token,
   onSend,
   onFocusComposer,
   nextMessageContent,
@@ -89,6 +95,7 @@ function MessageContent({
       <CodeBlock
         {...preProps}
         mathStepsPersistKeyPrefix={persistKey}
+        token={token}
         onSend={onSend}
         onFocusComposer={onFocusComposer}
         nextMessageContent={nextMessageContent}
@@ -104,7 +111,11 @@ function MessageContent({
         rehypePlugins={[rehypeKatex, rehypeHighlight]}
         components={components}
       >
-        {renderedContent}
+        {/* Repairs an opening fence the model glued to the end of the previous line,
+            which would otherwise silently degrade a real rich block (an artifact, a
+            chart, a plan card) into raw JSON behind a Copy button. See
+            lib/fencedBlocks.ts for exactly what it does and does not touch. */}
+        {normalizeFencedBlocks(renderedContent)}
       </ReactMarkdown>
     </div>
   );

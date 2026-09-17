@@ -475,6 +475,14 @@ describe("MessageBubble 'Listen'", () => {
       this.paused = true;
     });
 
+    // Real HTMLAudioElement members ListenButton touches: `currentTime` (rewound by the
+    // hard stop) and `onpause` (kept in sync so the label can't claim "Pause" over
+    // silence).
+    currentTime = 0;
+    duration = 10;
+    ended = false;
+    onpause: (() => void) | null = null;
+
     constructor(public src: string) {
       audios.push(this);
     }
@@ -535,7 +543,7 @@ describe("MessageBubble 'Listen'", () => {
 
     await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
 
-    await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "The Krebs cycle produces ATP."));
+    await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "The Krebs cycle produces ATP.", expect.any(AbortSignal)));
     await waitFor(() => expect(audios).toHaveLength(1));
     expect(audios[0].src).toBe("blob:spoken");
     expect(audios[0].play).toHaveBeenCalledTimes(1);
@@ -555,7 +563,7 @@ describe("MessageBubble 'Listen'", () => {
 
     await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
 
-    await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "Here you go."));
+    await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "Here you go.", expect.any(AbortSignal)));
   });
 
   it("shows a loading state while synthesizing, then a playing state", async () => {
@@ -570,9 +578,11 @@ describe("MessageBubble 'Listen'", () => {
 
     await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
 
-    const button = screen.getByRole("button", { name: /read this message aloud/i });
-    expect(button).toHaveTextContent("Preparing…");
-    expect(button).toBeDisabled();
+    // Still enabled while preparing, and labelled as a cancel: real TTS of a long reply
+    // takes real server time, and the student must be able to take it back.
+    const button = screen.getByRole("button", { name: /cancel preparing this message/i });
+    expect(button).toHaveTextContent("Preparing… Cancel");
+    expect(button).toBeEnabled();
 
     resolveBlob(new Blob(["wav-bytes"], { type: "audio/wav" }));
     expect(await screen.findByRole("button", { name: /pause reading this message aloud/i })).toHaveTextContent("Pause");
@@ -589,11 +599,258 @@ describe("MessageBubble 'Listen'", () => {
     expect(audios[0].pause).toHaveBeenCalled();
     expect(await screen.findByText("Resume")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+    await user.click(screen.getByRole("button", { name: /resume reading this message aloud/i }));
     await waitFor(() => expect(audios[0].play).toHaveBeenCalledTimes(2));
     // Real TTS compute isn't re-spent to replay the same words.
     expect(synthesizeSpeech).toHaveBeenCalledTimes(1);
     expect(audios).toHaveLength(1);
+  });
+
+  // ─── "There is no way to stop the voice once it starts" — reported from the real
+  // app. There must always be an obvious way to make it stop, including during the
+  // (genuinely slow) synthesis of a long reply. ───
+  describe("stopping it", () => {
+    it("offers no Stop when nothing is playing or loading", () => {
+      renderAssistant();
+      expect(screen.queryByRole("button", { name: /stop reading this message aloud/i })).not.toBeInTheDocument();
+    });
+
+    it("offers a Stop while it is talking, which silences it and rewinds to the start", async () => {
+      const user = userEvent.setup();
+      renderAssistant();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      await user.click(screen.getByRole("button", { name: /stop reading this message aloud/i }));
+
+      expect(audios[0].pause).toHaveBeenCalled();
+      // Rewound, so the next Listen starts from the top rather than mid-sentence.
+      expect(audios[0].currentTime).toBe(0);
+      expect(await screen.findByText("Listen")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /stop reading this message aloud/i })).not.toBeInTheDocument();
+    });
+
+    it("offers a Stop while it is still being prepared, and aborts the request", async () => {
+      const user = userEvent.setup();
+      let capturedSignal: AbortSignal | undefined;
+      vi.mocked(synthesizeSpeech).mockImplementation(
+        (_t: string, _x: string, signal?: AbortSignal) =>
+          new Promise<Blob>((_resolve, reject) => {
+            capturedSignal = signal;
+            signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          }),
+      );
+      renderAssistant();
+
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /cancel preparing this message/i });
+
+      await user.click(screen.getByRole("button", { name: /stop reading this message aloud/i }));
+
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(await screen.findByText("Listen")).toBeInTheDocument();
+    });
+
+    it("treats clicking the main button while preparing as a cancel, with no error shown", async () => {
+      const user = userEvent.setup();
+      let capturedSignal: AbortSignal | undefined;
+      vi.mocked(synthesizeSpeech).mockImplementation(
+        (_t: string, _x: string, signal?: AbortSignal) =>
+          new Promise<Blob>((_resolve, reject) => {
+            capturedSignal = signal;
+            signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          }),
+      );
+      renderAssistant();
+
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await user.click(screen.getByRole("button", { name: /cancel preparing this message/i }));
+
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(await screen.findByText("Listen")).toBeInTheDocument();
+      // A cancel is what the student asked for — never surfaced as a failure.
+      expect(screen.queryByText(/couldn't read that message aloud/i)).not.toBeInTheDocument();
+    });
+
+    it("passes an abort signal to the real synthesize call", async () => {
+      const user = userEvent.setup();
+      renderAssistant();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalled());
+      const [, , signal] = vi.mocked(synthesizeSpeech).mock.calls[0];
+      expect(signal).toBeInstanceOf(AbortSignal);
+    });
+  });
+
+  // ─── "Is there any way to make it load faster? It's slow af" — reported from the real
+  // app. Piper renders at ~0.12x realtime, so a long reply used to mean 15+ seconds of
+  // silence before the first word, and a single 580-char request actually killed the
+  // voice service. A long reply is now spoken in chunks: the first is small and starts
+  // almost immediately, the rest are synthesized during playback. See lib/speech.ts. ───
+  describe("long replies (chunked synthesis)", () => {
+    const LONG = "Photosynthesis converts sunlight into chemical energy in plants. ".repeat(12).trim();
+
+    function renderLong() {
+      const message: ChatMessage = { role: "assistant", content: LONG };
+      return render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+    }
+
+    it("starts talking after only the FIRST chunk, not the whole reply", async () => {
+      const user = userEvent.setup();
+      renderLong();
+
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      // Audio is already playing, and the text sent for that first request is a small
+      // fraction of the reply — that difference IS the latency fix.
+      expect(audios[0].play).toHaveBeenCalled();
+      const firstRequestText = vi.mocked(synthesizeSpeech).mock.calls[0][1];
+      expect(firstRequestText.length).toBeLessThan(LONG.length / 3);
+      expect(LONG.startsWith(firstRequestText)).toBe(true);
+    });
+
+    it("never sends a request bigger than the size that took the voice service down", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalled());
+
+      for (const call of vi.mocked(synthesizeSpeech).mock.calls) {
+        expect((call[1] as string).length).toBeLessThanOrEqual(320);
+      }
+    });
+
+    it("prefetches the next chunk while the current one is still playing", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      // Two requests in flight/done while only one chunk has actually been played —
+      // the second was started during playback of the first, not after it ended.
+      await waitFor(() => expect(vi.mocked(synthesizeSpeech).mock.calls.length).toBeGreaterThanOrEqual(2));
+      expect(audios).toHaveLength(1);
+    });
+
+    it("plays the chunks in order, continuing automatically when one ends", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      audios[0].onended?.();
+      await waitFor(() => expect(audios).toHaveLength(2));
+      expect(audios[1].play).toHaveBeenCalled();
+
+      const spoken = vi.mocked(synthesizeSpeech).mock.calls.map((c) => c[1] as string);
+      expect(LONG.startsWith(spoken[0])).toBe(true);
+      expect(LONG).toContain(spoken[1]);
+    });
+
+    it("stops the whole queue, not just the chunk currently talking", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      await user.click(screen.getByRole("button", { name: /stop reading this message aloud/i }));
+      expect(await screen.findByText("Listen")).toBeInTheDocument();
+
+      // The chunk that was talking is silenced, and a chunk finishing later must not
+      // resurrect playback behind the student's back.
+      expect(audios[0].pause).toHaveBeenCalled();
+      const audioCountAtStop = audios.length;
+      audios[0].onended?.();
+      await waitFor(() => expect(screen.getByText("Listen")).toBeInTheDocument());
+      expect(audios).toHaveLength(audioCountAtStop);
+    });
+
+    // WebView2 fires `pause` immediately before `ended` (observed in the real app), so
+    // the end of every chunk looks like a user pause unless it's filtered out.
+    it("does not flash to 'Resume' at the seam between chunks", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      // The browser's end-of-track pause: playhead is at the end, then `ended`.
+      audios[0].currentTime = audios[0].duration;
+      audios[0].onpause?.();
+      expect(screen.queryByText("Resume")).not.toBeInTheDocument();
+
+      await waitFor(() => expect(audios).toHaveLength(2));
+      expect(await screen.findByText("Pause")).toBeInTheDocument();
+    });
+
+    // WebView2 was observed delivering the end-of-track `pause` with NO following
+    // `ended`, which stalled playback permanently after the first chunk.
+    it("keeps playing when the engine sends the end-of-track pause but never 'ended'", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      audios[0].currentTime = audios[0].duration;
+      audios[0].onpause?.(); // and no onended at all
+      await waitFor(() => expect(audios).toHaveLength(2));
+      expect(audios[1].play).toHaveBeenCalled();
+    });
+
+    it("advances only once when BOTH pause and ended arrive for the same chunk", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      audios[0].currentTime = audios[0].duration;
+      audios[0].ended = true;
+      audios[0].onpause?.();
+      audios[0].onended?.();
+      await waitFor(() => expect(audios).toHaveLength(2));
+      // Not three: the latch means the same seam can't skip a chunk.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(audios).toHaveLength(2);
+    });
+
+    it("buffers two chunks ahead so a slow download can't leave an audible gap", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      // Chunk 1 is playing; chunks 2 and 3 are already being synthesized.
+      await waitFor(() => expect(vi.mocked(synthesizeSpeech).mock.calls.length).toBeGreaterThanOrEqual(3));
+      expect(audios).toHaveLength(1);
+    });
+
+    it("still reports a genuine mid-playback pause (not every pause is end-of-track)", async () => {
+      const user = userEvent.setup();
+      renderLong();
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      // Paused halfway through — a real interruption, which must show as Resume.
+      audios[0].currentTime = audios[0].duration / 2;
+      audios[0].onpause?.();
+      expect(await screen.findByText("Resume")).toBeInTheDocument();
+    });
+
+    it("returns to idle once the last chunk has finished", async () => {
+      const user = userEvent.setup();
+      const message: ChatMessage = { role: "assistant", content: "One sentence here. Two sentence here." };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+
+      // This short reply is a single chunk, so its end is the end of the reply.
+      audios[audios.length - 1].onended?.();
+      expect(await screen.findByText("Listen")).toBeInTheDocument();
+    });
   });
 
   it("returns to the idle Listen state when playback finishes on its own", async () => {
