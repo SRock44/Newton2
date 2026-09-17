@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 from app.core.config import Settings
 from app.providers import registry as registry_module
@@ -178,3 +179,94 @@ async def test_stream_chat_resets_last_usage_at_the_start_of_every_call():
     provider._transport = _mock_transport(handler_without_usage)
     _ = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi again")], "m")]
     assert provider.last_usage is None  # this response never sent a usage chunk
+
+
+# ---- stream_chat's retry-before-any-output behavior for a transient upstream failure
+# (503/429) -- see the module's own _RETRYABLE_STATUS_CODES comment for why only these
+# two, and only before anything has reached the caller yet. ---------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_real_retry_delay(monkeypatch):
+    """Every retry test below exercises real backoff logic, not real wall-clock time --
+    patched at the module the provider actually calls asyncio.sleep from, scoped to
+    this file only via autouse so no other test file's timing assumptions change."""
+    import app.providers.openai_compatible as openai_compatible_module
+
+    async def _instant_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(openai_compatible_module.asyncio, "sleep", _instant_sleep)
+
+
+async def test_stream_chat_retries_once_on_a_transient_503_then_succeeds():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(503, text="upstream overloaded")
+        body = 'data: {"choices": [{"delta": {"content": "recovered"}}]}\n\ndata: [DONE]\n\n'
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    events = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi")], "m")]
+
+    assert calls["count"] == 2  # one failed attempt, one that succeeded
+    assert len(events) == 1
+    assert events[0].text == "recovered"
+
+
+async def test_stream_chat_retries_a_429_the_same_as_a_503():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(429, text="rate limited")
+        body = 'data: {"choices": [{"delta": {"content": "ok"}}]}\n\ndata: [DONE]\n\n'
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    events = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi")], "m")]
+
+    assert calls["count"] == 2
+    assert events[0].text == "ok"
+
+
+async def test_stream_chat_does_not_retry_a_non_retryable_status():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(401, text="bad key")
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        _ = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi")], "m")]
+
+    assert excinfo.value.response.status_code == 401
+    assert calls["count"] == 1  # no retry wasted on a real, non-transient error
+
+
+async def test_stream_chat_gives_up_after_max_attempts_and_raises_the_real_status():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(503, text="still overloaded")
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        _ = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi")], "m")]
+
+    assert excinfo.value.response.status_code == 503
+    assert calls["count"] == 3  # every attempt exhausted, none wasted beyond that

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -5,6 +6,16 @@ import httpx
 
 from app.providers.base import ChatProvider, ChatTurn, StreamEvent, TextDelta, ToolCallRequest, ToolSpec
 from app.providers.tool_call_accumulator import ToolCallAccumulator
+
+# Transient upstream failures worth one silent retry before surfacing to the student as
+# "something went wrong" (see chat_ws's own last-resort error handling) -- 503 is a
+# temporarily-overloaded upstream inference provider (OpenRouter routes most models
+# through several interchangeable ones), 429 is a rate limit that a short backoff can
+# clear. Anything else (401, 400, a genuine 5xx from a real bug) is a real error and
+# retrying it would just waste the delay before failing anyway.
+_RETRYABLE_STATUS_CODES = {429, 503}
+_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SECONDS = 0.75
 
 
 def _to_wire_message(turn: ChatTurn) -> dict:
@@ -88,35 +99,53 @@ class OpenAICompatibleProvider(ChatProvider):
             payload["provider"] = {"sort": "throughput"}
 
         headers = {"Authorization": f"Bearer {self.api_key}", **self.extra_headers}
-        accumulator = ToolCallAccumulator()
 
         async with httpx.AsyncClient(timeout=60.0, transport=self._transport) as client:
-            async with client.stream(
-                "POST", f"{self.base_url}/chat/completions", json=payload, headers=headers
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[len("data:") :].strip()
-                    if data == "[DONE]":
-                        break
-                    chunk = json.loads(data)
+            # A retry is only safe up to the point nothing has reached the caller yet --
+            # once a real TextDelta/tool-call fragment has been yielded, re-issuing the
+            # whole request on a later failure would duplicate or garble output, so
+            # `yielded_any` latches permanently true on first output and blocks any
+            # further retry for the rest of this call, same as a non-retryable status
+            # would. The accumulator is (re)created fresh inside the loop so a failed
+            # attempt's partial tool-call fragments never bleed into a retried one.
+            yielded_any = False
+            for attempt in range(_MAX_ATTEMPTS):
+                accumulator = ToolCallAccumulator()
+                try:
+                    async with client.stream(
+                        "POST", f"{self.base_url}/chat/completions", json=payload, headers=headers
+                    ) as response:
+                        response.raise_for_status()
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[len("data:") :].strip()
+                            if data == "[DONE]":
+                                break
+                            chunk = json.loads(data)
 
-                    if chunk.get("usage"):
-                        self.last_usage = chunk["usage"]
+                            if chunk.get("usage"):
+                                self.last_usage = chunk["usage"]
 
-                    choices = chunk.get("choices") or []
-                    if not choices:
-                        continue  # the final usage-only chunk has no choices to read
-                    delta = choices[0]["delta"]
+                            choices = chunk.get("choices") or []
+                            if not choices:
+                                continue  # the final usage-only chunk has no choices to read
+                            delta = choices[0]["delta"]
 
-                    if delta.get("tool_calls"):
-                        accumulator.add_delta(delta["tool_calls"])
-                        continue
+                            if delta.get("tool_calls"):
+                                accumulator.add_delta(delta["tool_calls"])
+                                yielded_any = True
+                                continue
 
-                    if delta.get("content"):
-                        yield TextDelta(delta["content"])
+                            if delta.get("content"):
+                                yielded_any = True
+                                yield TextDelta(delta["content"])
+                    break  # completed without error -- don't fall through to a retry
+                except httpx.HTTPStatusError as exc:
+                    is_last_attempt = attempt == _MAX_ATTEMPTS - 1
+                    if yielded_any or exc.response.status_code not in _RETRYABLE_STATUS_CODES or is_last_attempt:
+                        raise
+                    await asyncio.sleep(_RETRY_BASE_DELAY_SECONDS * (2**attempt))
 
         if not accumulator.is_empty():
             yield ToolCallRequest(accumulator.finalize())
