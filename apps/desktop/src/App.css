@@ -4274,11 +4274,19 @@ body.is-resizing-panel * {
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Sits on the tab row but is an action, not a tab — pushed to the far right so it
-   reads as a toolbar button rather than a third view to switch to. */
-.flashcards-export-btn {
-  margin-left: auto;
+/* Sits on the tab row but is an action, not a tab — baseline-aligned with the tabs
+   (they carry extra bottom padding plus a -1px margin trick for their underline, so a
+   plain .btn-secondary-sm sits visibly higher without this). Shared by every toolbar
+   action on this row (Export to Anki, Share/Stop sharing), not just one. */
+.flashcards-toolbar-btn {
   margin-bottom: var(--space-1);
+}
+
+/* Only the FIRST toolbar action claims the row's leftover space -- putting
+   margin-left: auto on more than one flex child splits that space between them
+   instead of grouping the whole right-aligned cluster together. */
+.flashcards-toolbar-btn--first {
+  margin-left: auto;
 }
 
 .flashcards-tab {

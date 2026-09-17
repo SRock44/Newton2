@@ -243,7 +243,7 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
           </button>
           <button
             type="button"
-            className="btn-secondary-sm flashcards-export-btn"
+            className="btn-secondary-sm flashcards-toolbar-btn flashcards-toolbar-btn--first"
             onClick={handleExportToAnki}
             disabled={exporting}
             title="Save these cards as a real Anki deck you can review on your phone"
@@ -253,7 +253,7 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
           {shareLinkId ? (
             <button
               type="button"
-              className="btn-secondary-sm btn-secondary-sm--danger"
+              className="btn-secondary-sm btn-secondary-sm--danger flashcards-toolbar-btn"
               onClick={handleStopSharing}
               disabled={sharing}
               title="Revoke the public link — it stops working immediately"
@@ -263,7 +263,7 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
           ) : (
             <button
               type="button"
-              className="btn-secondary-sm"
+              className="btn-secondary-sm flashcards-toolbar-btn"
               onClick={handleShare}
               disabled={sharing}
               title="Copy a public, read-only web link anyone can open — no Newton account needed"
