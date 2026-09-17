@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import NewtonMark from "./NewtonMark";
+import { isMacPlatform } from "../lib/platform";
 
 type TitleBarVariant = "main" | "notepad";
 
@@ -91,6 +92,75 @@ function TitleBar({ title, variant = "main" }: TitleBarProps) {
     } catch (err) {
       console.error("TitleBar: close failed", err);
     }
+  }
+
+  // macOS convention puts window controls as three colored "traffic light" dots in the
+  // top-left corner, ordered close/minimize/zoom, with their glyphs hidden until hover --
+  // never a right-aligned min/max/close cluster with permanently visible icons, which
+  // reads as distinctly Windows to a Mac user. The title is centered rather than
+  // left-anchored next to the brand mark, matching how native macOS title bars center
+  // the window title regardless of where the traffic lights sit.
+  if (isMacPlatform()) {
+    return (
+      <div className="titlebar titlebar--mac" data-tauri-drag-region>
+        <div className="titlebar-traffic-lights">
+          <button
+            type="button"
+            className="traffic-light traffic-light--close"
+            aria-label="Close"
+            onClick={handleClose}
+          >
+            <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true" className="traffic-light-glyph">
+              <line x1="0.6" y1="0.6" x2="5.4" y2="5.4" stroke="#4d0000" strokeWidth="1" strokeLinecap="round" />
+              <line x1="5.4" y1="0.6" x2="0.6" y2="5.4" stroke="#4d0000" strokeWidth="1" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            className="traffic-light traffic-light--minimize"
+            aria-label="Minimize"
+            onClick={handleMinimize}
+          >
+            <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true" className="traffic-light-glyph">
+              <line x1="0.6" y1="3" x2="5.4" y2="3" stroke="#7a4b00" strokeWidth="1" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          {variant === "main" && (
+            <button
+              type="button"
+              className="traffic-light traffic-light--zoom"
+              aria-label={isMaximized ? "Restore" : "Maximize"}
+              onClick={handleToggleMaximize}
+            >
+              <svg width="6" height="6" viewBox="0 0 6 6" aria-hidden="true" className="traffic-light-glyph">
+                <path d="M0.6 3.6L2.4 3.6L2.4 5.4Z" fill="#00591c" />
+                <path d="M5.4 2.4L3.6 2.4L3.6 0.6Z" fill="#00591c" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <div className="titlebar-brand titlebar-brand--center" data-tauri-drag-region>
+          <span className="titlebar-mark">
+            <NewtonMark size={13} />
+          </span>
+          <span className="titlebar-title">{title}</span>
+        </div>
+
+        {/* Balances the traffic-lights group's width so the title above lands
+            optically centered in the bar rather than centered minus that offset.
+            Matches .titlebar-traffic-lights' actual width for each variant: 20px
+            padding + 12px per dot + 8px gap between dots, on both sides. */}
+        <div
+          className="titlebar-spacer"
+          data-tauri-drag-region
+          aria-hidden="true"
+          style={{ width: variant === "main" ? 92 : 72 }}
+        />
+      </div>
+    );
   }
 
   return (

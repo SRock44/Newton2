@@ -738,6 +738,68 @@ textarea:focus-visible,
   background-color: #a8371f;
 }
 
+/* ---------- macOS title bar (traffic lights, centered title) ---------- */
+
+.titlebar--mac {
+  justify-content: flex-start;
+}
+
+.titlebar-traffic-lights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  height: 100%;
+  flex-shrink: 0;
+  /* Deliberately never carries data-tauri-drag-region, same reasoning as
+     .titlebar-controls above. */
+}
+
+.traffic-light {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  line-height: 0;
+}
+
+.traffic-light--close {
+  background-color: #ff5f57;
+}
+
+.traffic-light--minimize {
+  background-color: #ffbd2e;
+}
+
+.traffic-light--zoom {
+  background-color: #28c840;
+}
+
+/* Real macOS traffic lights only reveal their glyph on hover (of the whole cluster,
+   not just the individual dot) -- otherwise they're plain colored circles. */
+.traffic-light-glyph {
+  opacity: 0;
+}
+
+.titlebar-traffic-lights:hover .traffic-light-glyph {
+  opacity: 1;
+}
+
+.titlebar-brand--center {
+  flex: 1;
+  justify-content: center;
+  padding: 0 var(--space-2);
+}
+
+.titlebar-spacer {
+  height: 100%;
+  flex-shrink: 0;
+}
+
 /* ---------- App shell ---------- */
 
 .app-shell {
@@ -2589,6 +2651,7 @@ body.is-resizing-panel * {
 }
 
 .transcript-body {
+  position: relative;
   min-width: 0;
   line-height: var(--line-height-relaxed);
   border-left: 2px solid var(--color-border-2);
@@ -2630,18 +2693,37 @@ body.is-resizing-panel * {
    the rule Newton's replies already read against, rather than anything that competes
    with the text itself for attention. Purely decorative: message.streaming already
    drives the streaming-dots indicator below, this just extends the same signal to the
-   body's own edge so the whole reply feels like it's actively arriving. */
-.transcript-body--streaming {
+   body's own edge so the whole reply feels like it's actively arriving.
+   Layered as an opacity-animated overlay on top of the real (static) border rather than
+   animating border-left-color directly: a color animation repaints every frame on the
+   main thread, right when that same thread is busiest re-parsing/highlighting the
+   streaming text -- so it stalls and stutters under load instead of running smoothly.
+   Opacity animates on the compositor thread, independent of main-thread work, so it
+   keeps animating smoothly through that load. This is also the one difference between
+   platforms worth calling out: WebKit (the WKWebView Tauri uses on macOS) is markedly
+   less forgiving of main-thread-bound paint animations than Chromium (WebView2 on
+   Windows) is, so the exact same border-color animation that merely looked fine on
+   Windows read as visibly janky here. */
+.transcript-body--streaming::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--color-accent);
+  opacity: 0;
   animation: transcript-streaming-pulse 2.4s ease-in-out infinite;
+  will-change: opacity;
 }
 
 @keyframes transcript-streaming-pulse {
   0%,
   100% {
-    border-left-color: var(--color-border-2);
+    opacity: 0;
   }
   50% {
-    border-left-color: var(--color-accent);
+    opacity: 1;
   }
 }
 
@@ -2728,6 +2810,10 @@ body.is-resizing-panel * {
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-1);
+  /* Keeps this subtree's frequent repaints (the shimmer below, the bouncing dots)
+     from invalidating paint on its ancestors -- see .thinking-indicator-text's own
+     comment for why that isolation specifically matters on macOS. */
+  contain: paint;
 }
 
 .thinking-indicator-text {
@@ -2753,6 +2839,15 @@ body.is-resizing-panel * {
   background-clip: text;
   color: transparent;
   animation: thinking-text-shimmer 2.2s linear infinite;
+  /* text-clip + an animated background is real repaint work every frame in any
+     engine, but WebKit (the WKWebView Tauri renders in on macOS) is noticeably
+     slower at it than Chromium (WebView2 on Windows) is, and stalls it further
+     whenever the main thread is also busy re-parsing streamed markdown -- which is
+     exactly when this indicator is on screen. Forcing this onto its own compositor
+     layer up front (rather than leaving the engine to decide mid-animation) keeps
+     the sweep itself smooth even while the main thread is momentarily busy. */
+  transform: translateZ(0);
+  will-change: background-position;
 }
 
 .thinking-indicator-dots {
@@ -2769,6 +2864,7 @@ body.is-resizing-panel * {
   background-color: var(--color-accent);
   opacity: 0.5;
   animation: streaming-bounce 0.9s infinite ease-in-out;
+  will-change: transform, opacity;
 }
 
 .thinking-indicator-dots span:nth-child(2) {
@@ -2854,6 +2950,7 @@ body.is-resizing-panel * {
   border-top-color: transparent;
   animation: tool-activity-spin 0.7s linear infinite;
   transition: border-color 0.2s ease, background-color 0.2s ease;
+  will-change: transform;
 }
 
 .tool-activity-chip--done .tool-activity-icon {
@@ -4066,6 +4163,7 @@ body.is-resizing-panel * {
   border-radius: var(--radius-full);
   background-color: var(--color-danger);
   animation: composer-mic-pulse 1.4s ease-in-out infinite;
+  will-change: opacity;
 }
 
 @keyframes composer-mic-pulse {
@@ -4152,6 +4250,7 @@ body.is-resizing-panel * {
   display: flex;
   color: var(--color-accent);
   animation: bootstrap-pulse 1.4s ease-in-out infinite;
+  will-change: opacity;
 }
 
 @keyframes bootstrap-pulse {

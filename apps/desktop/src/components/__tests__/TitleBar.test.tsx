@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TitleBar from "../TitleBar";
@@ -111,5 +111,66 @@ describe("TitleBar", () => {
     screen.getAllByRole("button").forEach((button) => {
       expect(button).not.toHaveAttribute("data-tauri-drag-region");
     });
+  });
+});
+
+// Same component, but rendered as if under Tauri's WKWebView on macOS -- mocks
+// navigator.platform the way isMacPlatform() (src/lib/platform.ts) reads it, since
+// jsdom's real default ("") always exercises the Windows-style branch above regardless
+// of the host OS actually running the test.
+describe("TitleBar (macOS)", () => {
+  beforeEach(() => {
+    minimize.mockClear();
+    toggleMaximize.mockClear();
+    close.mockClear();
+    isMaximized.mockReset();
+    isMaximized.mockResolvedValue(false);
+    onResized.mockClear();
+    resizedCallback = undefined;
+    vi.spyOn(window.navigator, "platform", "get").mockReturnValue("MacIntel");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders close/minimize/zoom traffic lights, in that order, instead of a right-aligned cluster", async () => {
+    render(<TitleBar title="Newton" />);
+    await waitFor(() => expect(isMaximized).toHaveBeenCalled());
+
+    const lights = screen
+      .getAllByRole("button")
+      .filter((btn) => btn.className.includes("traffic-light"));
+    expect(lights.map((btn) => btn.getAttribute("aria-label"))).toEqual(["Close", "Minimize", "Maximize"]);
+    expect(document.querySelector(".titlebar-btn")).not.toBeInTheDocument();
+  });
+
+  it("omits the zoom control for the notepad window, keeping close and minimize", () => {
+    render(<TitleBar title="Newton Notepad" variant="notepad" />);
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Minimize" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /maximize|restore/i })).not.toBeInTheDocument();
+    expect(isMaximized).not.toHaveBeenCalled();
+  });
+
+  it("calls the real Tauri window API when each traffic light is clicked", async () => {
+    const user = userEvent.setup();
+    render(<TitleBar title="Newton" />);
+    await waitFor(() => expect(isMaximized).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "Minimize" }));
+    await waitFor(() => expect(minimize).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "Maximize" }));
+    await waitFor(() => expect(toggleMaximize).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  });
+
+  it("centers the title/brand group instead of anchoring it next to a right-aligned control cluster", async () => {
+    const { container } = render(<TitleBar title="Newton" />);
+    await waitFor(() => expect(isMaximized).toHaveBeenCalled());
+    expect(container.querySelector(".titlebar-brand--center")).toBeInTheDocument();
   });
 });
