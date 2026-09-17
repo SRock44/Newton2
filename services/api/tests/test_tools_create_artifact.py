@@ -21,6 +21,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
 
+from app.core.config import get_settings
 from app.db.models import Document, DocumentChunk, User
 from app.providers.base import TextDelta
 from app.services import artifact_build
@@ -100,6 +101,14 @@ class _FakeProvider:
 
 
 def _patch_pipeline(monkeypatch, *, brief_text: str, build_result: artifact_build.ArtifactBuildResult):
+    # frontier_access_available (see billing.py) requires openrouter_api_key to be
+    # truthy before it even looks at the user's plan/credit -- real in every deployed
+    # environment, but unset in the hermetic CI suite by design (no real secrets), so
+    # every test here that expects a pro_user's real build to actually proceed needs
+    # this patched too, or it 402s before ever reaching get_provider/build_artifact
+    # below, no matter how much credit the fixture gives the user.
+    monkeypatch.setattr(get_settings(), "openrouter_api_key", "test-key")
+
     provider = _FakeProvider(brief_text)
     monkeypatch.setattr(artifact_tool, "get_provider", lambda: (provider, "deepseek/deepseek-v4-flash-0731"))
 
