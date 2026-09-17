@@ -46,7 +46,7 @@ class ToolActivity:
 
     tool: str
     label: str
-    phase: Literal["started", "finished"]
+    phase: Literal["started", "progress", "finished"]
 
 
 @dataclass
@@ -104,8 +104,31 @@ _TOOL_LABELS: dict[str, str] = {
     "use_capability": "Checking available tools",
 }
 
+# create_artifact didn't have an entry above -- it fell through to the generic
+# f"Using {tool_name}" fallback, i.e. the student literally saw "Using create_artifact"
+# for the entire build (real measured range: ~50-130+ seconds), one static label the
+# whole time. Two real fixes here: kind-specific instead of one generic label (the
+# tool's own `kind` argument is real, known information the call itself carries -- not a
+# guess), AND this is now genuinely the FIRST of two labels the student sees for one
+# call -- this one for the ~20-35s persona/brief-writing stage, a second (emitted live
+# by create_artifact.py itself via the on_progress context param -- see registry.py's
+# _CONTEXT_PARAMS and create_artifact.py's own kind labels) once the real opencode build
+# actually starts. Two honest, real phases, not one label pretending to cover both.
+_ARTIFACT_PLANNING_LABELS: dict[str, str] = {
+    "diagram": "Planning your diagram",
+    "chart": "Planning your chart",
+    "slideshow": "Planning your slideshow",
+    "interactive": "Planning your interactive demo",
+    "quiz": "Planning your quiz game",
+}
 
-def _label_for(tool_name: str) -> str:
+
+def _label_for(tool_name: str, arguments: dict | None = None) -> str:
+    if tool_name == "create_artifact" and arguments:
+        kind = arguments.get("kind")
+        if isinstance(kind, str) and kind in _ARTIFACT_PLANNING_LABELS:
+            return _ARTIFACT_PLANNING_LABELS[kind]
+        return "Planning your artifact"
     return _TOOL_LABELS.get(tool_name, f"Using {tool_name}")
 
 
@@ -616,7 +639,7 @@ async def run_tutor(
 
             turns.append(ChatTurn(role="assistant", content="", tool_calls=pending_calls))
             for call in pending_calls:
-                label = _label_for(call.name)
+                label = _label_for(call.name, call.arguments)
                 logger.info(
                     "tutor tool call round=%s tool=%s session_id=%s", _round, call.name, session_id
                 )
@@ -624,7 +647,46 @@ async def run_tutor(
                 if call.name == USE_CAPABILITY_TOOL_NAME:
                     result = _load_capabilities(call.arguments, tools, loaded_tool_names)
                 else:
-                    result = await run_tool(call.name, call.arguments, session_id=session_id, user_id=user_id)
+                    # A plain `await run_tool(...)` can't also yield anything else while
+                    # it's in flight -- a generator can only yield from its own frame,
+                    # not from a coroutine it's awaiting. So a slow, multi-stage tool
+                    # (currently just create_artifact) that wants to report real interim
+                    # progress does it via a queue: run_tool as a background task, and
+                    # race it against draining the queue until the task itself finishes,
+                    # yielding a live ToolActivity(phase="progress") for each real update
+                    # a tool actually reports -- never a fake one on a timer. Tools that
+                    # never call on_progress (every other tool today) produce nothing on
+                    # the queue, so this loop just falls straight through to the result,
+                    # identical to the plain await it replaces.
+                    progress_queue: asyncio.Queue[str] = asyncio.Queue()
+
+                    async def _on_progress(text: str, _q: asyncio.Queue[str] = progress_queue) -> None:
+                        await _q.put(text)
+
+                    tool_task = asyncio.create_task(
+                        run_tool(
+                            call.name,
+                            call.arguments,
+                            session_id=session_id,
+                            user_id=user_id,
+                            on_progress=_on_progress,
+                        )
+                    )
+                    while not tool_task.done():
+                        get_task = asyncio.create_task(progress_queue.get())
+                        done, _pending = await asyncio.wait(
+                            {tool_task, get_task}, return_when=asyncio.FIRST_COMPLETED
+                        )
+                        if get_task in done:
+                            yield ToolActivity(tool=call.name, label=get_task.result(), phase="progress")
+                        else:
+                            get_task.cancel()
+                    # A progress update that arrived the instant before the task finished
+                    # (a real race, not an edge case to ignore) is still in the queue --
+                    # drain it rather than silently dropping the update.
+                    while not progress_queue.empty():
+                        yield ToolActivity(tool=call.name, label=progress_queue.get_nowait(), phase="progress")
+                    result = tool_task.result()
                 logger.info(
                     "tutor tool call finished round=%s tool=%s session_id=%s result_len=%s",
                     _round,

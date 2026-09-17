@@ -1,4 +1,5 @@
 import inspect
+from typing import Awaitable, Callable
 
 from app.providers.base import ToolSpec
 from app.tools.base import Tool
@@ -58,7 +59,13 @@ _TOOLS: dict[str, Tool] = {
 # parameter of the same name -- never something the model controls via its own
 # arguments. Add a new context value here (and thread it through run_tutor) if a future
 # tool needs something else about the calling context.
-_CONTEXT_PARAMS = ("session_id", "user_id")
+#
+# on_progress: an optional `Callable[[str], Awaitable[None]]` a slow, multi-stage tool
+# can call zero or more times during its own `run()` to report a real, honest status
+# string (never a fake/heuristic one) while still in flight -- see create_artifact.py's
+# use of it and app/agents/tutor.py's run_tutor, which is what actually turns a call into
+# a live-updating chip instead of one static label for the tool's entire duration.
+_CONTEXT_PARAMS = ("session_id", "user_id", "on_progress")
 
 # Sent directly, in full, on EVERY turn (see app/agents/tutor.py's run_tutor) --
 # everything a typical simple student request (arithmetic, a quick lookup, a unit
@@ -171,13 +178,14 @@ async def run_tool(
     *,
     session_id: str | None = None,
     user_id: str | None = None,
+    on_progress: Callable[[str], Awaitable[None]] | None = None,
 ) -> str:
     tool = _TOOLS.get(name)
     if tool is None:
         return f"Error: unknown tool '{name}'"
     try:
         call_args = dict(arguments)
-        context = {"session_id": session_id, "user_id": user_id}
+        context = {"session_id": session_id, "user_id": user_id, "on_progress": on_progress}
         accepted = inspect.signature(tool.run).parameters
         for param in _CONTEXT_PARAMS:
             if param in accepted:

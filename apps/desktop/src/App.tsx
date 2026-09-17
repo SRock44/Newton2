@@ -743,7 +743,11 @@ function App() {
             if (!last || last.role !== "assistant" || !last.streaming) return prev;
             return [...prev.slice(0, -1), { ...last, content: last.content + (payload.content ?? "") }];
           });
-        } else if (payload.type === "tool_start" || payload.type === "tool_end") {
+        } else if (
+          payload.type === "tool_start" ||
+          payload.type === "tool_progress" ||
+          payload.type === "tool_end"
+        ) {
           setIsStreaming(true);
           const tool = payload.tool ?? "";
           const label = payload.label ?? tool;
@@ -754,7 +758,11 @@ function App() {
             if (payload.type === "tool_start") {
               return [...prev.slice(0, -1), { ...last, activity: [...activity, { tool, label, done: false }] }];
             }
-            // tool_end: mark the most recent not-yet-done entry for this tool as done.
+            // tool_progress/tool_end both act on the most recent not-yet-done entry for
+            // this tool: progress updates its label in place (the same chip, a truer
+            // description of what's happening now -- never a new chip per update, which
+            // would read as several separate actions instead of one that's still going),
+            // tool_end marks it done.
             let markedIndex = -1;
             for (let i = activity.length - 1; i >= 0; i -= 1) {
               if (activity[i]!.tool === tool && !activity[i]!.done) {
@@ -763,7 +771,13 @@ function App() {
               }
             }
             if (markedIndex === -1) return prev;
-            const nextActivity = activity.map((entry, i) => (i === markedIndex ? { ...entry, done: true } : entry));
+            const nextActivity = activity.map((entry, i) =>
+              i === markedIndex
+                ? payload.type === "tool_progress"
+                  ? { ...entry, label }
+                  : { ...entry, done: true }
+                : entry
+            );
             return [...prev.slice(0, -1), { ...last, activity: nextActivity }];
           });
         } else if (payload.type === "suggested_action") {

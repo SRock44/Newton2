@@ -4,10 +4,11 @@ by a real coding agent and rendered live in the student's chat.
 This is modeled on how Claude.ai actually builds Artifacts -- the conversational model
 doesn't write the file itself, it hands a brief to a separate coding agent that does the
 real file-writing. Here the coding agent is `opencode` (github.com/sst/opencode), run
-headless in services/artifact-runner against OpenRouter, using the exact same model
-identifier and the exact same API key every other model call in this app already uses
-(Settings.openrouter_model / OPENROUTER_API_KEY -- see app/providers/registry.py and
-app/services/billing.py's PRO_MODELS entry for that same string).
+headless in services/artifact-runner against OpenRouter, using the same OPENROUTER_API_KEY
+every other model call in this app uses but its own dedicated model choice
+(Settings.artifact_generation_model -- see that setting's own comment in
+app/core/config.py for why this diverges from Settings.openrouter_model, and for the
+training-data-consent tradeoff it carries).
 
 THE TWO-STAGE SHAPE, and why the persona stage is not decoration
 -----------------------------------------------------------------
@@ -47,14 +48,15 @@ See _charge_usage below for why an artifact meters when a research paper doesn't
 import json
 import re
 import uuid
-from typing import Any, Literal
+from typing import Any, Awaitable, Callable, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import SessionLocal
 from app.db.models import Document, Flashcard, User
 from app.core.config import get_settings
-from app.providers.base import ChatTurn, TextDelta
+from app.providers.base import ChatProvider, ChatTurn, TextDelta
+from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import get_provider
 from app.services import billing as billing_service
 from app.services.anki import build_flashcard_decks
@@ -99,13 +101,30 @@ FOCUS_MODE_MESSAGE = (
 
 ARTIFACT_KINDS = ("diagram", "chart", "slideshow", "interactive", "quiz")
 
+# The second of two real, honest progress labels a build reports live via on_progress
+# (the first -- "Planning your X" -- is app/agents/tutor.py's _ARTIFACT_PLANNING_LABELS,
+# shown from the moment the tool is called; this one replaces it once the brief is
+# actually written and the real opencode build is starting). Kept here rather than in
+# tutor.py since it's this module's own domain knowledge of what each kind is called,
+# not the agent layer's.
+_ARTIFACT_BUILDING_LABELS: dict[str, str] = {
+    "diagram": "Drawing your diagram",
+    "chart": "Building your chart",
+    "slideshow": "Building your slideshow",
+    "interactive": "Building your interactive demo",
+    "quiz": "Building your quiz game",
+}
+
 # Bounded like every other "put user text into a prompt" call site in this codebase
 # (write_research_paper.MAX_DOCUMENT_EXCERPT_CHARS, flashcards.MAX_MATERIAL_CHARS).
 MAX_PROMPT_CHARS = 4000
-# The brief is what gets handed to opencode as its task. Long is good here -- detail is
-# the entire value the persona adds -- but not unbounded, since it's also real input
-# tokens on every one of opencode's own steps.
-MAX_BRIEF_CHARS = 6000
+# The brief is what gets handed to opencode as its task -- real input tokens on every one
+# of opencode's own steps, and (per _BRIEF_CONTRACT's own LENGTH guidance, ~400 words)
+# the persona is now asked to stay well under this anyway. This is a hard backstop for
+# when it doesn't listen, not the primary control -- lowered from 6000 alongside that
+# prompt change (2026-09-17, real observed multi-minute builds/timeouts against the live
+# deployed dev box on briefs that were exhaustively over-specified at the old length).
+MAX_BRIEF_CHARS = 4000
 MAX_TITLE_CHARS = 80
 
 # ---------------------------------------------------------------------------
@@ -149,11 +168,37 @@ Start with exactly one line in this form, then a blank line, then the brief:
 
 TITLE: <a short, specific title for this artifact, max 8 words>
 
-The brief must be concrete and decided. Never write "include appropriate labels" or
-"choose suitable colors" — say which labels and which colors. The coding agent has no
-knowledge of the student's course, cannot ask questions, and will implement literally
-whatever you specify and nothing you leave out. Anything you don't decide, it will
-decide badly.
+LENGTH: aim for well under 250 words. A longer brief is not a more careful one — past
+this length you are usually specifying things the coding agent can be trusted with on
+its own, and every extra word here is a word it has to read before it writes a single
+line of code, and a real cost in how long the student waits. Be decisive, not exhaustive.
+
+SCOPE: this matters as much as length, and is a separate thing — a short brief can still
+describe an elaborate build. Every element you ask for (another decorative shape, another
+animated flourish, another visual state) is code the coding agent has to actually write,
+and writing it is the real cost in how long the student waits, not just reading your
+brief. Design the SMALLEST thing that genuinely teaches the point — one clear scene or
+mechanism, not an illustrated environment around it. A student learns the physics of a
+falling object from a dot and an arrow as reliably as from a rendered bucket, a building,
+a sky, and clouds; the extra scenery is where builds get slow without getting more
+correct. Default to the plainer version and only add a visual element when its absence
+would genuinely make the artifact fail at its one job — never for realism or polish on
+its own.
+
+The brief must be concrete and decided about the things that would be WRONG if left to
+chance: the actual content (the real labels, values, steps, formulas — never "include
+appropriate labels" or "choose suitable colors" when you can just say which), the
+structural/pedagogical choices that determine whether it teaches the right thing, and
+the couple of details a working demo can't function without. It must NOT be concrete
+about everything else — exact pixel coordinates for every element, an exact hex shade
+for each minor part, a fully-worked closed-form formula when "update the value each
+frame using the real physics relationship" already pins down the one thing that matters
+(that it be physically correct, not that it match your derivation to three decimals).
+Trust the coding agent's own ordinary judgment for layout and visual polish; spend your
+words on the few decisions that would actually be bad if left unmade. The coding agent
+has no knowledge of the student's course and cannot ask questions, so the content and
+the teaching point still need to be fully decided — it is precision about VISUAL/
+IMPLEMENTATION MINUTIAE specifically that this brief should stop supplying.
 
 Cover, in prose or short sections (not a rigid template):
 - WHO it's for: the student's apparent level, and what they're likely to already know
@@ -304,7 +349,13 @@ _PERSONA_PROMPTS: dict[str, str] = {
         "than preventing the wrong input.\n\n"
         "Specify: each control (type, real range, step, starting value, label with "
         "units), exactly what recomputes and redraws on change, and the formula or rule "
-        "relating them — give the coding agent the real math, it must not guess. "
+        "relating them — give the coding agent the real math, it must not guess, because "
+        "getting the relationship wrong is the one failure that would actually teach the "
+        "student something false. That correctness requirement is about the RELATIONSHIP "
+        "(what really depends on what, and how), not about the scene it's drawn in —  a "
+        "believable bucket, building, or spring doesn't need its every pixel and color "
+        "dictated any more than the diagram/chart kinds' coordinate precision applies "
+        "here; describe the scene in a sentence or two and let the coding agent draw it. "
         "Everything is plain inline JS with requestAnimationFrame/SVG/canvas; no physics "
         "or plotting library is available.\n"
         + _BRIEF_CONTRACT
@@ -538,6 +589,28 @@ def _ground_brief(brief: str, source_block: str | None) -> str:
     return f"{brief[:room].rstrip()}\n\n{source_block}"
 
 
+def _artifact_provider() -> tuple[ChatProvider, str]:
+    """Provider+model for BOTH create_artifact stages -- deliberately bypasses
+    get_provider()'s normal BYOK/Groq/OpenRouter priority order (the same reason
+    app/agents/tutor.py's _select_provider does for Pro frontier routing): this tool is
+    already Pro-gated by the time either stage runs, and the whole point is a specific,
+    deliberately-chosen model (settings.artifact_generation_model -- see its own comment
+    in app/core/config.py), not whichever provider a BYOK key or Groq happen to imply.
+    Falls back to the normal get_provider() behavior (including the keyless EchoProvider)
+    when OpenRouter itself isn't configured at all, matching every other call site's
+    graceful dev-mode handling rather than raising."""
+    settings = get_settings()
+    if settings.openrouter_api_key:
+        return (
+            OpenAICompatibleProvider(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.openrouter_api_key.get_secret_value(),
+            ),
+            settings.artifact_generation_model,
+        )
+    return get_provider()
+
+
 async def _write_brief(
     kind: str, prompt: str, source_block: str | None = None
 ) -> tuple[str, str, int, int]:
@@ -551,7 +624,7 @@ async def _write_brief(
     _quiz_source_block). It is appended AFTER the MAX_PROMPT_CHARS truncation rather than
     concatenated before it, so a long chat-derived prompt can never push the real cards
     out of the persona's view; it has its own bound already."""
-    provider, model = get_provider()
+    provider, model = _artifact_provider()
     user_content = prompt[:MAX_PROMPT_CHARS]
     if source_block:
         user_content = f"{user_content}\n\n{source_block}"
@@ -681,6 +754,7 @@ class CreateArtifactTool(Tool):
         prompt: str,
         document_id: str | None = None,
         user_id: str | None = None,
+        on_progress: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
         if not user_id:
             return "Error: no signed-in user to build an artifact for."
@@ -731,7 +805,14 @@ class CreateArtifactTool(Tool):
         # to the persona to have copied faithfully. See _ground_brief.
         brief = _ground_brief(brief, source_block)
 
-        result = await build_artifact(brief, get_settings().openrouter_model)
+        # Real, honest progress: the brief is genuinely done and the real (usually the
+        # slower) opencode build is genuinely about to start -- never a fake/heuristic
+        # "still working..." on a timer. See _ARTIFACT_BUILDING_LABELS' own comment for
+        # why this label lives here rather than in tutor.py.
+        if on_progress is not None:
+            await on_progress(_ARTIFACT_BUILDING_LABELS.get(kind, "Building your artifact"))
+
+        result = await build_artifact(brief, get_settings().artifact_generation_model)
 
         # Charge whatever really got spent, including on a failed build: those tokens
         # were genuinely billed to this app by OpenRouter whether or not an artifact came

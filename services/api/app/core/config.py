@@ -73,6 +73,29 @@ class Settings(BaseSettings):
     # previously pinned google/gemini-2.0-flash-001 had already been removed).
     openrouter_vision_model: str = "~google/gemini-flash-latest"
 
+    # Model for BOTH stages of create_artifact (the persona/brief-writing call in
+    # app/tools/create_artifact.py, and the opencode coding-agent run in
+    # services/artifact-runner) -- deliberately its own setting rather than reusing
+    # openrouter_model, so it can be tuned independently of the free-tier chat default.
+    #
+    # DELIBERATE, INFORMED DECISION (2026-09-17, product owner) -- pinned to Muse Spark
+    # 1.3 Contributor specifically for real-world generation speed on this feature (a
+    # multi-minute wait was observed live against the deployed dev box with the prior
+    # default, deepseek/deepseek-v4-flash-0731, timing out entirely on a genuinely
+    # detailed brief -- see ROADMAP.md's Phase 23/26 entries). Do not swap this back to
+    # the Standard (non-Contributor) tier, or to a different model, without asking first:
+    # this carries the EXACT SAME training-data-consent tradeoff already decided for the
+    # Pro chat model roster (see app/services/billing.py's PRO_MODELS entry for the full
+    # record) -- Contributor-tier prompts/completions are usable for Meta's own model
+    # training, priced far below Standard specifically because of that consent. This is
+    # arguably MORE sensitive here than in ordinary chat: a "quiz" kind's brief embeds a
+    # student's real flashcard content verbatim (see create_artifact.py's
+    # _quiz_source_block/_ground_brief), so real course material -- not just
+    # conversational text -- now flows through a training-consuming endpoint, with no
+    # disclosure to students/parents, same as the existing chat-model decision. This
+    # tool is already Pro-only, same population already covered by that decision.
+    artifact_generation_model: str = "meta/muse-spark-1.3-contributor"
+
     # Background jobs (memory consolidation, embeddings, etc.)
     arq_redis_url: str = "redis://redis:6379/1"
 

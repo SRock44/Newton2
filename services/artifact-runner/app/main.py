@@ -217,6 +217,10 @@ def _build_prompt(brief: str) -> str:
     so the agent is told the rules it will be checked against rather than being failed
     for something it was never asked to do."""
     return (
+        "The current directory is a fresh, empty scratch directory -- this is guaranteed, "
+        "not something to verify. There is nothing to read, glob, or grep for: no "
+        "existing files, no project structure, no context to gather. Skip straight to "
+        "writing the file below; do not spend a step confirming the directory is empty.\n\n"
         f"Write a single file named `{ARTIFACT_FILENAME}` in the current directory.\n\n"
         "HARD REQUIREMENTS (these are checked automatically after you finish):\n"
         f"- The file must be named exactly `{ARTIFACT_FILENAME}`.\n"

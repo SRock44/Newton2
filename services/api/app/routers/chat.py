@@ -36,7 +36,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 logger = logging.getLogger("newton.chat")
 
 # ToolActivity.phase -> outgoing WS frame "type"
-_PHASE_TO_FRAME_TYPE = {"started": "tool_start", "finished": "tool_end"}
+_PHASE_TO_FRAME_TYPE = {"started": "tool_start", "progress": "tool_progress", "finished": "tool_end"}
 
 # When one of these tools finishes, also emit a "suggested_action" frame pointing at
 # where the result actually landed -- deterministic (keyed off the real tool that ran,
