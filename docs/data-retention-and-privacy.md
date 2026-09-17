@@ -9,6 +9,31 @@ legal review before any of this is customer-facing or authoritative.
 They are a solid first draft with clearly flagged gaps, not a compliance
 determination.**
 
+## Data lifecycle at a glance
+
+Descriptive of implemented behavior only — not a retention schedule (none has legal sign-off;
+see the gap list at the bottom).
+
+```mermaid
+flowchart TD
+    SIGNIN["Sign-in (Keycloak)"] --> AGE{"Age gate:<br/>consented_at set?"}
+    AGE -- "under_13 / unanswered" --> BLOCKED["App blocked (AgeGateScreen)"]
+    AGE -- "13_17 / 18_plus" --> USE["Use: chat, memory, documents,<br/>flashcards, exams, billing"]
+    USE --> PERIODIC["Weekly report_inactive_accounts<br/>Mondays 04:00 UTC"]
+    PERIODIC --> INACT{"Inactive 540+ days?<br/>(newest session or users.created_at)"}
+    INACT -- yes --> REPORT["Log-only report (WARNING + INFO,<br/>has_email flag, no addresses)"]
+    INACT -- no --> USE
+    REPORT --> USE
+    USE --> DEL["DELETE /account (self-service,<br/>caller's own row only)"]
+    DEL --> CASCADE["Postgres CASCADE:<br/>sessions, documents + chunks,<br/>study items, flashcards + logs,<br/>exams + questions, facts,<br/>Classroom link, calendar, shares"]
+    CASCADE --> MINIO["MinIO orphans removed<br/>(read before delete, removed after commit)"]
+    MINIO --> KCLEFT["Keycloak identity left untouched<br/>(no admin-API integration yet)"]
+```
+
+`DELETE /account` is the only deletion path; the retention job never deletes, disables, or
+emails anyone (the `api`/`worker` service has no outbound-email capability — only Keycloak has
+SMTP, for its own verification/reset mail). Full table: [`erd.md`](./erd.md).
+
 ## What was built
 
 1. **`PRIVACY_POLICY.md`** (repo root) — a draft privacy policy grounded in Newton's
@@ -39,11 +64,33 @@ determination.**
      and `POST /account/age-consent` (record an answer). Answering `"under_13"` is
      recorded but **deliberately never sets `consented_at`**, so the account stays
      gated — see the Decisions section below for why.
-   - The desktop app gained `AgeGateScreen.tsx`, wired into `App.tsx` right after
-     sign-in and before anything else renders: it blocks the whole app until
-     `consented_at` is set, checked fresh from the server on every sign-in (not a
-     local "seen once" flag like the existing onboarding welcome card, since this
-     needs to mean something as a record, not just avoid pestering the user).
+    - The desktop app gained `AgeGateScreen.tsx`, wired into `App.tsx` right after
+      sign-in and before anything else renders: it blocks the whole app until
+      `consented_at` is set, checked fresh from the server on every sign-in (not a
+      local "seen once" flag like the existing onboarding welcome card, since this
+      needs to mean something as a record, not just avoid pestering the user).
+
+```mermaid
+sequenceDiagram
+    actor Student
+    participant App as Desktop app
+    participant API as API
+    participant PG as Postgres (users)
+
+    App->>API: GET /account (fresh every sign-in)
+    API->>PG: read age_band + consented_at
+    alt consented_at set (13_17 / 18_plus)
+        API-->>App: needs_consent=false → enter app
+    else under_13 (recorded, consented_at stays null)
+        API-->>App: needs_consent=true → blocked, parent-involvement message, no click-through
+    else never answered
+        App->>Student: AgeGateScreen (self-reported band, not birthdate)
+        Student->>App: picks under_13 / 13_17 / 18_plus
+        App->>API: POST /account/age-consent
+        API->>PG: store age_band; set consented_at only for 13_17 / 18_plus
+    end
+    Note over App,API: Frontend fetch failure fails OPEN (lets the student in) —<br/>a deliberate resilience choice; see gap 9.
+```
 
 3. **A real, running data-retention job** — `app/jobs/retention.py`'s
    `report_inactive_accounts`, registered as a weekly `arq` cron job in
