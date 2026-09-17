@@ -214,6 +214,38 @@ async def upload_document_bytes(
     return await _store_document(db, user_id, filename, mime_type, raw, text, paper_sources=paper_sources)
 
 
+async def store_artifact_html(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    filename: str,
+    html: str,
+    rag_text: str,
+) -> Document:
+    """Stores a generated Artifact (app/tools/create_artifact.py) as a real Document row
+    with kind="artifact" -- the SAME MinIO + Document + chunk/embed infrastructure an
+    upload or a note uses, deliberately not a new table. An artifact is a per-user file
+    with a name, a mime type, raw bytes, a created_at, and a download; that is precisely
+    what Document already is, and a parallel table would mean duplicating storage,
+    ownership, deletion, and the raw-bytes endpoint for no gained capability.
+
+    Two things make this its own function rather than a call to upload_document_bytes:
+
+      1. `_extract_text` has no .html/text/html branch, and adding one would ALSO make
+         .html a type students can upload (it dispatches on filename/mime for every
+         caller, including the real upload endpoint) -- a security and scope change
+         nobody asked for. Artifacts are the only HTML this app stores, and they are
+         produced in-process, so they skip that dispatch entirely.
+      2. The raw HTML source is poor RAG material -- a student asking "what did that
+         photosynthesis diagram show" wants the artifact's subject matter back, not its
+         `<style>` block. `rag_text` is therefore a human-readable description of the
+         artifact (its title and the brief it was built from), indexed in place of the
+         markup, so retrieval in a later chat session surfaces something meaningful.
+    """
+    return await _store_document(
+        db, user_id, filename, "text/html", html.encode("utf-8"), rag_text, kind="artifact"
+    )
+
+
 async def create_note(db: AsyncSession, user_id: uuid.UUID, title: str) -> Document:
     """Creates a brand-new, empty note -- a first-class named Document with
     kind="note" (see app/routers/notes.py's "Newton Notepad" feature). Goes through

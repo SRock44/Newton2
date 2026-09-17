@@ -33,11 +33,14 @@ async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, 
                 if frame["type"] == "done":
                     done_frame = frame
                     break
-                if frame["type"] in ("user_message_saved", "tool_start", "tool_end"):
+                if frame["type"] in ("user_message_saved", "tool_start", "tool_end", "plan_chunk"):
                     # A real model may genuinely reach for symbolic_math for a
                     # "derivatives" question — that's not what this test is about.
                     # user_message_saved (see chat_ws) always fires first, before any
-                    # reply content -- also not what this test is about.
+                    # reply content, and plan_chunk (agents/tutor.py's PlanChunk) is a
+                    # real, separately-tested optional preamble the model may or may not
+                    # choose to emit before any reply -- also not what this test is
+                    # about either way.
                     continue
                 assert frame["type"] == "chunk", frame
                 chunks.append(frame["content"])
@@ -216,10 +219,16 @@ async def test_websocket_stop_mid_generation_truncates_and_persists_partial(
             await ws.send(json.dumps({"type": "user_message", "content": message}))
 
             # user_message_saved always fires first, before any reply content -- skip
-            # past it to the actual proof generation has started.
+            # past it, and past an optional plan_chunk (see agents/tutor.py's own
+            # PlanChunk -- a real, separately-tested preamble frame that fires before
+            # the main answer whenever the model chooses to narrate a plan first, not
+            # something specific to this request), to where proof generation has
+            # actually started.
             first = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
             assert first["type"] == "user_message_saved"
             first = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
+            if first["type"] == "plan_chunk":
+                first = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
             assert first["type"] in ("chunk", "tool_start")
             await ws.send(json.dumps({"type": "stop"}))
 

@@ -195,8 +195,12 @@ class Document(Base):
     mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
     minio_key: Mapped[str] = mapped_column(String)
     # "upload" (default -- every row that existed before this column, and every
-    # student-uploaded file since) or "note" (see app/routers/notes.py's "Newton
-    # Notepad" feature). A note is a REAL Document row created empty and grown via
+    # student-uploaded file since), "note" (see app/routers/notes.py's "Newton
+    # Notepad" feature), or "artifact" (a generated, self-contained HTML mini-app --
+    # see app/tools/create_artifact.py and app/services/documents.py's
+    # store_artifact_html, which reuses this exact table rather than introducing a
+    # third one for what is, structurally, another per-user named file with bytes).
+    # A note is a REAL Document row created empty and grown via
     # PATCH /notes/{id} -- it runs through the exact same chunk+embed pipeline an
     # upload does (app.memory.rag.store_document_chunks), so it's automatically
     # retrievable via RAG in ANY chat session with zero new retrieval logic: see

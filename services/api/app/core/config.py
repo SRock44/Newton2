@@ -82,6 +82,13 @@ class Settings(BaseSettings):
     # default only resolves once it's wired in.
     sandbox_runner_url: str = "http://sandbox-runner:8000"
 
+    # Base URL of the artifact-runner service (see services/artifact-runner/), used by
+    # the create_artifact tool to run the real `opencode` coding agent that writes a
+    # student's artifact. A SEPARATE container from sandbox-runner above, on a separate
+    # network, for one hard reason: sandbox_net is `internal: true` (no internet at all,
+    # deliberately) and opencode must reach openrouter.ai. See that service's README.
+    artifact_runner_url: str = "http://artifact-runner:8000"
+
     # Self-hosted embedding model (fastembed/ONNX, CPU, no API key) used for both
     # document RAG and profile-fact retrieval.
     embed_cache_dir: str = "/data/fastembed_cache"

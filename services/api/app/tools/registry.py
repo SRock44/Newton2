@@ -7,6 +7,7 @@ from app.tools.check_work import CheckStudentWorkTool
 from app.tools.citation import CitationFormatterTool
 from app.tools.classroom_sync import ClassroomSyncTool
 from app.tools.code_interpreter import CodeInterpreterTool
+from app.tools.create_artifact import CreateArtifactTool
 from app.tools.flashcard_generation import FlashcardGenerationTool
 from app.tools.get_weak_areas import GetWeakAreasTool
 from app.tools.grammar_check import GrammarCheckTool
@@ -49,6 +50,7 @@ _TOOLS: dict[str, Tool] = {
         GetWeakAreasTool(),
         GetMathHintTool(),
         WriteResearchPaperTool(),
+        CreateArtifactTool(),
     ]
 }
 
@@ -92,6 +94,11 @@ _ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("get_weak_areas",), "finding real weak areas/exam-readiness before studying or generating"),
     (("get_math_hint",), "a leveled hint without giving the answer away"),
     (("write_research_paper",), "writing a full cited paper after an approved plan"),
+    (
+        ("create_artifact",),
+        "building a real interactive artifact (diagram/chart/slideshow/demo) after the "
+        "student confirms -- slow and expensive, never speculatively",
+    ),
 )
 
 ON_DEMAND_TOOL_NAMES: tuple[str, ...] = tuple(name for names, _reason in _ON_DEMAND_GROUPS for name in names)

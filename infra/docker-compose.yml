@@ -12,6 +12,16 @@ networks:
     name: newton2_sandbox_net
     internal: true  # no route to the internet or to any other service on newton_net —
                      # this is the load-bearing line for the code interpreter's isolation.
+  artifact_net:
+    name: newton2_artifact_net
+    # Deliberately NOT internal, and that is the whole reason artifact-runner is a
+    # separate container from sandbox-runner rather than a second endpoint on it: the
+    # `opencode` agent it runs has to reach openrouter.ai to do anything at all. Adding
+    # egress to sandbox_net instead would have given every piece of untrusted,
+    # LLM-generated Python the code interpreter executes a live exfiltration path — see
+    # services/artifact-runner/README.md's "Why this is a separate service". Still
+    # separate from newton_net, so artifact-runner has no route to postgres/redis/
+    # minio/keycloak; only `api` (which is on both) ever calls it.
 
 volumes:
   newton_pgdata:
@@ -41,6 +51,7 @@ x-api-env: &api-env
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct}
   SANDBOX_RUNNER_URL: http://sandbox-runner:8000
+  ARTIFACT_RUNNER_URL: http://artifact-runner:8000
   SEARXNG_URL: http://searxng:8080
   LANGUAGETOOL_URL: http://languagetool:8010
   WHISPER_ASR_URL: http://whisper-asr:9000
@@ -209,7 +220,9 @@ services:
       - "127.0.0.1:58001:8000"
     # newton_net for postgres/redis/minio/keycloak/searxng; sandbox_net *only* to reach
     # sandbox-runner — sandbox-runner itself is never on newton_net (see below).
-    networks: [newton_net, sandbox_net]
+    # artifact_net likewise *only* to reach artifact-runner, which is never on
+    # newton_net either. `api` is the single point that can talk to all three.
+    networks: [newton_net, sandbox_net, artifact_net]
     mem_limit: 640m
 
   sandbox-runner:
@@ -224,6 +237,29 @@ services:
     mem_limit: 300m
     pids_limit: 100
     # no ports: — only `api`, over sandbox_net, ever calls this
+
+  artifact-runner:
+    build: ../services/artifact-runner
+    restart: unless-stopped
+    networks: [artifact_net]  # never newton_net — must not reach postgres/redis/minio/keycloak
+    environment:
+      # The ONE secret this container gets, and the same key every other model call in
+      # this app already uses (app/providers/registry.py) rather than a second, parallel
+      # OpenRouter integration. `opencode` reads it directly (models.dev lists it as
+      # OpenRouter's credential env var) — see services/artifact-runner/README.md.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      # Bigger than sandbox-runner's 128m (a Node runtime plus a per-request $HOME needs
+      # the room), same noexec/nosuid/nodev hardening otherwise — Docker applies noexec
+      # by default here, and a real opencode run was verified to work under it, so
+      # nothing the agent writes into its scratch dir can ever be executed as a binary.
+      - /tmp:size=512m,nosuid,nodev
+    mem_limit: 1g
+    pids_limit: 512
+    # no ports: — only `api`, over artifact_net, ever calls this
 
   searxng:
     image: searxng/searxng:latest
