@@ -668,7 +668,7 @@ async def _charge_usage(
         return 0
     try:
         return await billing_service.record_frontier_usage(
-            user_id, get_settings().openrouter_model, prompt_tokens, completion_tokens
+            user_id, get_settings().artifact_generation_model, prompt_tokens, completion_tokens
         )
     except Exception:  # noqa: BLE001 - see docstring
         return 0

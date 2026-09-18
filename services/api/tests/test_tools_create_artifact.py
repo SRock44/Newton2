@@ -345,6 +345,16 @@ async def test_real_token_spend_is_charged_to_the_credit_ledger(pro_user, monkey
     # BOTH stages are billed: the persona call (800/400) plus the agent run (11000/2400).
     assert prompt_tokens == 800 + 11000
     assert completion_tokens == 400 + 2400
+    # Regression: _charge_usage used to price this against settings.openrouter_model
+    # (the app-wide DEFAULT chat model) even though both real stages of an artifact
+    # build run on settings.artifact_generation_model -- a different model with a
+    # different real per-token price. The token COUNTS were always real, but pricing
+    # them against the wrong model's rate means the cents actually deducted from the
+    # student's credit ledger silently diverge from what OpenRouter actually billed
+    # this app, on every single artifact build. record_frontier_usage's `model_id` arg
+    # is what compute_cost_cents/_pricing_for key their lookup on (see billing.py), so
+    # this must be the model that really produced these tokens.
+    assert model_id == get_settings().artifact_generation_model
 
 
 async def test_a_failed_build_still_charges_what_was_really_spent(pro_user, db_session, monkeypatch):
