@@ -143,3 +143,103 @@ jobs:
       - name: Show API server log
         if: always()
         run: cat api.log || true
+
+  # Independent review finding (ROADMAP.md, "Independent product & engineering review
+  # -- 2026-09-17", engineering item 4): every "frontend N/N passed, tsc clean" claim
+  # across many phases of this project's history was self-reported, never gated by a
+  # real CI run the way the backend's hermetic suite above already is -- unlike that
+  # suite (which has already caught one real regression via CI, see the Phase 8
+  # tests/__init__.py incident), a frontend-only regression could reach main
+  # completely unnoticed. This job is the fix: the same tsc + vitest checks every
+  # phase already claims to run locally, now actually gated in CI on every push.
+  frontend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run frontend test suite
+        run: npx vitest run
+
+  # Same review finding, the Tauri/Rust half: nothing previously proved the Rust side
+  # of the desktop app (src-tauri) even compiles, let alone the frontend it embeds.
+  # `cargo check` (not a full release build, which needs code-signing secrets this
+  # repo doesn't have and would cost several extra minutes per push for no extra
+  # correctness signal) still exercises real compilation of every Rust source file and
+  # every Tauri plugin/capability wired up in Cargo.toml -- exactly the class of
+  # regression ("Rust tells you what the bugs are" was this project's own real
+  # incident, see this session's Notepad-window fix) this is meant to catch before a
+  # human ever runs `npm run tauri dev` and finds out the hard way.
+  tauri-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build frontend (src-tauri's Cargo build reads tauri.conf.json's frontendDist, which must exist)
+        working-directory: apps/desktop
+        run: npm run build
+
+      # The exact system library set Tauri v2's own Linux CI docs call for -- webkit2gtk
+      # (the actual WebView engine on Linux), the appindicator/rsvg libs the tray-icon
+      # and window-decoration plugins link against, and patchelf, which tauri-bundler
+      # shells out to for Linux AppImage packaging even during a plain `cargo check`'s
+      # build-script probing.
+      - name: Install Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: cargo check
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked
+
+  # Same review finding, the third named target: services/artifact-runner had no CI
+  # coverage at all, backend or otherwise -- it has no automated test suite of its own
+  # (it's a thin FastAPI wrapper around a pinned `opencode` CLI version; see its
+  # Dockerfile's own comment on why that pin is a reviewed, deliberate line rather than
+  # something a routine rebuild should silently pick up), so the highest-value, real
+  # thing CI can prove is that its image still builds at all -- catching exactly the
+  # "the pinned opencode version got yanked from npm" or "an apt package pin broke"
+  # class of failure before it reaches the deployed dev box.
+  artifact-runner-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the artifact-runner image
+        run: docker build services/artifact-runner
