@@ -554,6 +554,27 @@ async def run_tutor(
 
     provider, model, is_frontier = _select_provider(user, byok_anthropic_key)
 
+    # Closes a real TOCTOU gap (see billing.try_acquire_frontier_turn_lock's own
+    # docstring): _select_provider's frontier_access_available check just read a
+    # pre-spend balance, but this turn's real cost -- and therefore the actual debit --
+    # is only known once every round below finishes, 25-110s from now. A second
+    # concurrent frontier-metered turn for the same user (another device, or an
+    # artifact build still running) could otherwise read that same pre-spend balance
+    # and pass too. Losing the race here is never an error to the student -- it just
+    # means THIS turn quietly uses the free-tier model instead, exactly like running
+    # out of credit would, rather than letting both turns spend against a balance
+    # only one of them was actually cleared for.
+    frontier_lock_held = False
+    if is_frontier and user is not None:
+        frontier_lock_held = await billing_service.try_acquire_frontier_turn_lock(user.id)
+        if not frontier_lock_held:
+            # Matches _select_provider's OWN non-frontier fallback exactly (including
+            # byok_anthropic_key) -- losing this race must fall back to the same thing
+            # frontier_access_available returning False would have, not a plain
+            # get_provider() that silently drops a student's own BYOK preference.
+            provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
+            is_frontier = False
+
     # Fresh, small tools list every call (never persisted across turns -- a tool loaded
     # three messages ago must NOT still be paying its schema cost on an unrelated later
     # message): the core four plus the use_capability meta-tool, growing in place as
@@ -723,3 +744,12 @@ async def run_tutor(
             await billing_service.record_frontier_usage(
                 user.id, model, prompt_tokens_total, completion_tokens_total
             )
+        # Always released by whoever actually acquired it (frontier_lock_held is only
+        # ever True for that caller), regardless of how this turn ended -- a normal
+        # finish, the round-limit message, or an early close/GC. See
+        # try_acquire_frontier_turn_lock's own docstring for why this can't just be
+        # "if is_frontier": is_frontier gets reset to False on the lock-loss fallback
+        # path above, but frontier_lock_held only ever becomes True for the call that
+        # is actually holding it and therefore actually needs to release it.
+        if frontier_lock_held:
+            await billing_service.release_frontier_turn_lock(user.id)

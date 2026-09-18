@@ -193,6 +193,65 @@ async def test_run_tutor_routes_a_pro_user_with_credits_to_the_frontier_model(tu
     assert recorded["completion_tokens"] == 20
 
 
+async def test_run_tutor_falls_back_to_free_tier_when_a_frontier_turn_is_already_in_flight(
+    tutor_user, monkeypatch
+):
+    """The actual TOCTOU-gap fix: frontier_access_available's balance check is real
+    (this user has plenty of credit), but a concurrent turn for the SAME user already
+    holds the frontier-turn lock (see billing.try_acquire_frontier_turn_lock's own
+    docstring for the race this closes) -- simulated here by acquiring it by hand
+    before calling run_tutor, standing in for that other in-flight turn. Losing the
+    race must fall back to the free-tier model for THIS turn, never error, and never
+    double-charge the ledger."""
+    user = await tutor_user(plan="pro", credits_used_cents=0)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    fake = ScriptedToolCallingProvider([["free tier answer"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    record_called = False
+
+    async def fake_record(*a, **kw):
+        nonlocal record_called
+        record_called = True
+        return 0
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    assert await billing_service.try_acquire_frontier_turn_lock(user.id) is True
+    try:
+        events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    finally:
+        await billing_service.release_frontier_turn_lock(user.id)
+
+    assert text_of(events) == "free tier answer"
+    assert record_called is False
+
+
+async def test_run_tutor_releases_the_frontier_turn_lock_it_acquired(tutor_user, monkeypatch):
+    """The other half of the same fix: a turn that DID win the race and route to the
+    frontier model must release the lock once it's done, so the very next turn for the
+    same user isn't left permanently locked out."""
+    user = await tutor_user(plan="pro", credits_used_cents=0)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FakeFrontierProvider)
+
+    async def fake_record(*a, **kw):
+        return 0
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "frontier answer"
+
+    # Not left held -- a fresh acquire for the same user right after must succeed.
+    assert await billing_service.try_acquire_frontier_turn_lock(user.id) is True
+    await billing_service.release_frontier_turn_lock(user.id)
+
+
 async def test_run_tutor_routes_to_a_pro_users_selected_model(tutor_user, monkeypatch):
     chosen = billing_service.PRO_MODELS[-1]["id"]
     user = await tutor_user(plan="pro", credits_used_cents=0, preferred_pro_model=chosen)

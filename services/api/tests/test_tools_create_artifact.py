@@ -357,6 +357,78 @@ async def test_real_token_spend_is_charged_to_the_credit_ledger(pro_user, monkey
     assert model_id == get_settings().artifact_generation_model
 
 
+async def test_a_second_build_for_the_same_user_is_refused_while_one_is_already_spending(
+    pro_user, monkeypatch
+):
+    """Closes a real TOCTOU gap: the credit check just above this passed on a
+    pre-spend balance, but this build's real cost is only known once it finishes (up
+    to a couple of minutes from now) -- see billing.try_acquire_frontier_turn_lock's
+    own docstring. Simulated here by holding the lock by hand before calling run(),
+    standing in for a concurrent build (or a concurrent frontier-routed chat turn) for
+    the same user already in flight. Must refuse honestly and spend nothing -- never
+    silently start a second build against the same not-yet-debited balance."""
+    provider, calls, charged = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result()
+    )
+
+    assert await artifact_tool.billing_service.try_acquire_frontier_turn_lock(pro_user.id) is True
+    try:
+        result = await CreateArtifactTool().run(kind="chart", prompt="plot it", user_id=str(pro_user.id))
+    finally:
+        await artifact_tool.billing_service.release_frontier_turn_lock(pro_user.id)
+
+    assert result == artifact_tool.ALREADY_SPENDING_MESSAGE
+    assert calls == []  # build_artifact never ran
+    assert charged == []  # nothing charged
+
+
+async def test_a_successful_build_releases_the_lock_so_the_next_one_can_proceed(pro_user, monkeypatch):
+    _patch_pipeline(monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result())
+
+    result = await CreateArtifactTool().run(kind="chart", prompt="plot it", user_id=str(pro_user.id))
+    assert result.startswith("```newton-artifact")
+
+    # Not left held -- a fresh acquire for the same user right after must succeed.
+    assert await artifact_tool.billing_service.try_acquire_frontier_turn_lock(pro_user.id) is True
+    await artifact_tool.billing_service.release_frontier_turn_lock(pro_user.id)
+
+
+async def test_a_failed_build_also_releases_the_lock(pro_user, monkeypatch):
+    """Same guarantee as the success case above, but on the failure path -- a build
+    that fails validation must not leave the next attempt permanently locked out."""
+    failed = artifact_build.ArtifactBuildResult(
+        html=None, success=False, timed_out=False, log="agent log",
+        input_tokens=100, output_tokens=50, attempts=1, problems=["bad"],
+    )
+    _patch_pipeline(monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=failed)
+
+    result = await CreateArtifactTool().run(kind="chart", prompt="plot it", user_id=str(pro_user.id))
+    assert "didn't pass validation" in result
+
+    assert await artifact_tool.billing_service.try_acquire_frontier_turn_lock(pro_user.id) is True
+    await artifact_tool.billing_service.release_frontier_turn_lock(pro_user.id)
+
+
+async def test_an_exception_mid_build_still_releases_the_lock(pro_user, monkeypatch):
+    """The finally-based release must fire even when build_artifact itself raises --
+    an unhandled provider/network error must not permanently lock a user out of their
+    own paid-for frontier access."""
+    monkeypatch.setattr(get_settings(), "openrouter_api_key", "test-key")
+    provider = _FakeProvider("TITLE: T\n\nbrief")
+    monkeypatch.setattr(artifact_tool, "_artifact_provider", lambda: (provider, "deepseek/deepseek-v4-flash-0731"))
+
+    async def raising_build(brief, model, transport=None):
+        raise RuntimeError("simulated network failure")
+
+    monkeypatch.setattr(artifact_tool, "build_artifact", raising_build)
+
+    with pytest.raises(RuntimeError):
+        await CreateArtifactTool().run(kind="chart", prompt="plot it", user_id=str(pro_user.id))
+
+    assert await artifact_tool.billing_service.try_acquire_frontier_turn_lock(pro_user.id) is True
+    await artifact_tool.billing_service.release_frontier_turn_lock(pro_user.id)
+
+
 async def test_a_failed_build_still_charges_what_was_really_spent(pro_user, db_session, monkeypatch):
     failed = artifact_build.ArtifactBuildResult(
         html=None,

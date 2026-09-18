@@ -36,6 +36,7 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.redis_client import get_redis
 from app.db.base import SessionLocal
 from app.db.models import User
 
@@ -229,6 +230,52 @@ def frontier_access_available(user: User | None, openrouter_configured: bool) ->
     if is_pro(user) and pro_credits_remaining(user):
         return True
     return user.topup_credits_cents > 0
+
+
+# ---------------------------------------------------------------------------
+# Frontier-turn lock -- closes a real TOCTOU gap between the check above and the charge
+# below. frontier_access_available reads the balance fresh per turn, but a turn's real
+# cost (and therefore the actual debit via record_frontier_usage) is only known once
+# the WHOLE turn finishes -- 25-110s later for a multi-tool-call chat turn, up to a
+# couple of minutes for an artifact build. Two concurrent frontier-metered turns for the
+# SAME user (a second device, or a chat message sent while an artifact is still
+# building) could both read the same pre-spend balance and both pass the check before
+# either one writes back, letting the user overdraw their own balance by more than one
+# call's worth rather than the single bounded overage record_frontier_usage's own
+# docstring already accepts as normal.
+#
+# Serializes at the APPLICATION level via a Redis SET NX, not a Postgres row lock --
+# holding a DB transaction (and therefore a pooled connection) open for the full 25s-2min
+# duration of a real provider call would be a much worse problem at scale than the gap
+# this closes. Callers acquire this once frontier_access_available has already said yes,
+# and release it in a finally once the turn's charge (if any) is done -- see
+# app/agents/tutor.py's run_tutor and app/tools/create_artifact.py's CreateArtifactTool
+# for the two real call sites.
+_FRONTIER_TURN_LOCK_PREFIX = "newton:frontier-turn-lock:"
+# Generous margin over any real turn's observed worst case (create_artifact's own
+# longest confirmed build was ~130s) -- self-healing if a process crashes mid-turn
+# without ever reaching the release, rather than permanently locking a user out of
+# their own paid-for frontier access.
+FRONTIER_TURN_LOCK_TTL_SECONDS = 300
+
+
+async def try_acquire_frontier_turn_lock(user_id: uuid.UUID) -> bool:
+    """True if this call just acquired the lock (no other frontier-metered turn is
+    currently in flight for this user) -- the caller may proceed to spend. False if
+    another one already holds it; the caller must NOT route to a frontier model for
+    this turn (see call sites for what each does instead)."""
+    acquired = await get_redis().set(
+        f"{_FRONTIER_TURN_LOCK_PREFIX}{user_id}", "1", nx=True, ex=FRONTIER_TURN_LOCK_TTL_SECONDS
+    )
+    return bool(acquired)
+
+
+async def release_frontier_turn_lock(user_id: uuid.UUID) -> None:
+    """Only ever called by whichever call actually acquired the lock (see
+    try_acquire_frontier_turn_lock's return value) -- never unconditionally, since that
+    would let a turn that never held the lock release one a DIFFERENT concurrent turn
+    for the same user is still legitimately holding."""
+    await get_redis().delete(f"{_FRONTIER_TURN_LOCK_PREFIX}{user_id}")
 
 
 async def record_frontier_usage(

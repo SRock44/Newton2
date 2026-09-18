@@ -255,6 +255,57 @@ def test_frontier_access_available_false_for_a_free_user_with_no_topup_balance()
     assert billing_service.frontier_access_available(user, True) is False
 
 
+# ---------------------------------------------------------------------------
+# Frontier-turn lock -- closes the TOCTOU gap between frontier_access_available's
+# pre-spend balance check and record_frontier_usage's much-later debit (see
+# try_acquire_frontier_turn_lock's own docstring). Runs against the real Redis this
+# test environment already provides (same one test_memory_working.py exercises), not a
+# faked cache -- a real SET NX race is exactly the thing worth proving works.
+# ---------------------------------------------------------------------------
+
+
+async def test_try_acquire_frontier_turn_lock_succeeds_when_nothing_else_holds_it():
+    user_id = uuid.uuid4()
+    try:
+        assert await billing_service.try_acquire_frontier_turn_lock(user_id) is True
+    finally:
+        await billing_service.release_frontier_turn_lock(user_id)
+
+
+async def test_a_second_acquire_for_the_same_user_fails_while_the_first_is_held():
+    """The actual race this exists to prevent: two concurrent frontier-metered turns
+    for the SAME user (a second device, or an artifact build already running) must not
+    both be told they can spend."""
+    user_id = uuid.uuid4()
+    try:
+        assert await billing_service.try_acquire_frontier_turn_lock(user_id) is True
+        assert await billing_service.try_acquire_frontier_turn_lock(user_id) is False
+    finally:
+        await billing_service.release_frontier_turn_lock(user_id)
+
+
+async def test_different_users_never_contend_for_the_same_lock():
+    user_a, user_b = uuid.uuid4(), uuid.uuid4()
+    try:
+        assert await billing_service.try_acquire_frontier_turn_lock(user_a) is True
+        assert await billing_service.try_acquire_frontier_turn_lock(user_b) is True
+    finally:
+        await billing_service.release_frontier_turn_lock(user_a)
+        await billing_service.release_frontier_turn_lock(user_b)
+
+
+async def test_releasing_the_lock_lets_a_later_acquire_succeed_again():
+    """The normal end-to-end shape: acquire, do the (real) turn, release -- and prove
+    the NEXT turn for the same user isn't left permanently locked out."""
+    user_id = uuid.uuid4()
+    assert await billing_service.try_acquire_frontier_turn_lock(user_id) is True
+    await billing_service.release_frontier_turn_lock(user_id)
+    try:
+        assert await billing_service.try_acquire_frontier_turn_lock(user_id) is True
+    finally:
+        await billing_service.release_frontier_turn_lock(user_id)
+
+
 def test_compute_topup_credit_cents_is_exact_for_real_dollar_tiers():
     # $5 / $10 / $25 tiers, each an exact multiple of 8% -- proves the integer-basis-
     # points math has zero drift for the amounts real users will actually pay.

@@ -88,6 +88,19 @@ NO_CREDIT_MESSAGE = (
     "I can still explain or sketch this out in chat in the meantime."
 )
 
+# Real, if narrow, race this exists to catch: frontier_access_available just read a
+# pre-spend balance, but this build's real cost is only known once it finishes (up to a
+# couple of minutes), and a chat turn on another device could be spending against that
+# same balance right now. See billing.try_acquire_frontier_turn_lock's own docstring.
+# Unlike the chat path (which quietly falls back to the free-tier model for one turn),
+# there's no sensible "smaller" version of an artifact build to fall back to -- so this
+# is an honest wait-and-retry message instead.
+ALREADY_SPENDING_MESSAGE = (
+    "You're already mid-generation somewhere else right now (another artifact build, "
+    "or a frontier-model chat reply still finishing) -- I don't want to spend against "
+    "the same balance twice at once. Give it a moment to finish and try again."
+)
+
 # Focus Mode blocks this the same way it blocks write_research_paper, and for a narrower
 # version of the same reason. Focus Mode is a student holding THEMSELVES to doing the
 # work; an artifact is a thing Newton makes for them. See write_research_paper's
@@ -784,6 +797,15 @@ class CreateArtifactTool(Tool):
             ):
                 return NO_CREDIT_MESSAGE
 
+            # Closes a real TOCTOU gap: the check above just read a pre-spend balance,
+            # but this build's real cost is only known once it finishes (up to a couple
+            # of minutes from now) -- a concurrent chat turn or a second build for the
+            # SAME user could read that same balance and pass too. See
+            # ALREADY_SPENDING_MESSAGE's own comment and
+            # billing.try_acquire_frontier_turn_lock's docstring.
+            if not await billing_service.try_acquire_frontier_turn_lock(uid):
+                return ALREADY_SPENDING_MESSAGE
+
             # A quiz over named material reads that material here, inside the same
             # pre-spend session as the gate, so a document that doesn't exist or has
             # nothing in it costs the student nothing and -- much more importantly --
@@ -796,32 +818,40 @@ class CreateArtifactTool(Tool):
             if kind == "quiz" and named:
                 source_block, error = await _quiz_source_block(db, uid, named)
                 if error:
+                    await billing_service.release_frontier_turn_lock(uid)
                     return error
 
-        title, brief, brief_prompt_tokens, brief_completion_tokens = await _write_brief(
-            kind, prompt, source_block
-        )
-        # The student's real cards/text are re-attached to the brief by code, never left
-        # to the persona to have copied faithfully. See _ground_brief.
-        brief = _ground_brief(brief, source_block)
+        try:
+            title, brief, brief_prompt_tokens, brief_completion_tokens = await _write_brief(
+                kind, prompt, source_block
+            )
+            # The student's real cards/text are re-attached to the brief by code, never
+            # left to the persona to have copied faithfully. See _ground_brief.
+            brief = _ground_brief(brief, source_block)
 
-        # Real, honest progress: the brief is genuinely done and the real (usually the
-        # slower) opencode build is genuinely about to start -- never a fake/heuristic
-        # "still working..." on a timer. See _ARTIFACT_BUILDING_LABELS' own comment for
-        # why this label lives here rather than in tutor.py.
-        if on_progress is not None:
-            await on_progress(_ARTIFACT_BUILDING_LABELS.get(kind, "Building your artifact"))
+            # Real, honest progress: the brief is genuinely done and the real (usually
+            # the slower) opencode build is genuinely about to start -- never a fake/
+            # heuristic "still working..." on a timer. See _ARTIFACT_BUILDING_LABELS'
+            # own comment for why this label lives here rather than in tutor.py.
+            if on_progress is not None:
+                await on_progress(_ARTIFACT_BUILDING_LABELS.get(kind, "Building your artifact"))
 
-        result = await build_artifact(brief, get_settings().artifact_generation_model)
+            result = await build_artifact(brief, get_settings().artifact_generation_model)
 
-        # Charge whatever really got spent, including on a failed build: those tokens
-        # were genuinely billed to this app by OpenRouter whether or not an artifact came
-        # out, and quietly eating the cost of a failure would make the ledger a fiction.
-        await _charge_usage(
-            uid,
-            brief_prompt_tokens + result.input_tokens,
-            brief_completion_tokens + result.output_tokens,
-        )
+            # Charge whatever really got spent, including on a failed build: those
+            # tokens were genuinely billed to this app by OpenRouter whether or not an
+            # artifact came out, and quietly eating the cost of a failure would make
+            # the ledger a fiction.
+            await _charge_usage(
+                uid,
+                brief_prompt_tokens + result.input_tokens,
+                brief_completion_tokens + result.output_tokens,
+            )
+        finally:
+            # Always released once THIS build's spend is fully settled (charged or
+            # not), regardless of how it ended -- a normal finish, an early return
+            # below, or an unhandled exception from _write_brief/build_artifact.
+            await billing_service.release_frontier_turn_lock(uid)
 
         if not result.success or not result.html:
             return _failure_summary(result)
