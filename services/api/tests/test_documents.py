@@ -229,9 +229,17 @@ async def test_uploaded_document_content_is_retrieved_into_chat_bundle(
     assert session_resp.status_code == 200
     session_id = session_resp.json()["session_id"]
 
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
     try:
         async with websockets.connect(uri) as ws:
+            # Post-connect auth frame, not a `?token=` query param -- see
+            # app/routers/chat.py's chat_ws docstring for why (it was leaking into
+            # access logs on every connection). test_chat_websocket.py's own
+            # _authenticate() helper isn't imported here since this is this file's only
+            # WS test.
+            await ws.send(json.dumps({"type": "auth", "token": keycloak_token}))
+            ack = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+            assert ack == {"type": "auth_ok"}
             await ws.send(json.dumps({"type": "user_message", "content": f"What does {unique_marker} refer to?"}))
             while True:
                 # Generous on purpose (not just per-chunk gaps, also the model's real

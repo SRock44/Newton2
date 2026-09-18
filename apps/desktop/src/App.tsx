@@ -205,6 +205,16 @@ function App() {
   >(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  // True only once THIS socket's application-level auth handshake has actually
+  // succeeded (the server's "auth_ok" frame arrived) -- see the chat-socket effect's
+  // connect() below. The raw WebSocket readyState goes OPEN as soon as the TCP/TLS
+  // handshake completes, which is now BEFORE that application handshake finishes (the
+  // auth token moved from the connect URL to a post-connect frame, see
+  // services/api/app/routers/chat.py's chat_ws), so handleSend/handleStop below check
+  // this too, not just readyState -- sending a real frame on a socket the server hasn't
+  // authenticated yet would just get it closed with an error before anything useful
+  // happens.
+  const wsAuthedRef = useRef(false);
   // Always-current `token`, readable from the "notepad-ready" responder below (set up
   // once, on mount) without making that listener's effect depend on -- and therefore
   // re-subscribe on -- every token change. See the notepad-auth/notepad-ready effects
@@ -657,23 +667,23 @@ function App() {
       // Non-null by construction: this effect returns immediately above if
       // activeSessionId is null, and it never changes for the life of this closure
       // (a change is exactly what re-runs this whole effect from scratch).
-      const socket = openChatSocket(accessToken, activeSessionId as string);
+      const socket = openChatSocket(activeSessionId as string);
       ws = socket;
       wsRef.current = socket;
+      wsAuthedRef.current = false;
 
       socket.onopen = () => {
         if (torndown) return;
-        reconnectAttempt = 0;
-        setWsStatus("open");
-        clearPing();
-        pingInterval = setInterval(() => {
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: "ping" }));
-          }
-        }, PING_INTERVAL_MS);
+        // The very first frame this client ever sends on the socket -- see
+        // services/api/app/routers/chat.py's chat_ws, which now accepts unconditionally
+        // and waits for exactly this before doing anything else. Real "connected and
+        // usable" status doesn't fire until that round trip completes (see the
+        // "auth_ok" branch in onmessage below), not here.
+        socket.send(JSON.stringify({ type: "auth", token: accessToken }));
       };
       socket.onclose = () => {
         clearPing();
+        wsAuthedRef.current = false;
         if (wsRef.current === socket) wsRef.current = null;
         // A deliberate teardown (unmount / activeSessionId change) already set
         // `torndown` before calling ws.close() below -- never reconnect for that case,
@@ -703,7 +713,21 @@ function App() {
           return;
         }
 
-        if (payload.type === "user_message_saved") {
+        if (payload.type === "auth_ok") {
+          // The application-level handshake just succeeded -- see this effect's own
+          // onopen comment for why "connected and usable" waits for this specifically
+          // rather than firing on the raw WebSocket open event.
+          if (torndown) return;
+          wsAuthedRef.current = true;
+          reconnectAttempt = 0;
+          setWsStatus("open");
+          clearPing();
+          pingInterval = setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: "ping" }));
+            }
+          }, PING_INTERVAL_MS);
+        } else if (payload.type === "user_message_saved") {
           // Echoes back the real, persisted id of the user message just sent (see
           // services/api/app/routers/chat.py's chat_ws) -- attaches it to the most
           // recent id-less user message (the optimistic one handleSend just pushed)
@@ -865,7 +889,7 @@ function App() {
   // the rest of this function is indistinguishable from an ordinary send.
   async function handleSend(text: string) {
     const socket = wsRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN || !activeSessionId) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !wsAuthedRef.current || !activeSessionId) {
       setMessages((prev) => [
         ...prev,
         { role: "user", content: text },
@@ -930,7 +954,7 @@ function App() {
 
   function handleStop() {
     const socket = wsRef.current;
-    if (socket && socket.readyState === WebSocket.OPEN) {
+    if (socket && socket.readyState === WebSocket.OPEN && wsAuthedRef.current) {
       socket.send(JSON.stringify({ type: "stop" }));
     }
   }

@@ -11,18 +11,30 @@ from app.db.models import ChatMessage, ChatSession, Document, DocumentChunk, Fla
 WS_BASE_URL = "ws://localhost:8000"
 
 
+async def _authenticate(ws, token: str) -> None:
+    """Sends the post-connect auth frame chat_ws now requires instead of a `?token=`
+    query parameter (see app/routers/chat.py's chat_ws docstring for why -- the query
+    string was leaking straight into access logs on every connection) and consumes the
+    resulting "auth_ok" frame, so every test below can connect-and-auth in one line and
+    get straight to the behavior it's actually testing."""
+    await ws.send(json.dumps({"type": "auth", "token": token}))
+    ack = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+    assert ack == {"type": "auth_ok"}
+
+
 async def test_websocket_roundtrip_persists_messages(http_client, auth_headers, keycloak_token, db_session):
     create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     assert create_resp.status_code == 200
     session_id = create_resp.json()["session_id"]
 
     message = "hello newton, can you help me understand derivatives?"
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     try:
         chunks: list[str] = []
         done_frame: dict = {}
         async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
             await ws.send(json.dumps({"type": "user_message", "content": message}))
 
             while True:
@@ -98,10 +110,11 @@ async def test_websocket_echoes_the_persisted_user_message_id(
     handling of the "user_message_saved" frame this asserts."""
     create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     session_id = create_resp.json()["session_id"]
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     try:
         async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
             await ws.send(json.dumps({"type": "user_message", "content": "what is a derivative?"}))
 
             # Must arrive before any reply content -- the message is persisted (and its
@@ -131,13 +144,15 @@ async def test_websocket_echoes_the_persisted_user_message_id(
 async def test_websocket_rejects_bad_token(http_client, auth_headers, db_session):
     create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     session_id = create_resp.json()["session_id"]
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token=not-a-real-token"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     try:
-        # chat_ws accepts the handshake first, then sends a real error frame and
-        # closes with 4401 — a client can distinguish "bad token" from "session not
-        # found" (test below) instead of both collapsing into an opaque 403.
+        # chat_ws accepts the handshake unconditionally, THEN expects the auth frame --
+        # a bad token sent over it gets a real error frame and a 4401 close, so a client
+        # can distinguish "bad token" from "session not found" (test below) instead of
+        # both collapsing into an opaque 403 the way a query-param 422 would have.
         async with websockets.connect(uri) as ws:
+            await ws.send(json.dumps({"type": "auth", "token": "not-a-real-token"}))
             raw = await asyncio.wait_for(ws.recv(), timeout=5)
             frame = json.loads(raw)
             assert frame == {"type": "error", "content": "invalid or expired token"}
@@ -152,10 +167,33 @@ async def test_websocket_rejects_bad_token(http_client, auth_headers, db_session
         await db_session.commit()
 
 
-async def test_websocket_rejects_missing_session(keycloak_token):
-    uri = f"{WS_BASE_URL}/chat/ws/{uuid.uuid4()}?token={keycloak_token}"
+async def test_websocket_rejects_a_malformed_or_missing_auth_frame(keycloak_token):
+    """Not just a bad token -- the FIRST frame not even being a well-formed
+    {"type": "auth", "token": ...} at all (garbage, a different frame type, a token
+    that isn't a string) must fail the same honest way, not hang waiting for something
+    that looks more like an auth frame or crash trying to read a non-string token."""
+    uri = f"{WS_BASE_URL}/chat/ws/{uuid.uuid4()}"
 
     async with websockets.connect(uri) as ws:
+        await ws.send(json.dumps({"type": "user_message", "content": "hi"}))
+        raw = await asyncio.wait_for(ws.recv(), timeout=5)
+        assert json.loads(raw) == {"type": "error", "content": "invalid or expired token"}
+
+        with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
+            await asyncio.wait_for(ws.recv(), timeout=5)
+        assert exc_info.value.rcvd.code == 4401
+
+
+async def test_websocket_rejects_missing_session(keycloak_token):
+    """A genuinely VALID token against a session that doesn't exist -- auth itself
+    succeeds (decode_token has nothing to object to), so no "auth_ok" is ever sent; the
+    very next frame is the session-not-found error, since that check only runs once
+    auth has already passed. Doesn't use the _authenticate() helper for exactly that
+    reason -- it asserts on "auth_ok" specifically, which never arrives on this path."""
+    uri = f"{WS_BASE_URL}/chat/ws/{uuid.uuid4()}"
+
+    async with websockets.connect(uri) as ws:
+        await ws.send(json.dumps({"type": "auth", "token": keycloak_token}))
         raw = await asyncio.wait_for(ws.recv(), timeout=5)
         frame = json.loads(raw)
         assert frame == {"type": "error", "content": "session not found"}
@@ -173,10 +211,11 @@ async def test_websocket_stop_with_nothing_generating_is_a_harmless_noop(
     — the very next real message should work normally."""
     create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     session_id = create_resp.json()["session_id"]
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     try:
         async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
             await ws.send(json.dumps({"type": "stop"}))
 
             # Prove the connection is still healthy and the protocol didn't desync:
@@ -207,7 +246,7 @@ async def test_websocket_stop_mid_generation_truncates_and_persists_partial(
     it sends "stop" as soon as there's proof generation has actually started."""
     create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     session_id = create_resp.json()["session_id"]
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     message = (
         "Please write at least fifteen distinct short sentences, each on its own line, "
@@ -216,6 +255,7 @@ async def test_websocket_stop_mid_generation_truncates_and_persists_partial(
 
     try:
         async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
             await ws.send(json.dumps({"type": "user_message", "content": message}))
 
             # user_message_saved always fires first, before any reply content -- skip
@@ -272,10 +312,11 @@ async def test_websocket_ping_while_idle_gets_a_pong_and_stays_healthy(
     holds "stop" to."""
     create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     session_id = create_resp.json()["session_id"]
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     try:
         async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
             await ws.send(json.dumps({"type": "ping"}))
             raw = await asyncio.wait_for(ws.recv(), timeout=5)
             assert json.loads(raw) == {"type": "pong"}
@@ -310,10 +351,11 @@ async def test_websocket_ping_mid_generation_is_a_harmless_noop(
     reply must still complete normally."""
     create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     session_id = create_resp.json()["session_id"]
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     try:
         async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
             await ws.send(json.dumps({"type": "user_message", "content": "what is a derivative?"}))
 
             # user_message_saved always fires first -- proof generation is underway.
@@ -360,10 +402,11 @@ async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishe
 
     session_resp = await http_client.post("/chat/sessions", headers=auth_headers)
     session_id = session_resp.json()["session_id"]
-    uri = f"{WS_BASE_URL}/chat/ws/{session_id}?token={keycloak_token}"
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
 
     try:
         async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
             await ws.send(
                 json.dumps(
                     {

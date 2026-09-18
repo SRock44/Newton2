@@ -18,6 +18,40 @@ const messagesBySession: Record<string, ChatMessage[]> = {
 };
 
 function makeFakeSocket() {
+  const socket = {
+    readyState: WebSocket.OPEN,
+    send: vi.fn(),
+    close: vi.fn(),
+    onopen: null,
+    onclose: null,
+    onmessage: null,
+    onerror: null,
+  } as unknown as WebSocket & {
+    onopen: (() => void) | null;
+    onmessage: ((ev: { data: string }) => void) | null;
+  };
+  // Simulates the real server round trip (see services/api/app/routers/chat.py's
+  // chat_ws): accept, then ack the "auth" frame App.tsx's onopen sends with an
+  // "auth_ok" message, which is what App.tsx now actually waits for before treating
+  // the connection as usable (readyState alone isn't enough post-fix -- see
+  // wsAuthedRef's own comment in App.tsx). Deferred to a microtask, not called
+  // synchronously here, because App.tsx assigns onopen/onmessage AFTER this factory
+  // returns; a microtask still runs under vi.useFakeTimers() (which only fakes
+  // macrotasks), so this stays reliable in the keepalive/reconnect tests below too.
+  queueMicrotask(() => {
+    socket.onopen?.();
+    socket.onmessage?.({ data: JSON.stringify({ type: "auth_ok" }) });
+  });
+  return socket;
+}
+
+/** Like makeFakeSocket() but never simulates the server side of the handshake at all --
+ * for tests that specifically want a connection attempt to never succeed (e.g. two
+ * CONSECUTIVE reconnect failures, to prove the backoff keeps doubling rather than
+ * resetting). makeFakeSocket()'s auto-"auth_ok" would otherwise race ahead of a test's
+ * own act()/onclose() calls and reset reconnectAttempt out from under it, the same way
+ * a real socket that genuinely never finished authenticating never would. */
+function makeFakeSocketNoAutoAuth() {
   return {
     readyState: WebSocket.OPEN,
     send: vi.fn(),
@@ -215,11 +249,16 @@ describe("App", () => {
     await signIn();
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // openChatSocket itself no longer takes a token (see its own comment in api.ts —
+    // the auth token moved to a post-connect frame to stop it leaking into access
+    // logs), so the real assertion is on what onopen actually sends over the socket.
+    await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+    const socket = vi.mocked(openChatSocket).mock.results[0]!.value as { send: (d: string) => void };
     await waitFor(() =>
-      expect(vi.mocked(openChatSocket)).toHaveBeenCalledWith("refreshed-token", expect.any(String)),
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "auth", token: "refreshed-token" })),
     );
-    // The stale token must never reach a socket connection.
-    expect(vi.mocked(openChatSocket)).not.toHaveBeenCalledWith("stale-access-token", expect.any(String));
+    // The stale token must never reach the socket at all.
+    expect(socket.send).not.toHaveBeenCalledWith(JSON.stringify({ type: "auth", token: "stale-access-token" }));
   });
 
   // The actual "stay signed in" feature: a previous run's persisted tokens should let
@@ -248,8 +287,10 @@ describe("App", () => {
       expect.stringContaining("/protocol/openid-connect/token"),
       expect.objectContaining({ body: expect.any(URLSearchParams) }),
     );
+    await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+    const socket = vi.mocked(openChatSocket).mock.results[0]!.value as { send: (d: string) => void };
     await waitFor(() =>
-      expect(vi.mocked(openChatSocket)).toHaveBeenCalledWith("restored-access-token", expect.any(String)),
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "auth", token: "restored-access-token" })),
     );
     // The rotated refresh token must be what's now persisted, not the original one —
     // Keycloak invalidates the old one once a new one's been issued.
@@ -786,13 +827,16 @@ describe("App", () => {
     expect(await screen.findByText(/resume \(4\)\.pdf/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /remove attached document/i })).toBeInTheDocument();
 
-    // Nothing was sent on the student's behalf: no new message, no WS send call, and
-    // the marker text never leaks into a visible message.
+    // Nothing was sent on the student's behalf: no new message, no WS user_message send
+    // call, and the marker text never leaks into a visible message. (The socket's own
+    // "auth" frame legitimately did send, via makeFakeSocket()'s simulated handshake --
+    // that's not a message on the student's behalf, so it's excluded here rather than
+    // asserting send() was never called at all.)
     const list = await messageList();
     expect(list.queryByText(/\[Attached document:/)).not.toBeInTheDocument();
     expect(list.queryByText(/Let's talk about/i)).not.toBeInTheDocument();
     const sentSocket = vi.mocked(openChatSocket).mock.results.slice(-1)[0]!.value as { send: (d: string) => void };
-    expect(sentSocket.send).not.toHaveBeenCalled();
+    expect(sentSocket.send).not.toHaveBeenCalledWith(expect.stringContaining("user_message"));
   });
 
   // Phase 7 first-run onboarding: a brand-new account (no sessions yet, so App.tsx
@@ -1071,21 +1115,25 @@ describe("App", () => {
       await (await messageList()).findByText("Hello from s1");
       await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalledTimes(1));
       const socket = vi.mocked(openChatSocket).mock.results[0]!.value as {
-        onopen: (() => void) | null;
         send: (d: string) => void;
       };
 
-      // The mock socket never fires this on its own -- simulate the real handshake
-      // completing, which is what actually starts the keepalive interval.
-      act(() => {
-        socket.onopen?.();
-      });
-
+      // makeFakeSocket() already simulates the real onopen -> "auth" -> "auth_ok"
+      // handshake (a queued microtask, so it's done by the time this runs), which is
+      // what actually starts the keepalive interval -- nothing to trigger by hand here.
       await vi.advanceTimersByTimeAsync(25_000);
       expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "ping" }));
     });
 
     it("auto-reconnects after an unexpected close with a capped exponential backoff, showing a reconnecting status meanwhile", async () => {
+      // Every attempt here deliberately fails before ever authenticating (that's the
+      // whole point -- proving TWO CONSECUTIVE failures double the backoff rather than
+      // resetting it), so none of them should get makeFakeSocket()'s default auto-
+      // "auth_ok", which would incorrectly reset reconnectAttempt as if one succeeded.
+      vi.mocked(openChatSocket)
+        .mockImplementationOnce(() => makeFakeSocketNoAutoAuth())
+        .mockImplementationOnce(() => makeFakeSocketNoAutoAuth())
+        .mockImplementationOnce(() => makeFakeSocketNoAutoAuth());
       vi.useFakeTimers({ shouldAdvanceTime: true });
       const user = userEvent.setup({ delay: null });
       render(<App />);

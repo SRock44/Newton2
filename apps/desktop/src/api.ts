@@ -127,9 +127,15 @@ export async function deleteMessageAndAfter(token: string, sessionId: string, me
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't save that edit."));
 }
 
-/** Opens the streaming chat socket for a session. Caller owns the returned socket. */
-export function openChatSocket(token: string, sessionId: string): WebSocket {
-  return new WebSocket(`${WS_URL}/chat/ws/${sessionId}?token=${encodeURIComponent(token)}`);
+/** Opens the streaming chat socket for a session. Caller owns the returned socket, and
+ * MUST send {"type": "auth", "token": "<JWT>"} as the first frame once it's open --
+ * this deliberately no longer takes a token itself, unlike most of this file's other
+ * functions, because a `?token=` query string here used to leak straight into access
+ * logs (server and any reverse proxy in front of it) on every single connection. See
+ * services/api/app/routers/chat.py's chat_ws for the server side of this handshake and
+ * apps/desktop/src/App.tsx's connect() for where the auth frame actually gets sent. */
+export function openChatSocket(sessionId: string): WebSocket {
+  return new WebSocket(`${WS_URL}/chat/ws/${sessionId}`);
 }
 
 /** Uploads a photo/screenshot attached to this chat, scoped to the session — see the

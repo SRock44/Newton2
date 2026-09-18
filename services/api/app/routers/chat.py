@@ -329,15 +329,50 @@ async def delete_session(
     await invalidate(str(session_id))
 
 
+# How long a client gets to send its auth frame after connecting, before this closes
+# the socket rather than holding it open indefinitely for a connection that will never
+# authenticate (see chat_ws's own docstring/comment for why the token moved here).
+_AUTH_FRAME_TIMEOUT_SECONDS = 10.0
+
+
 @router.websocket("/ws/{session_id}")
-async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> None:
+async def chat_ws(websocket: WebSocket, session_id: uuid.UUID) -> None:
+    """Accepts unconditionally, then expects the FIRST frame the client sends to be
+    {"type": "auth", "token": "<JWT>"} -- not a `?token=` query parameter the way this
+    used to work. That query string was a real, live security bug: uvicorn's access
+    logger (and any reverse proxy in front of it) writes the full request line to logs
+    on every handshake, which put every student's raw auth token in plaintext there on
+    every single chat connection. A frame sent over the connection itself is never part
+    of any request line any log line could capture. See apps/desktop/src/api.ts's
+    openChatSocket (which now sends this frame immediately in onopen) and App.tsx's WS
+    lifecycle (which now waits for `auth_ok` below before treating the socket as usable
+    -- the raw WebSocket readyState going OPEN happens before this application-level
+    handshake completes, so something has to gate real usage on the right event)."""
+    await websocket.accept()
+
+    try:
+        raw_auth = await asyncio.wait_for(websocket.receive_text(), timeout=_AUTH_FRAME_TIMEOUT_SECONDS)
+    except (asyncio.TimeoutError, WebSocketDisconnect):
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(code=4401)
+        return
+
+    token = None
+    try:
+        parsed = json.loads(raw_auth)
+        if isinstance(parsed, dict) and parsed.get("type") == "auth":
+            token = parsed.get("token")
+    except ValueError:
+        pass
+
+    if not isinstance(token, str) or not token:
+        await websocket.send_json({"type": "error", "content": "invalid or expired token"})
+        await websocket.close(code=4401)
+        return
+
     try:
         claims = await decode_token(token)
     except HTTPException:
-        # Accept first: closing before accept collapses to a bare 403 at the HTTP
-        # upgrade layer (uvicorn/Starlette reject the handshake outright), so a
-        # client would never see this close code or get an error frame to read.
-        await websocket.accept()
         await websocket.send_json({"type": "error", "content": "invalid or expired token"})
         await websocket.close(code=4401)
         return
@@ -346,13 +381,15 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID, token: str) -> No
         user = await get_or_create_user(db, claims)
         session = await db.get(ChatSession, session_id)
         if session is None or session.user_id != user.id:
-            await websocket.accept()
             await websocket.send_json({"type": "error", "content": "session not found"})
             await websocket.close(code=4404)
             return
         await db.commit()  # persist user row if it was just created
 
-        await websocket.accept()
+        # Tells the client the application-level handshake succeeded -- see this
+        # function's own docstring for why the client waits for this specifically
+        # rather than treating the raw WebSocket open event as "ready".
+        await websocket.send_json({"type": "auth_ok"})
 
         async def _receive_frame() -> dict:
             raw = await websocket.receive_text()

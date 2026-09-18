@@ -104,10 +104,18 @@ async def test_crisis_message_gets_fixed_response_and_skips_the_tutor_entirely(
     monkeypatch.setattr(chat_module, "run_tutor", fake_run_tutor)
     monkeypatch.setattr(chat_module, "report_exception", lambda exc: sentry_calls.append(exc))
 
-    ws = FakeWebSocket([{"type": "user_message", "content": "i want to kill myself"}])
+    # chat_ws no longer takes a token argument -- it reads the auth frame as the first
+    # thing IT receives over the connection (see its own docstring), so that frame is
+    # now the first scripted incoming frame here instead.
+    ws = FakeWebSocket(
+        [
+            {"type": "auth", "token": keycloak_token},
+            {"type": "user_message", "content": "i want to kill myself"},
+        ]
+    )
 
     with caplog.at_level(logging.WARNING, logger="newton.chat"):
-        await chat_module.chat_ws(ws, session_id, keycloak_token)
+        await chat_module.chat_ws(ws, session_id)
 
     # The tutor/provider pipeline was never invoked for this turn.
     assert tutor_calls == []
@@ -124,9 +132,10 @@ async def test_crisis_message_gets_fixed_response_and_skips_the_tutor_entirely(
     assert done_frames[0]["completion_tokens"] is None
 
     # No tool_start/tool_end/suggested_action/error frames -- nothing tutor-shaped.
-    # (user_message_saved always fires first, right after the user turn is persisted --
-    # see chat_ws's own comment -- independent of the crisis short-circuit.)
-    assert {f["type"] for f in ws.sent} == {"user_message_saved", "chunk", "done"}
+    # (auth_ok fires once for the connection itself; user_message_saved always fires
+    # first for the turn, right after it's persisted -- see chat_ws's own comment --
+    # independent of the crisis short-circuit.)
+    assert {f["type"] for f in ws.sent} == {"auth_ok", "user_message_saved", "chunk", "done"}
 
     # Persisted to chat_messages exactly like any other turn: one user row, one
     # assistant row with the fixed text verbatim.
@@ -172,12 +181,13 @@ async def test_normal_message_after_a_crisis_turn_still_gets_a_normal_tutor_repl
 
     ws = FakeWebSocket(
         [
+            {"type": "auth", "token": keycloak_token},
             {"type": "user_message", "content": "i want to kill myself"},
             {"type": "user_message", "content": "what's 2+2?"},
         ]
     )
 
-    await chat_module.chat_ws(ws, session_id, keycloak_token)
+    await chat_module.chat_ws(ws, session_id)
 
     # run_tutor was invoked exactly once, and only for the second (ordinary) message.
     assert tutor_calls == ["what's 2+2?"]
@@ -219,10 +229,13 @@ async def test_ordinary_message_never_triggers_the_crisis_path(
     monkeypatch.setattr(chat_module, "run_tutor", fake_run_tutor)
 
     ws = FakeWebSocket(
-        [{"type": "user_message", "content": "Explain apoptosis (programmed cell death) in this biology unit"}]
+        [
+            {"type": "auth", "token": keycloak_token},
+            {"type": "user_message", "content": "Explain apoptosis (programmed cell death) in this biology unit"},
+        ]
     )
 
-    await chat_module.chat_ws(ws, session_id, keycloak_token)
+    await chat_module.chat_ws(ws, session_id)
 
     assert tutor_calls == ["Explain apoptosis (programmed cell death) in this biology unit"]
     chunk_frames = [f for f in ws.sent if f["type"] == "chunk"]
