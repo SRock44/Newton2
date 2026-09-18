@@ -7,6 +7,7 @@ import websockets
 from sqlalchemy import delete
 
 from app.db.models import ChatMessage, ChatSession, Document, DocumentChunk, Flashcard
+from app.routers import chat as chat_module
 
 WS_BASE_URL = "ws://localhost:8000"
 
@@ -201,6 +202,58 @@ async def test_websocket_rejects_missing_session(keycloak_token):
         with pytest.raises(websockets.exceptions.ConnectionClosed) as exc_info:
             await asyncio.wait_for(ws.recv(), timeout=5)
         assert exc_info.value.rcvd.code == 4404
+
+
+async def test_websocket_rejects_an_oversized_message_without_persisting_or_processing_it(
+    http_client, auth_headers, keycloak_token, db_session
+):
+    """A pathological or compromised client sending a huge "content" must get a real,
+    honest error instead of that text being persisted to chat_messages and pushed
+    through the full tutor/RAG/tool-calling pipeline regardless of size -- see
+    chat.py's own MAX_USER_MESSAGE_CHARS comment. Also proves the connection survives
+    it and a normal-sized message right after still works, the same "never desyncs the
+    protocol" bar every other no-op frame in this file is held to."""
+    create_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = create_resp.json()["session_id"]
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
+
+            oversized = "x" * (chat_module.MAX_USER_MESSAGE_CHARS + 1)
+            await ws.send(json.dumps({"type": "user_message", "content": oversized}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=5)
+            frame = json.loads(raw)
+            assert frame["type"] == "error"
+            assert "too long" in frame["content"]
+
+            # The connection is still healthy -- a normal message right after still
+            # gets a normal reply, proving the protocol never desynced.
+            await ws.send(json.dumps({"type": "user_message", "content": "still there?"}))
+            saw_chunk_or_done = False
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                frame = json.loads(raw)
+                if frame["type"] == "done":
+                    saw_chunk_or_done = True
+                    break
+                if frame["type"] in ("chunk", "tool_start", "tool_end"):
+                    saw_chunk_or_done = True
+            assert saw_chunk_or_done
+
+        messages_resp = await http_client.get(
+            f"/chat/sessions/{session_id}/messages", headers=auth_headers
+        )
+        persisted = messages_resp.json()
+        # The oversized message was never persisted -- only the real, normal-sized one.
+        assert len(persisted) == 2
+        assert persisted[0]["content"] == "still there?"
+    finally:
+        session_uuid = uuid.UUID(session_id)
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.commit()
 
 
 async def test_websocket_stop_with_nothing_generating_is_a_harmless_noop(

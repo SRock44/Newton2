@@ -35,6 +35,18 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 logger = logging.getLogger("newton.chat")
 
+# A generous, real bound on one chat turn's raw text -- far beyond anything a student
+# would type or paste (tens of thousands of words), but a real, deliberate cap rather
+# than none at all. Nothing before this stopped a pathological or compromised client
+# from sending an arbitrarily large "content" repeatedly, each one persisted to
+# chat_messages and pushed through the full tutor/RAG/tool-calling pipeline regardless
+# of size -- real DB and compute cost with no server-side ceiling. This is checked here,
+# on the parsed application-level frame, which is the layer that actually knows what
+# "content" means; the Dockerfile's own --ws-max-size is the protocol-level backstop
+# for a raw frame bigger than this could ever legitimately be, so an oversized payload
+# is rejected before it even reaches app code, not just after.
+MAX_USER_MESSAGE_CHARS = 50_000
+
 # ToolActivity.phase -> outgoing WS frame "type"
 _PHASE_TO_FRAME_TYPE = {"started": "tool_start", "progress": "tool_progress", "finished": "tool_end"}
 
@@ -431,6 +443,14 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID) -> None:
                     continue
 
                 user_message = frame.get("content") or ""
+                if len(user_message) > MAX_USER_MESSAGE_CHARS:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": "That message is too long to send in one go — try breaking it into smaller pieces.",
+                        }
+                    )
+                    continue  # never persisted, never handed to the tutor pipeline
 
                 # One id per chat turn (not per connection -- a student can send many
                 # messages over the same socket), set as the ambient correlation id for
