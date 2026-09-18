@@ -680,7 +680,19 @@ async def run_tutor(
                         if get_task in done:
                             yield ToolActivity(tool=call.name, label=get_task.result(), phase="progress")
                         else:
+                            # Awaited, not fire-and-forget: cancel() only REQUESTS
+                            # cancellation, it doesn't complete it, and this runs on
+                            # every tool call in the app (not just create_artifact) --
+                            # a bare .cancel() with nothing ever retrieving the task's
+                            # outcome risks "Task was destroyed but it is pending!"
+                            # warnings if it's garbage-collected before the loop gets
+                            # back to it. Awaiting it here forces cancellation to
+                            # actually finish before this loop continues.
                             get_task.cancel()
+                            try:
+                                await get_task
+                            except asyncio.CancelledError:
+                                pass
                     # A progress update that arrived the instant before the task finished
                     # (a real race, not an edge case to ignore) is still in the queue --
                     # drain it rather than silently dropping the update.
