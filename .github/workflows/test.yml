@@ -203,11 +203,14 @@ jobs:
         working-directory: apps/desktop
         run: npm run build
 
-      # The exact system library set Tauri v2's own Linux CI docs call for -- webkit2gtk
-      # (the actual WebView engine on Linux), the appindicator/rsvg libs the tray-icon
-      # and window-decoration plugins link against, and patchelf, which tauri-bundler
-      # shells out to for Linux AppImage packaging even during a plain `cargo check`'s
-      # build-script probing.
+      # The system library set Tauri v2's own Linux CI docs call for -- webkit2gtk (the
+      # actual WebView engine on Linux), the appindicator/rsvg libs the tray-icon and
+      # window-decoration plugins link against, and patchelf, which tauri-bundler shells
+      # out to for Linux AppImage packaging even during a plain `cargo check`'s
+      # build-script probing -- plus libpipewire-0.3-dev, found missing only by actually
+      # running this in CI: webkit2gtk-4.1's own dependency chain pulls in libspa-sys
+      # (a PipeWire binding, for WebRTC screen-share support in the WebView), whose
+      # build script pkg-config-probes for it even though this app never uses it.
       - name: Install Tauri Linux build dependencies
         run: |
           sudo apt-get update
@@ -216,7 +219,8 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev
+            libssl-dev \
+            libpipewire-0.3-dev
 
       - uses: dtolnay/rust-toolchain@stable
 
