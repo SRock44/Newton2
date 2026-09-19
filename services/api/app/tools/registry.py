@@ -5,6 +5,7 @@ from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
 from app.tools.check_code_work import CheckCodeWorkTool
+from app.tools.check_proof_work import CheckProofWorkTool
 from app.tools.check_work import CheckStudentWorkTool
 from app.tools.chemistry import ChemistrySolverTool
 from app.tools.citation import CitationFormatterTool
@@ -52,6 +53,7 @@ _TOOLS: dict[str, Tool] = {
         ClassroomSyncTool(),
         CheckStudentWorkTool(),
         CheckCodeWorkTool(),
+        CheckProofWorkTool(),
         GetWeakAreasTool(),
         GetMathHintTool(),
         WriteResearchPaperTool(),
@@ -111,6 +113,12 @@ _ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
     ),
     (("sync_google_classroom",), "pulling assignments/grades from Google Classroom"),
     (("check_student_work",), "checking the student's own typed/attempted answer"),
+    (
+        ("check_proof_work",),
+        "checking the student's own written PROOF (induction/contradiction/"
+        "contrapositive/cases/direct) for structural validity and common fallacies, "
+        "verifying any real algebraic sub-steps for real",
+    ),
     (("get_weak_areas",), "finding real weak areas/exam-readiness before studying or generating"),
     (("get_math_hint",), "a leveled hint without giving the answer away"),
     (("write_research_paper",), "writing a full cited paper after an approved plan"),

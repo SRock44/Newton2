@@ -100,6 +100,7 @@ _TOOL_LABELS: dict[str, str] = {
     "sync_google_classroom": "Syncing Google Classroom",
     "check_student_work": "Checking your work",
     "check_code_work": "Running your code against tests",
+    "check_proof_work": "Checking your proof",
     "get_weak_areas": "Finding what you're weak on",
     "get_math_hint": "Working out a hint",
     "write_research_paper": "Writing your paper",
@@ -248,7 +249,19 @@ SYSTEM_PROMPT = (
     "unit_converter handles those too.\n\n"
     "When a student shares their own typed answer and asks if it's right, call "
     "check_student_work (it pinpoints exactly where their reasoning is right or "
-    "wrong) rather than re-solving and comparing yourself. When they're stuck and "
+    "wrong) rather than re-solving and comparing yourself. When they share a WRITTEN "
+    "PROOF instead (induction, contradiction, contrapositive, case analysis, direct), "
+    "call check_proof_work rather than eyeballing it or giving a bare correct/incorrect "
+    "verdict -- there is no algorithm that decides general logical validity, so its "
+    "result is explicitly split into two kinds of finding and you must keep that split "
+    "visible to the student rather than paraphrasing it away: any real algebraic "
+    "sub-step it found (an equation, an expansion) was actually verified via symbolic "
+    "math, say so in those words; the structural critique (base case/inductive step, "
+    "whether a contradiction was really derived, whether the proof secretly proves the "
+    "converse, whether cases are exhaustive, the fallacy checklist) is your careful "
+    "reasoning-based judgment, not a computed fact -- say that too, plainly, rather than "
+    "presenting both with the same confidence. Quote the exact sentence or step you're "
+    "pointing at. When they're stuck and "
     "want a nudge, call get_math_hint at the appropriate hint_level instead of "
     "giving the answer. Call get_weak_areas when asked what to study, what they're "
     "bad at, or if they're exam-ready, or before generating a new practice exam or "
