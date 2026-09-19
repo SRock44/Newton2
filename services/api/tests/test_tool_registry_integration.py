@@ -51,6 +51,7 @@ def test_all_expected_tools_are_registered():
         "get_math_hint",
         "write_research_paper",
         "create_artifact",
+        "synthesize_sources",
     }
 
 

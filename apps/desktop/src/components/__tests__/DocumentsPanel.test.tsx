@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -24,6 +24,7 @@ vi.mock("../../api", async () => {
     getDocumentContent: vi.fn(),
     updateDocumentContent: vi.fn(),
     renameDocument: vi.fn(),
+    annotateDocumentSelection: vi.fn(),
   };
 });
 
@@ -35,6 +36,7 @@ const getBillingStatus = api.getBillingStatus as ReturnType<typeof vi.fn>;
 const getDocumentContent = api.getDocumentContent as ReturnType<typeof vi.fn>;
 const updateDocumentContent = api.updateDocumentContent as ReturnType<typeof vi.fn>;
 const renameDocument = api.renameDocument as ReturnType<typeof vi.fn>;
+const annotateDocumentSelection = api.annotateDocumentSelection as ReturnType<typeof vi.fn>;
 
 const SYLLABUS = { id: "1", filename: "syllabus.pdf", mime_type: "application/pdf", created_at: "2026-01-01T00:00:00Z" };
 const NOTES = { id: "1", filename: "notes.txt", mime_type: "text/plain", created_at: "2026-01-01T00:00:00Z" };
@@ -66,6 +68,7 @@ describe("DocumentsPanel", () => {
     getDocumentContent.mockReset();
     updateDocumentContent.mockReset();
     renameDocument.mockReset();
+    annotateDocumentSelection.mockReset();
     getDocumentContent.mockResolvedValue({ content: "", editable: true });
     getBillingStatus.mockResolvedValue(FREE_BILLING_STATUS);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(new Blob(["pdf bytes"])));
@@ -670,5 +673,132 @@ describe("DocumentsPanel", () => {
     expect(input.accept).toContain(".pdf");
     expect(input.accept).toContain(".txt");
     expect(input.accept).toContain(".md");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Highlight-to-act on an uploaded document's read-only preview — reuses the SAME
+  // selection→toolbar mechanism NotepadWindow.tsx uses for a note, but the response
+  // must render as a transient popover and must NEVER be written back into the
+  // document's stored content (an uploaded reading is normally read-only).
+  // ---------------------------------------------------------------------------
+
+  function selectTextIn(node: Element) {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    // jsdom doesn't compute real layout, but getBoundingClientRect exists and the
+    // component only reads its numbers for positioning, not for correctness.
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({ top: 100, left: 50, bottom: 120, right: 200, width: 150, height: 20 }),
+    });
+  }
+
+  it("highlighting text in a document's preview shows the Explain/Define/Summarize toolbar", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([NOTES]);
+    getDocumentContent.mockResolvedValue({
+      content: "The mitochondria is the powerhouse of the cell.",
+      editable: true,
+    });
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    // List view — grid view's own thumbnail also shows a snippet of this same short
+    // mock content, which would otherwise make the text query below ambiguous.
+    await user.click(screen.getByRole("button", { name: "List view" }));
+    await user.click(await screen.findByText("notes.txt"));
+
+    const paragraph = await screen.findByText(/the mitochondria is the powerhouse/i);
+    selectTextIn(paragraph);
+
+    await act(async () => {
+      paragraph.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+
+    expect(await screen.findByRole("button", { name: "Explain" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Define" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Summarize" })).toBeInTheDocument();
+  });
+
+  it("Explain on a highlighted document passage calls the document annotate endpoint and renders a transient popover, without mutating the document", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([NOTES]);
+    const fullContent = "The mitochondria is the powerhouse of the cell.";
+    getDocumentContent.mockResolvedValue({ content: fullContent, editable: true });
+    annotateDocumentSelection.mockResolvedValue("A cell organelle that produces ATP.");
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "List view" }));
+    await user.click(await screen.findByText("notes.txt"));
+
+    const paragraph = await screen.findByText(/the mitochondria is the powerhouse/i);
+    selectTextIn(paragraph);
+    await act(async () => {
+      paragraph.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Explain" }));
+
+    await waitFor(() =>
+      expect(annotateDocumentSelection).toHaveBeenCalledWith(
+        "tok",
+        "1",
+        fullContent,
+        fullContent,
+        "explain",
+      ),
+    );
+    expect(await screen.findByText("Newton explained")).toBeInTheDocument();
+    expect(await screen.findByText("A cell organelle that produces ATP.")).toBeInTheDocument();
+
+    // Crucially: this is read-only. Nothing was written back to the document.
+    expect(updateDocumentContent).not.toHaveBeenCalled();
+    // And the popover is dismissible without affecting anything else.
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("Newton explained")).not.toBeInTheDocument();
+  });
+
+  it("shows an error banner instead of a popover when document annotation fails", async () => {
+    const user = userEvent.setup();
+    listDocuments.mockResolvedValue([NOTES]);
+    getDocumentContent.mockResolvedValue({ content: "Some real document text here.", editable: true });
+    annotateDocumentSelection.mockRejectedValue(new api.ApiError("Couldn't get a response for that selection."));
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "List view" }));
+    await user.click(await screen.findByText("notes.txt"));
+
+    const paragraph = await screen.findByText(/some real document text here/i);
+    selectTextIn(paragraph);
+    await act(async () => {
+      paragraph.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Define" }));
+
+    expect(await screen.findByText("Couldn't get a response for that selection.")).toBeInTheDocument();
+    expect(screen.queryByText("Newton defined")).not.toBeInTheDocument();
+  });
+
+  it("clears any open selection toolbar/popover when switching to a different document", async () => {
+    const user = userEvent.setup();
+    const OTHER = { id: "2", filename: "other.txt", mime_type: "text/plain", created_at: "2026-01-01T00:00:00Z" };
+    listDocuments.mockResolvedValue([NOTES, OTHER]);
+    getDocumentContent.mockResolvedValue({ content: "Some real document text here.", editable: true });
+    annotateDocumentSelection.mockResolvedValue("A short answer.");
+    render(<DocumentsPanel token="tok" onClose={() => {}} onChatAboutDocument={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "List view" }));
+    await user.click(await screen.findByText("notes.txt"));
+
+    const paragraph = await screen.findByText(/some real document text here/i);
+    selectTextIn(paragraph);
+    await act(async () => {
+      paragraph.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    await user.click(await screen.findByRole("button", { name: "Summarize" }));
+    expect(await screen.findByText("Newton summarized")).toBeInTheDocument();
+
+    await user.click(await screen.findByText("other.txt"));
+
+    expect(screen.queryByText("Newton summarized")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Summarize" })).not.toBeInTheDocument();
   });
 });

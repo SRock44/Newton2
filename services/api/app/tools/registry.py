@@ -21,6 +21,7 @@ from app.tools.research_fetch import ResearchFetchTool
 from app.tools.study_plan_generation import StudyPlanGenerationTool
 from app.tools.study_session import StudySessionTool
 from app.tools.symbolic_math import SymbolicMathTool
+from app.tools.synthesize_sources import SynthesizeSourcesTool
 from app.tools.textbook_lookup import TextbookLookupTool
 from app.tools.unit_converter import UnitConverterTool
 from app.tools.vision import VisionTool
@@ -58,6 +59,7 @@ _TOOLS: dict[str, Tool] = {
         GetMathHintTool(),
         WriteResearchPaperTool(),
         CreateArtifactTool(),
+        SynthesizeSourcesTool(),
     ]
 }
 
@@ -126,6 +128,11 @@ _ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
         ("create_artifact",),
         "building a real interactive artifact (diagram/chart/slideshow/demo) after the "
         "student confirms -- slow and expensive, never speculatively",
+    ),
+    (
+        ("synthesize_sources",),
+        "comparing/synthesizing agreement, disagreement, or how arguments build on each "
+        "other across two or more of the student's own uploaded readings",
     ),
 )
 

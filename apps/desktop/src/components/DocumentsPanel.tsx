@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import {
   ApiError,
+  annotateDocumentSelection,
   deleteDocument,
   documentBibliographyUrl,
   documentDocxUrl,
@@ -15,7 +17,7 @@ import {
   updateDocumentContent,
   uploadDocument,
 } from "../api";
-import type { BillingStatus, DocumentContent, UploadedDocument } from "../types";
+import type { BillingStatus, DocumentContent, NoteAnnotateAction, UploadedDocument } from "../types";
 import MessageContent from "./MessageContent";
 import RecentItemCard from "./RecentItemCard";
 import { documentTypeLabel, isPreviewableAsPdf } from "../lib/fileType";
@@ -23,6 +25,31 @@ import { fetchBytes, filtersForFilename, saveBytesToDisk, withExtension } from "
 import { toSnippet } from "../lib/snippet";
 import { getDocumentsViewMode, setDocumentsViewMode } from "../lib/preferences";
 import type { DocumentsViewMode } from "../lib/preferences";
+
+// Capped surrounding context sent to POST /documents/{id}/annotate — mirrors
+// NotepadWindow.tsx's ANNOTATE_CONTEXT_CHARS exactly, and matches the backend's own
+// MAX_CONTEXT_CHARS (app/services/notes.py) that annotate_selection ultimately truncates
+// to anyway.
+const ANNOTATE_CONTEXT_CHARS = 4000;
+
+const ANNOTATE_ACTION_LABELS: Record<NoteAnnotateAction, string> = {
+  explain: "Newton explained",
+  define: "Newton defined",
+  summarize: "Newton summarized",
+};
+
+interface DocSelectionToolbarState {
+  text: string;
+  top: number;
+  left: number;
+}
+
+interface DocAnnotationResultState {
+  action: NoteAnnotateAction;
+  text: string;
+  top: number;
+  left: number;
+}
 
 interface DocumentsPanelProps {
   token: string;
@@ -74,6 +101,19 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
   const [saving, setSaving] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [filenameDraft, setFilenameDraft] = useState("");
+
+  // Highlight-to-act (explain/define/summarize) for a read-only document preview — the
+  // same backend action Newton Notepad's NotepadWindow.tsx already offers for a note,
+  // reusing that same selection→toolbar mechanism, but the response renders as a
+  // transient popover near the selection rather than being inserted into the document:
+  // an uploaded reading is normally read-only, so its stored content is never mutated
+  // here (see api.ts's annotateDocumentSelection / app/routers/documents.py's
+  // POST /documents/{id}/annotate).
+  const [docSelectionToolbar, setDocSelectionToolbar] = useState<DocSelectionToolbarState | null>(null);
+  const [docAnnotating, setDocAnnotating] = useState(false);
+  const [docAnnotationResult, setDocAnnotationResult] = useState<DocAnnotationResultState | null>(null);
+  const [docAnnotationError, setDocAnnotationError] = useState<string | null>(null);
+  const docPreviewRef = useRef<HTMLDivElement>(null);
 
   // Grid (thumbnail tiles, Google Drive-style) vs. list (compact rows) — both real
   // options rather than picking one for everyone, persisted locally (see
@@ -187,6 +227,9 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     setDetailError(null);
     setFilenameDraft(selectedDoc?.filename ?? "");
     setPdfUrl(null);
+    setDocSelectionToolbar(null);
+    setDocAnnotationResult(null);
+    setDocAnnotationError(null);
     if (!selectedId) {
       setContentState({ loading: false, error: null, data: null });
       return;
@@ -394,6 +437,8 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
     if (!contentState.data) return;
     setDraftText(contentState.data.content);
     setDetailError(null);
+    setDocSelectionToolbar(null);
+    setDocAnnotationResult(null);
     setEditing(true);
   }
 
@@ -419,6 +464,50 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
   function handleChatAboutDocument(doc: UploadedDocument) {
     onChatAboutDocument(doc);
     onClose();
+  }
+
+  // Highlight-to-act: a real text selection inside the read-only extracted-text preview
+  // shows a small floating toolbar near the selection — same mechanism as
+  // NotepadWindow.tsx's handlePreviewMouseUp, reused here rather than reinvented.
+  function handleDocPreviewMouseUp(_event: ReactMouseEvent<HTMLDivElement>) {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      setDocSelectionToolbar(null);
+      return;
+    }
+    const text = selection.toString().trim();
+    if (!text || !docPreviewRef.current?.contains(selection.anchorNode)) {
+      setDocSelectionToolbar(null);
+      return;
+    }
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    setDocSelectionToolbar({ text, top: rect.top, left: rect.left });
+    setDocAnnotationResult(null);
+  }
+
+  // Unlike NotepadWindow's insertAnnotation (which writes the generated text into the
+  // note's own raw markdown, since a note is editable), an uploaded document is normally
+  // read-only — so the response here is only ever held in local state and rendered as a
+  // transient popover near the selection. The document's stored content is never
+  // touched.
+  async function handleDocAnnotate(action: NoteAnnotateAction) {
+    if (!docSelectionToolbar || !selectedDoc) return;
+    const { text, top, left } = docSelectionToolbar;
+    setDocAnnotating(true);
+    setDocAnnotationError(null);
+    setDocSelectionToolbar(null);
+    try {
+      const fullText = contentState.data?.content ?? "";
+      const context = fullText.slice(0, ANNOTATE_CONTEXT_CHARS);
+      const generated = await annotateDocumentSelection(token, selectedDoc.id, text, context, action);
+      setDocAnnotationResult({ action, text: generated, top, left });
+    } catch (err) {
+      setDocAnnotationError(
+        err instanceof ApiError ? err.message : "Couldn't get a response for that selection.",
+      );
+    } finally {
+      setDocAnnotating(false);
+    }
   }
 
   async function handleGeneratePlan(doc: UploadedDocument) {
@@ -805,8 +894,61 @@ function DocumentsPanel({ token, onClose, onChatAboutDocument, initialSelectedDo
                     <iframe className="doc-detail-pdf-frame" src={pdfUrl} title={selectedDoc.filename} />
                   </div>
                 ) : (
-                  <div className="doc-detail-body">
+                  <div
+                    className="doc-detail-body"
+                    ref={docPreviewRef}
+                    onMouseUp={handleDocPreviewMouseUp}
+                    data-testid="doc-preview-body"
+                  >
                     <MessageContent content={contentState.data?.content ?? ""} />
+                  </div>
+                )}
+
+                {docAnnotationError && <div className="banner banner--error">{docAnnotationError}</div>}
+
+                {docSelectionToolbar && (
+                  <div
+                    className="notepad-window__selection-toolbar doc-annotate-toolbar"
+                    style={{
+                      top: Math.max(docSelectionToolbar.top - 44, 4),
+                      left: Math.max(docSelectionToolbar.left, 4),
+                    }}
+                  >
+                    <button type="button" disabled={docAnnotating} onClick={() => handleDocAnnotate("explain")}>
+                      Explain
+                    </button>
+                    <button type="button" disabled={docAnnotating} onClick={() => handleDocAnnotate("define")}>
+                      Define
+                    </button>
+                    <button type="button" disabled={docAnnotating} onClick={() => handleDocAnnotate("summarize")}>
+                      Summarize
+                    </button>
+                  </div>
+                )}
+
+                {docAnnotationResult && (
+                  <div
+                    className="doc-annotate-popover"
+                    style={{
+                      top: Math.max(docAnnotationResult.top - 12, 4),
+                      left: Math.max(docAnnotationResult.left, 4),
+                    }}
+                    data-testid="doc-annotate-popover"
+                  >
+                    <div className="doc-annotate-popover__header">
+                      <span className="doc-annotate-popover__label">
+                        {ANNOTATE_ACTION_LABELS[docAnnotationResult.action]}
+                      </span>
+                      <button
+                        type="button"
+                        className="doc-annotate-popover__close"
+                        aria-label="Dismiss"
+                        onClick={() => setDocAnnotationResult(null)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="doc-annotate-popover__text">{docAnnotationResult.text}</div>
                   </div>
                 )}
               </>

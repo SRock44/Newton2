@@ -5263,6 +5263,55 @@ body.is-resizing-panel * {
   cursor: default;
 }
 
+/* ---------- Documents panel highlight-to-act (read-only transient popover) ----------
+ * Reuses .notepad-window__selection-toolbar as-is for the floating Explain/Define/
+ * Summarize buttons (see .doc-annotate-toolbar above, applied alongside it) -- only the
+ * RESULT card below is new, since a document's response is never inserted into the
+ * document the way NotepadWindow inserts one into an editable note. */
+
+.doc-annotate-popover {
+  position: fixed;
+  z-index: 20;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  background-color: var(--color-success-tint);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.doc-annotate-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.doc-annotate-popover__label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+.doc-annotate-popover__close {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  line-height: 1;
+  padding: 0 var(--space-1);
+}
+
+.doc-annotate-popover__text {
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-relaxed);
+  white-space: pre-wrap;
+}
+
 /* ---------- Responsive ----------
  * The window is freely resizable. The two flanking panels (Sidebar,
  * ContextPanel) are supplementary to the chat itself, so they're what

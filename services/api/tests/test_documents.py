@@ -11,6 +11,8 @@ from app.db.models import ChatMessage, ChatSession, Document, DocumentChunk, Use
 from app.memory import rag as rag_memory
 from app.memory import working as working_memory
 from app.services import documents as documents_service
+from app.services import notes as notes_service
+from tests.fakes import ScriptedToolCallingProvider
 
 WS_BASE_URL = "ws://localhost:8000"
 
@@ -403,3 +405,165 @@ async def test_content_endpoints_404_for_another_users_document(
     assert (
         await http_client.patch(f"/documents/{doc_id}", headers=auth_headers, json={"filename": "x"})
     ).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /documents/{id}/annotate -- highlight-to-act generalized from a note to an
+# uploaded document. Proves this is the SAME app.services.notes.annotate_selection
+# logic notes.py's own /notes/{id}/annotate endpoint calls (not a duplicated copy) by
+# comparing behavior/output shape against test_notes.py's equivalent assertions, and by
+# monkeypatching notes_service (not a separate documents-specific module) to prove the
+# document endpoint really goes through that one shared function.
+# ---------------------------------------------------------------------------
+
+
+async def test_annotate_document_router_calls_the_real_notes_annotate_selection_function(
+    db_session, monkeypatch
+):
+    """Proves app/routers/documents.py's POST /documents/{id}/annotate calls the exact
+    SAME app.services.notes.annotate_selection function notes.py's own endpoint calls --
+    not a forked/duplicated copy -- by calling the router coroutine directly, in-process,
+    with a monkeypatched notes_service.get_provider.
+
+    Deliberately NOT via http_client: the hermetic suite's http_client hits a REAL,
+    separate uvicorn subprocess (see conftest.py), so a monkeypatch in this test process
+    would be invisible to it -- exactly the reasoning test_notes.py's own
+    test_annotate_selection_returns_generated_text_for_each_action gives for calling
+    annotate_selection directly rather than over HTTP. This test goes one level up (the
+    router coroutine itself, not just the service function) specifically to prove the
+    documents.py endpoint's wiring, not just that annotate_selection works in isolation
+    (test_notes.py already proves that)."""
+    from app.routers import documents as documents_router
+
+    user = User(keycloak_sub=f"test-doc-annotate-{uuid.uuid4()}")
+    db_session.add(user)
+    await db_session.flush()
+    document = Document(
+        user_id=user.id, filename="calc-notes.txt", mime_type="text/plain", minio_key="unused/doc-annotate"
+    )
+    db_session.add(document)
+    await db_session.commit()
+    claims = {"sub": user.keycloak_sub}
+
+    try:
+        for action, canned in (
+            ("explain", "This means the derivative measures instantaneous rate of change."),
+            ("define", "Derivative: the instantaneous rate of change of a function."),
+            ("summarize", "The passage defines a derivative as a rate of change."),
+        ):
+            fake = ScriptedToolCallingProvider([[canned]])
+            monkeypatch.setattr(notes_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+            result = await documents_router.annotate_document(
+                document.id,
+                documents_router.DocumentAnnotateRequest(
+                    selected_text="the derivative",
+                    context="In calculus, the derivative describes how a function changes.",
+                    action=action,
+                ),
+                claims=claims,
+                db=db_session,
+            )
+
+            # Same {"text": ...} response shape as POST /notes/{id}/annotate, and the
+            # exact canned text -- proving the router really called through to the
+            # monkeypatched notes_service.get_provider (only possible if it's calling
+            # the SAME function object, not a duplicated implementation).
+            assert result == {"text": canned}
+            # One system+user turn, no tool belt, no chat history -- annotate_selection's
+            # own real shape (see test_notes.py's equivalent assertion).
+            assert len(fake.calls_seen) == 1
+            assert [t.role for t in fake.calls_seen[0]["messages"]] == ["system", "user"]
+    finally:
+        await documents_service.delete_document(db_session, document)
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.commit()
+
+
+async def test_annotate_document_endpoint_returns_a_reasonably_scoped_response_over_http(
+    http_client, auth_headers, db_session
+):
+    """A real HTTP round-trip through the router (upload, auth, ownership check, JSON
+    shape) against the real deployed provider -- deliberately doesn't assert exact
+    wording (unlike the in-process test above, this hits whatever real model is actually
+    configured), just that the endpoint wires up correctly end to end, mirroring
+    test_notes.py's own test_annotate_endpoint_returns_a_reasonably_scoped_response_over_http."""
+    upload_resp = await http_client.post(
+        "/documents/upload",
+        headers=auth_headers,
+        files={"file": ("calc-notes-2.txt", b"The derivative measures instantaneous rate of change.", "text/plain")},
+    )
+    assert upload_resp.status_code == 200, upload_resp.text
+    document_id = upload_resp.json()["id"]
+
+    resp = await http_client.post(
+        f"/documents/{document_id}/annotate",
+        headers=auth_headers,
+        json={
+            "selected_text": "the derivative",
+            "context": "In calculus, the derivative describes how a function changes.",
+            "action": "explain",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert isinstance(resp.json()["text"], str) and resp.json()["text"].strip()
+
+    document = await db_session.get(Document, uuid.UUID(document_id))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_annotate_document_never_mutates_the_documents_stored_content(
+    http_client, auth_headers, db_session
+):
+    """Unlike a note (editable, so the generated text is inserted inline), an uploaded
+    document is normally read-only -- annotating it must never change what
+    GET /documents/{id}/content returns afterward."""
+    original_content = "Photosynthesis converts light energy into chemical energy."
+    upload_resp = await http_client.post(
+        "/documents/upload",
+        headers=auth_headers,
+        files={"file": ("bio-notes.txt", original_content.encode(), "text/plain")},
+    )
+    document_id = upload_resp.json()["id"]
+
+    annotate_resp = await http_client.post(
+        f"/documents/{document_id}/annotate",
+        headers=auth_headers,
+        json={"selected_text": "Photosynthesis", "context": original_content, "action": "define"},
+    )
+    assert annotate_resp.status_code == 200, annotate_resp.text
+    assert isinstance(annotate_resp.json()["text"], str) and annotate_resp.json()["text"].strip()
+
+    content_resp = await http_client.get(f"/documents/{document_id}/content", headers=auth_headers)
+    assert content_resp.json()["content"] == original_content
+
+    document = await db_session.get(Document, uuid.UUID(document_id))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_annotate_document_rejects_invalid_action(http_client, auth_headers, db_session):
+    upload_resp = await http_client.post(
+        "/documents/upload",
+        headers=auth_headers,
+        files={"file": ("bad-action.txt", b"some content", "text/plain")},
+    )
+    document_id = upload_resp.json()["id"]
+
+    resp = await http_client.post(
+        f"/documents/{document_id}/annotate",
+        headers=auth_headers,
+        json={"selected_text": "x", "context": "y", "action": "rewrite"},
+    )
+    assert resp.status_code == 422
+
+    document = await db_session.get(Document, uuid.UUID(document_id))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_annotate_document_404s_for_another_users_document(someone_elses_document, http_client, auth_headers):
+    resp = await http_client.post(
+        f"/documents/{someone_elses_document.id}/annotate",
+        headers=auth_headers,
+        json={"selected_text": "x", "context": "y", "action": "explain"},
+    )
+    assert resp.status_code == 404

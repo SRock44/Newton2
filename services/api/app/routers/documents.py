@@ -20,6 +20,7 @@ from app.services.documents import (
     update_document_content,
     upload_document,
 )
+from app.services.notes import AnnotateAction, annotate_selection
 from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -31,6 +32,12 @@ class DocumentContentUpdate(BaseModel):
 
 class DocumentRename(BaseModel):
     filename: str
+
+
+class DocumentAnnotateRequest(BaseModel):
+    selected_text: str
+    context: str
+    action: AnnotateAction
 
 
 def _has_bibliography(document: Document) -> bool:
@@ -117,6 +124,34 @@ async def get_content(
     document = await _get_owned_document(db, document_id, user.id)
     content = await get_document_text(document)
     return {"content": content, "editable": is_editable(document)}
+
+
+@router.post("/{document_id}/annotate")
+async def annotate_document(
+    document_id: uuid.UUID,
+    body: DocumentAnnotateRequest,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Highlight-to-act for an uploaded document — the SAME explain/define/summarize
+    logic Newton Notepad's POST /notes/{id}/annotate already uses (see
+    app.services.notes.annotate_selection), generalized to accept a document reference
+    instead of only a note. This is deliberately NOT a fork: it imports and calls the
+    exact same stateless function notes.py's endpoint calls, over exactly the
+    selected_text/context the frontend sends for whatever passage was highlighted in the
+    document's read-only preview pane.
+
+    Unlike a note, a document's stored content is never mutated by this endpoint (or by
+    the frontend that calls it) — an uploaded reading is normally read-only, so the
+    generated response is meant to render as a transient popover near the selection, not
+    be written back into the document. Ownership is checked exactly like every other
+    per-document endpoint (_get_owned_document), and works for ANY document kind the
+    student owns (a plain upload, a generated artifact, even a note reached this way) —
+    there's no reason to restrict this action to uploads only."""
+    user = await get_or_create_user(db, claims)
+    await _get_owned_document(db, document_id, user.id)
+    text = await annotate_selection(body.selected_text, body.context, body.action)
+    return {"text": text}
 
 
 @router.get("/{document_id}/raw")

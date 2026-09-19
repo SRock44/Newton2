@@ -71,3 +71,44 @@ async def retrieve_relevant_chunks(
         .limit(top_k)
     )
     return list((await db.execute(stmt)).scalars())
+
+
+async def retrieve_relevant_chunks_for_document(
+    db: AsyncSession, user_id: uuid.UUID, document_id: uuid.UUID, query: str, top_k: int = 4
+) -> list[DocumentChunk]:
+    """Same nearest-neighbor search as retrieve_relevant_chunks, but scoped to ONE
+    document rather than the whole account -- what app.services.synthesis uses to pull
+    REAL, on-topic chunks from EACH source document in a multi-document synthesis,
+    instead of a single merged top-k where one document's chunks could crowd every
+    other source out entirely. Still joins through Document and checks user_id (not
+    just document_id) for the same cross-account-leak reason retrieve_relevant_chunks
+    does, even though callers are expected to have already resolved document_id from
+    this same user's own library."""
+    query_embedding = await embed_text(query)
+    stmt = (
+        select(DocumentChunk)
+        .join(Document, DocumentChunk.document_id == Document.id)
+        .where(Document.user_id == user_id, DocumentChunk.document_id == document_id)
+        .order_by(DocumentChunk.embedding.cosine_distance(query_embedding))
+        .limit(top_k)
+    )
+    return list((await db.execute(stmt)).scalars())
+
+
+async def get_representative_chunks(
+    db: AsyncSession, user_id: uuid.UUID, document_id: uuid.UUID, limit: int = 4
+) -> list[DocumentChunk]:
+    """A document's own first `limit` chunks, in original chunk_index order -- used
+    instead of a vector search when there's no topic/query to rank by (see
+    app.services.synthesis's no-topic path). The start of a document is a reasonable,
+    deterministic stand-in for "what this source is about" (an intro/thesis/abstract
+    for an essay, the opening argument for an article) without the arbitrariness of
+    embedding a generic filler query and ranking against it."""
+    stmt = (
+        select(DocumentChunk)
+        .join(Document, DocumentChunk.document_id == Document.id)
+        .where(Document.user_id == user_id, DocumentChunk.document_id == document_id)
+        .order_by(DocumentChunk.chunk_index.asc())
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars())

@@ -243,6 +243,30 @@ export function documentDocxUrl(documentId: string): string {
   return `${API_URL}/documents/${documentId}/export.docx`;
 }
 
+/** Highlight-to-act for an uploaded document — the SAME backend explain/define/
+ * summarize logic annotateNoteSelection above calls (see
+ * app/routers/documents.py's POST /documents/{id}/annotate, which imports and calls the
+ * exact same app.services.notes.annotate_selection notes.py's endpoint does). Unlike a
+ * note, the response here is never written back into the document: DocumentsPanel
+ * renders it as a transient popover near the selection, since an uploaded reading is
+ * normally read-only. */
+export async function annotateDocumentSelection(
+  token: string,
+  documentId: string,
+  selectedText: string,
+  context: string,
+  action: NoteAnnotateAction,
+): Promise<string> {
+  const res = await fetch(`${API_URL}/documents/${documentId}/annotate`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ selected_text: selectedText, context, action }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't get a response for that selection."));
+  const data = await res.json();
+  return data.text as string;
+}
+
 export async function updateDocumentContent(
   token: string,
   documentId: string,
