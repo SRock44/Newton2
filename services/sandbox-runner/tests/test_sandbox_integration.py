@@ -42,6 +42,28 @@ def execute(code: str, stdin: str | None = None, client_timeout: float = 25.0) -
         return json.loads(resp.read().decode("utf-8"))
 
 
+def run_code(
+    files: dict,
+    entrypoint: str,
+    test_file: str | None = None,
+    stdin: str | None = None,
+    client_timeout: float = 30.0,
+) -> dict:
+    payload = {"files": files, "entrypoint": entrypoint}
+    if test_file is not None:
+        payload["test_file"] = test_file
+    if stdin is not None:
+        payload["stdin"] = stdin
+    req = urllib.request.Request(
+        f"{BASE_URL}/run-code",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=client_timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def health() -> bool:
     try:
         with urllib.request.urlopen(f"{BASE_URL}/health", timeout=5) as resp:
@@ -193,6 +215,183 @@ def test_no_state_leak_between_requests() -> None:
     )
 
 
+# ---------------------------------------------------------------------------------
+# POST /run-code -- multi-file submissions, optionally under pytest. The whole point of
+# these is that /run-code must be sandboxed EXACTLY as tightly as /execute: the
+# timeout/memory/network checks below deliberately mirror the /execute ones above, so a
+# future change that loosens limits on the multi-file path fails here loudly.
+# ---------------------------------------------------------------------------------
+
+_ADD_TESTS = (
+    "from solution import add\n\n"
+    "def test_positives():\n    assert add(2, 3) == 5\n\n"
+    "def test_negatives():\n    assert add(-1, -1) == -2\n"
+)
+
+
+def test_run_code_correct_submission_passes_all_tests() -> None:
+    r = run_code(
+        {"solution.py": "def add(a, b):\n    return a + b\n"},
+        "solution.py",
+        test_file=_ADD_TESTS,
+    )
+    names = {t["name"].split("::")[-1]: t["outcome"] for t in r["tests"]}
+    check(
+        "run_code_all_tests_pass",
+        r["ok"] and r["passed"] == 2 and r["failed"] == 0 and names.get("test_positives") == "passed",
+        f"exit_code={r['exit_code']} passed={r['passed']} failed={r['failed']} tests={names}",
+    )
+
+
+def test_run_code_buggy_submission_fails_the_right_test_with_a_real_assertion() -> None:
+    r = run_code(
+        {"solution.py": "def add(a, b):\n    return abs(a + b)\n"},
+        "solution.py",
+        test_file=_ADD_TESTS,
+    )
+    by_name = {t["name"].split("::")[-1]: t for t in r["tests"]}
+    failing = by_name.get("test_negatives", {})
+    check(
+        "run_code_buggy_fails_specific_test",
+        r["passed"] == 1 and r["failed"] == 1 and failing.get("outcome") == "failed",
+        f"passed={r['passed']} failed={r['failed']} outcomes={ {k: v['outcome'] for k, v in by_name.items()} }",
+    )
+    check(
+        "run_code_failure_carries_the_real_assertion_text",
+        "assert 2 == -2" in failing.get("message", ""),
+        f"message={failing.get('message', '')!r}",
+    )
+
+
+def test_run_code_multi_file_import_works() -> None:
+    r = run_code(
+        {
+            "main.py": "from utils import double\n\ndef triple(n):\n    return double(n) + n\n",
+            "utils.py": "def double(n):\n    return n * 2\n",
+        },
+        "main.py",
+        test_file=(
+            "from main import triple\nfrom utils import double\n\n"
+            "def test_double():\n    assert double(4) == 8\n\n"
+            "def test_triple_uses_double():\n    assert triple(4) == 12\n"
+        ),
+    )
+    check(
+        "run_code_multi_file_import",
+        r["ok"] and r["passed"] == 2 and r["failed"] == 0,
+        f"exit_code={r['exit_code']} passed={r['passed']} failed={r['failed']} stdout={r['stdout']!r}",
+    )
+
+
+def test_run_code_script_mode_multi_file() -> None:
+    r = run_code(
+        {"main.py": "from utils import greet\n\nprint(greet('world'))\n", "utils.py": "def greet(n):\n    return 'hi ' + n\n"},
+        "main.py",
+    )
+    check(
+        "run_code_script_mode_multi_file",
+        r["ok"] and r["exit_code"] == 0 and "hi world" in r["stdout"] and r["mode"] == "script",
+        f"exit_code={r['exit_code']} stdout={r['stdout']!r} stderr={r['stderr']!r}",
+    )
+
+
+def test_run_code_syntax_error_is_reported_as_a_collection_error() -> None:
+    r = run_code({"solution.py": "def add(a, b)\n    return a + b\n"}, "solution.py", test_file=_ADD_TESTS)
+    joined = " ".join(t.get("message", "") for t in r["tests"])
+    check(
+        "run_code_syntax_error_surfaces",
+        r["errors"] >= 1 and "SyntaxError" in joined,
+        f"errors={r['errors']} passed={r['passed']} tests={[(t['name'], t['outcome']) for t in r['tests']]}",
+    )
+
+
+def test_run_code_infinite_loop_killed_by_the_same_limits_as_execute() -> None:
+    start = time.monotonic()
+    r = run_code(
+        {"solution.py": "def spin():\n    while True:\n        pass\n"},
+        "solution.py",
+        test_file="from solution import spin\n\ndef test_spin():\n    spin()\n",
+        client_timeout=40.0,
+    )
+    elapsed = time.monotonic() - start
+    check(
+        "run_code_infinite_loop_killed",
+        r["exit_code"] != 0 and r["passed"] == 0,
+        f"elapsed={elapsed:.1f}s exit_code={r['exit_code']} timed_out={r['timed_out']} passed={r['passed']}",
+    )
+    check(
+        "run_code_infinite_loop_killed_promptly",
+        elapsed < 20.0,
+        f"elapsed={elapsed:.1f}s (must be bounded by the SAME ~10s watchdog / 5s RLIMIT_CPU as /execute)",
+    )
+    check("service_alive_after_run_code_infinite_loop", health(), "GET /health after a run-code infinite loop")
+
+
+def test_run_code_memory_bomb_killed() -> None:
+    r = run_code(
+        {"solution.py": "def hog():\n    x = bytearray(2 * 1024 * 1024 * 1024)\n    return len(x)\n"},
+        "solution.py",
+        test_file="from solution import hog\n\ndef test_hog():\n    assert hog() > 0\n",
+        client_timeout=30.0,
+    )
+    check(
+        "run_code_memory_bomb_rejected",
+        r["passed"] == 0 and r["exit_code"] != 0,
+        f"exit_code={r['exit_code']} passed={r['passed']} failed={r['failed']} errors={r['errors']}",
+    )
+
+
+def test_run_code_network_isolation_holds_on_the_multi_file_path() -> None:
+    r = run_code(
+        {
+            "main.py": "from net import reach\n\nprint(reach())\n",
+            "net.py": (
+                "import socket\n\n"
+                "def reach():\n"
+                "    try:\n"
+                "        socket.setdefaulttimeout(4)\n"
+                "        s = socket.create_connection(('8.8.8.8', 53), timeout=4)\n"
+                "        s.close()\n"
+                "        return 'REACHED'\n"
+                "    except Exception as exc:\n"
+                "        return 'BLOCKED:' + type(exc).__name__\n"
+            ),
+        },
+        "main.py",
+        client_timeout=30.0,
+    )
+    check(
+        "run_code_network_egress_blocked",
+        "BLOCKED:" in r["stdout"] and r["stdout"].strip() != "REACHED",
+        f"exit_code={r['exit_code']} stdout={r['stdout']!r} stderr={r['stderr']!r}",
+    )
+
+
+def test_run_code_rejects_path_traversal_and_reserved_names() -> None:
+    r = run_code({"../escape.py": "print(1)"}, "../escape.py")
+    check(
+        "run_code_rejects_path_traversal",
+        r["ok"] is False and "invalid filename" in (r["error"] or ""),
+        f"ok={r['ok']} error={r['error']!r}",
+    )
+    r2 = run_code({"test_newton_check.py": "print(1)"}, "test_newton_check.py")
+    check(
+        "run_code_rejects_reserved_filename",
+        r2["ok"] is False and "reserved" in (r2["error"] or ""),
+        f"ok={r2['ok']} error={r2['error']!r}",
+    )
+
+
+def test_run_code_leaves_no_state_between_requests() -> None:
+    run_code({"main.py": "open('leftover.txt', 'w').write('x')\nprint('wrote')"}, "main.py")
+    r = run_code({"main.py": "import os\nprint(sorted(os.listdir('.')))"}, "main.py")
+    check(
+        "run_code_no_state_leak",
+        "leftover.txt" not in r["stdout"] and "main.py" in r["stdout"],
+        f"stdout={r['stdout']!r}",
+    )
+
+
 def main() -> int:
     print(f"Testing sandbox-runner at {BASE_URL}\n")
     if not health():
@@ -207,6 +406,17 @@ def main() -> int:
     test_network_isolation()
     test_memory_limit_enforced()
     test_no_state_leak_between_requests()
+
+    test_run_code_correct_submission_passes_all_tests()
+    test_run_code_buggy_submission_fails_the_right_test_with_a_real_assertion()
+    test_run_code_multi_file_import_works()
+    test_run_code_script_mode_multi_file()
+    test_run_code_syntax_error_is_reported_as_a_collection_error()
+    test_run_code_infinite_loop_killed_by_the_same_limits_as_execute()
+    test_run_code_memory_bomb_killed()
+    test_run_code_network_isolation_holds_on_the_multi_file_path()
+    test_run_code_rejects_path_traversal_and_reserved_names()
+    test_run_code_leaves_no_state_between_requests()
 
     print("\n--- Summary ---")
     passed = sum(1 for _, ok, _ in results if ok)

@@ -1,3 +1,10 @@
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 pydantic==2.13.5
+# Runtime dependency, not a dev/test one: POST /run-code executes a student's submission
+# under pytest inside the sandbox to produce real per-test pass/fail results. Pinned to
+# the same version services/api uses so a failure mode seen in one is reproducible in the
+# other. Deliberately NOT pytest-json-report (or any other plugin): the per-test JSON
+# comes from a small generated plugin in app/main.py, keeping this image's new
+# dependency surface to exactly one package.
+pytest==8.3.4

@@ -6,7 +6,7 @@ Related: [`architecture.md`](./architecture.md) (system topology + chat-turn seq
 
 ## Tool belt at a glance
 
-21 registered tools + 1 meta-tool (`use_capability`) + 2 voice service clients (not LLM-callable).
+22 registered tools + 1 meta-tool (`use_capability`) + 2 voice service clients (not LLM-callable).
 
 | Tool (`name`) | File | Route | Cost / gate |
 |---|---|---|---|
@@ -28,6 +28,7 @@ Related: [`architecture.md`](./architecture.md) (system topology + chat-turn seq
 | `start_study_session` | `tools/study_session.py` | on-demand | **Pro-only**, writes all three above concurrently |
 | `sync_google_classroom` | `tools/classroom_sync.py` | on-demand | free, needs connected Classroom OAuth |
 | `check_student_work` | `tools/check_work.py` | on-demand | free, local SymPy verification |
+| `check_code_work` | `tools/check_code_work.py` | on-demand | free, `sandbox-runner` service (`POST /run-code`) |
 | `get_weak_areas` | `tools/get_weak_areas.py` | on-demand | free, reads real performance tables |
 | `get_math_hint` | `tools/math_hint.py` | on-demand | free, local SymPy-grounded hints |
 | `write_research_paper` | `tools/write_research_paper.py` | on-demand | **Pro-only + Focus-Mode-blocked**, most expensive (search+fetch+provider calls per section + LaTeX compile) |
@@ -70,7 +71,7 @@ flowchart LR
         O2["research_fetch / textbook_lookup"]
         O3["grammar_check / format_citation"]
         O4["generate_flashcards / generate_practice_exam / generate_study_plan"]
-        O5["sync_google_classroom / check_student_work / get_weak_areas / get_math_hint"]
+        O5["sync_google_classroom / check_student_work / check_code_work / get_weak_areas / get_math_hint"]
         O6["start_study_session / write_research_paper / create_artifact"]
     end
     subgraph Deterministic["Never via use_capability"]
@@ -419,6 +420,27 @@ flowchart TD
     CMP -- "unparseable student final" --> FALL["Ground truth + ask model to walk steps"]
     CMP -- "match" --> CORR["CORRECT, brief encouragement, no re-derive"]
     CMP -- "mismatch" --> INC["INCORRECT + true answer + quote diverging step"]
+```
+
+## 17b. `check_code_work` — run the student's own code, report what really happened
+
+The code counterpart of `check_student_work`, and the same pedagogical inverse of `code_interpreter`: it verifies a student's own Python rather than producing code for them. Posts the whole submission (one or more files, unmodified) to `sandbox-runner`'s `POST /run-code` — the multi-file sibling of `/execute`, sharing its `_run_limited` helper and therefore its exact rlimits, ~10s process-group wall-clock watchdog, concurrency semaphore and per-request scratch wipe (no separate, looser budget, unlike `/compile-latex`). With a `test_file`, the sandbox runs pytest and returns **real per-test rows** (nodeid, outcome, pytest's own `longrepr`) collected by a generated `-p _newton_report` plugin rather than by parsing terminal output; without one, it just executes `entrypoint` and returns real stdout/stderr/exit code. The response never layers a model verdict over that: it states the real pass/fail counts, prints the real assertion/traceback per failing test, and instructs the tutor in plain language never to rewrite the student's code or report results from code it changed. Writing `test_file` from the assignment description is explicitly allowed; writing the solution is not.
+
+**Scope: Python only.** Java/C/C++ would need real compiler toolchains in the `sandbox-runner` image plus a per-language compile-then-run step with its own security review — a deliberate, documented deferral, not an oversight (see the module docstring and `services/sandbox-runner/README.md`).
+
+```mermaid
+flowchart TD
+    M["Model calls check_code_work\nfiles, entrypoint, test_file?"] --> VAL{"files non-empty,\nentrypoint one of them?"}
+    VAL -- no --> ERR["Error: ... (never a verdict)"]
+    VAL -- yes --> POST["POST sandbox_runner_url/run-code"]
+    POST -- "timeout / HTTP error" --> ERR2["Error: could not reach sandbox-runner"]
+    POST --> SBX["Validate filenames (no .., no reserved names)\nwrite files byte-for-byte to fresh scratch dir"]
+    SBX -- "test_file given" --> PYT["python3 -E -s -m pytest -p _newton_report\nunder /execute's rlimits + watchdog"]
+    SBX -- "no test_file" --> SCR["python3 -E -s entrypoint"]
+    PYT --> ROWS["Per-test rows from pytest's own reports\n+ collection errors"]
+    ROWS --> FMT1["ALL N PASSED (hedged: these tests, not all inputs)\nor TESTS FAILED: counts + real assertion text\n+ 'do not write their code for them'"]
+    SCR --> FMT2["Exit code / timed out / real stdout+stderr\n+ 'ran' is not 'correct'"]
+    PYT -- "killed by watchdog/RLIMIT_CPU" --> TO["TIMED OUT: never terminated"]
 ```
 
 ## 18. `get_weak_areas` — real performance data

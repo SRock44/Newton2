@@ -4,6 +4,7 @@ from typing import Awaitable, Callable
 from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
+from app.tools.check_code_work import CheckCodeWorkTool
 from app.tools.check_work import CheckStudentWorkTool
 from app.tools.chemistry import ChemistrySolverTool
 from app.tools.citation import CitationFormatterTool
@@ -50,6 +51,7 @@ _TOOLS: dict[str, Tool] = {
         StudyPlanGenerationTool(),
         ClassroomSyncTool(),
         CheckStudentWorkTool(),
+        CheckCodeWorkTool(),
         GetWeakAreasTool(),
         GetMathHintTool(),
         WriteResearchPaperTool(),
@@ -92,7 +94,12 @@ _ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
         "any real chemistry computation -- balancing an equation, stoichiometry, PV=nRT, pH",
     ),
     (("plot_function",), "graphing a function/equation, incl. slider-enabled variants"),
-    (("code_interpreter",), "running or testing real code"),
+    (("code_interpreter",), "running or testing your OWN scratch code"),
+    (
+        ("check_code_work",),
+        "running the STUDENT'S own code (one or more files) against real tests and "
+        "reporting per-test pass/fail -- never writing or fixing their code",
+    ),
     (("research_fetch",), "reading one specific URL/source in full"),
     (("textbook_lookup",), "looking up a textbook definition or passage"),
     (("start_study_session",), "a full plan+flashcards+exam study session in one shot"),

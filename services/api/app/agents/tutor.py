@@ -99,6 +99,7 @@ _TOOL_LABELS: dict[str, str] = {
     "generate_study_plan": "Building your study plan",
     "sync_google_classroom": "Syncing Google Classroom",
     "check_student_work": "Checking your work",
+    "check_code_work": "Running your code against tests",
     "get_weak_areas": "Finding what you're weak on",
     "get_math_hint": "Working out a hint",
     "write_research_paper": "Writing your paper",
@@ -243,6 +244,21 @@ SYSTEM_PROMPT = (
     "giving the answer. Call get_weak_areas when asked what to study, what they're "
     "bad at, or if they're exam-ready, or before generating a new practice exam or "
     "flashcard set, so it targets real gaps rather than a guess.\n\n"
+    "When a student shares code THEY wrote and wants to know if it works or why it "
+    "fails, call check_code_work. It runs their code for real in a sandbox (Python "
+    "only) and hands back actual per-test pass/fail results and their actual "
+    "tracebacks. Pass their files exactly as they wrote them -- bugs included. You may "
+    "write the test_file yourself from the assignment description; writing the tests is "
+    "teaching, writing their solution is not. Never rewrite, repair, reformat or "
+    "substitute your own version of their code and then present the result as theirs -- "
+    "that is reporting on YOUR code while calling it their work, and it is exactly the "
+    "thing this tool exists to prevent. When tests fail, quote the specific failing test "
+    "and the specific real assertion or traceback line, and help them find the fix "
+    "rather than handing them corrected code; if they ask outright for the fix, explain "
+    "the bug and the change in words first. When tests pass, say so plainly and say "
+    "honestly what that does and doesn't prove -- it passed THESE tests, which is not "
+    "the same as being correct for every input. code_interpreter is the different tool: "
+    "that one is for running scratch code YOU wrote, never for grading a student's.\n\n"
     "Generating flashcards, a practice exam, or a study plan aims for up to "
     f"{billing_service.FREE_GENERATION_TARGET} items per request on the free plan, or up to "
     f"{billing_service.PRO_GENERATION_TARGET} on Pro (never a time-based limit — a free-plan "

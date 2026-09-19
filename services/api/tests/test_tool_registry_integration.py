@@ -45,6 +45,7 @@ def test_all_expected_tools_are_registered():
         "generate_study_plan",
         "sync_google_classroom",
         "check_student_work",
+        "check_code_work",
         "get_weak_areas",
         "get_math_hint",
         "write_research_paper",

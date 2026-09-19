@@ -26,6 +26,21 @@ wall-clock budget and its own rlimit ceilings (see LATEX_* tunables below) becau
 multi-pass LaTeX+biber compile legitimately needs more CPU time, open files, and memory
 than a short Python script does — reusing the tighter SANDBOX_* numbers would just make
 every real compile fail.
+
+`POST /run-code` is the multi-file sibling of `/execute`, backing the API's
+`check_code_work` tool (services/api/app/tools/check_code_work.py): it materializes a
+whole submission (several files) into the same kind of throwaway scratch dir and either
+runs one of them as a script or runs a pytest test file against them, returning REAL
+per-test outcomes. It runs under the IDENTICAL SANDBOX_* rlimits, wall-clock watchdog and
+scratch-wipe as `/execute` — deliberately no separate, looser budget, unlike the LaTeX
+endpoint (see `_limit_child` usage below and the "identical limits" note on
+`_run_code_sync`).
+
+SCOPE (deliberate): `/run-code` is Python-only. Running a student's Java/C/C++/Rust
+submission would mean adding real compiler toolchains (a JDK, gcc/clang, ...) to this
+image and a per-language compile+run step with its own failure modes — a genuine,
+separate piece of work, not a small extension of this one. It is not attempted here and
+nothing in this service claims to support it.
 """
 
 from __future__ import annotations
@@ -33,8 +48,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import json
 import logging
 import os
+import re
 import resource
 import shutil
 import signal
@@ -62,6 +79,31 @@ MAX_OUTPUT_BYTES = int(os.environ.get("SANDBOX_MAX_OUTPUT_BYTES", str(1024 * 102
 # see README for the required `tmpfs` mount at /tmp.
 SCRATCH_BASE = Path(os.environ.get("SANDBOX_SCRATCH_BASE", "/tmp/sandbox-scratch"))
 MAX_CONCURRENCY = int(os.environ.get("SANDBOX_MAX_CONCURRENCY", "4"))
+
+# --- /run-code (multi-file) tunables ---------------------------------------------
+# NOTE these are about the SHAPE of a submission (how many files, how big), never about
+# how much CPU/memory/wall-clock it gets: /run-code deliberately reuses the SANDBOX_*
+# limits and `_limit_child` above verbatim, so a multi-file submission is sandboxed
+# exactly as tightly as a one-liner sent to /execute.
+MAX_SUBMITTED_FILES = int(os.environ.get("SANDBOX_MAX_SUBMITTED_FILES", "20"))
+MAX_SUBMITTED_BYTES = int(os.environ.get("SANDBOX_MAX_SUBMITTED_BYTES", str(256 * 1024)))
+MAX_PATH_DEPTH = int(os.environ.get("SANDBOX_MAX_PATH_DEPTH", "3"))
+MAX_TEST_MESSAGE_CHARS = int(os.environ.get("SANDBOX_MAX_TEST_MESSAGE_CHARS", "4000"))
+MAX_TESTS_REPORTED = int(os.environ.get("SANDBOX_MAX_TESTS_REPORTED", "200"))
+
+# Names this service writes into the scratch dir itself. A submission is refused if it
+# uses one of them, rather than either side silently clobbering the other -- the whole
+# contract of this endpoint is that the submitted files are run EXACTLY as given.
+TEST_FILENAME = "test_newton_check.py"
+PLUGIN_MODULE = "_newton_report"
+PLUGIN_FILENAME = f"{PLUGIN_MODULE}.py"
+RESULTS_FILENAME = "_newton_results.jsonl"
+RESERVED_FILENAMES = frozenset({TEST_FILENAME, PLUGIN_FILENAME, RESULTS_FILENAME})
+
+# One path segment: ordinary source-file characters only. No absolute paths, no drive
+# letters, no backslashes, no "..", no leading dot/dash -- checked segment by segment in
+# `_validate_submission` rather than trusting a single `resolve()` at write time.
+_SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 # --- LaTeX-specific tunables (independent of the SANDBOX_* ones above; see module
 # docstring for why /compile-latex needs its own, more generous numbers) ------------
@@ -102,6 +144,42 @@ class ExecuteResponse(BaseModel):
     timed_out: bool
 
 
+class RunCodeRequest(BaseModel):
+    """A whole submission, not a single snippet. `files` maps a relative filename to its
+    exact content; `entrypoint` names which of them is the student's main module;
+    `test_file`, when present, is the CONTENT of a pytest-style test module written
+    against those files. This service never edits, formats or repairs anything in
+    `files` -- it writes them byte-for-byte and runs them."""
+
+    files: dict[str, str]
+    entrypoint: str
+    test_file: str | None = None
+    stdin: str | None = None
+
+
+class TestResult(BaseModel):
+    name: str
+    outcome: str  # passed | failed | error | skipped
+    phase: str  # call | setup | teardown | collect
+    duration: float
+    message: str
+
+
+class RunCodeResponse(BaseModel):
+    ok: bool
+    error: str | None
+    mode: str  # "tests" | "script"
+    stdout: str
+    stderr: str
+    exit_code: int
+    timed_out: bool
+    tests: list[TestResult]
+    passed: int
+    failed: int
+    errors: int
+    skipped: int
+
+
 class CompileLatexRequest(BaseModel):
     tex: str
     bib: str | None = None
@@ -139,10 +217,19 @@ def _truncate(text: str, limit: int) -> str:
     return encoded.decode("utf-8", errors="ignore") + "\n...[truncated]"
 
 
-def _run_sync(code: str, stdin_data: str | None, scratch_dir: Path) -> tuple[str, str, int, bool]:
-    """Blocking; must be run off the event loop (see `execute` below)."""
+def _run_limited(
+    args: list[str], stdin_data: str | None, scratch_dir: Path
+) -> tuple[str, str, int, bool]:
+    """Runs ONE command under the full `/execute` sandbox contract: `_limit_child`'s
+    kernel rlimits, its own session/process group, the WALL_CLOCK_TIMEOUT_S watchdog that
+    SIGKILLs that whole group, a minimal explicit env, and cwd pinned to the caller's
+    throwaway scratch dir. Blocking; must be run off the event loop.
+
+    Both `/execute` and `/run-code` go through here, so there is exactly ONE copy of
+    these limits -- a multi-file submission cannot end up on a looser path than a
+    one-line snippet by accident, and tightening a limit tightens it for both."""
     proc = subprocess.Popen(
-        ["python3", "-I", "-c", code],
+        args,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -175,6 +262,233 @@ def _run_sync(code: str, stdin_data: str | None, scratch_dir: Path) -> tuple[str
         exit_code = proc.returncode if proc.returncode is not None else -9
 
     return _truncate(stdout or "", MAX_OUTPUT_BYTES), _truncate(stderr or "", MAX_OUTPUT_BYTES), exit_code, timed_out
+
+
+def _run_sync(code: str, stdin_data: str | None, scratch_dir: Path) -> tuple[str, str, int, bool]:
+    """Blocking; must be run off the event loop (see `execute` below)."""
+    return _run_limited(["python3", "-I", "-c", code], stdin_data, scratch_dir)
+
+
+# ---------------------------------------------------------------------------------
+# /run-code: multi-file submissions, optionally run under pytest
+# ---------------------------------------------------------------------------------
+
+# Written into the scratch dir and loaded with `pytest -p _newton_report`. It exists so
+# per-test results come from pytest's OWN report objects (nodeid, outcome, longrepr)
+# rather than from screen-scraping pytest's human-readable terminal output -- the point
+# of this endpoint is honest, real per-test data, and a regex over `-q` output would be
+# the exact kind of "close enough" layer this codebase avoids. Kept as an inline source
+# string (not a third-party plugin like pytest-json-report) so the image gains exactly
+# one new dependency, pytest itself.
+#
+# The student's own code could of course delete or scribble on the results file -- it is
+# untrusted code running in the same scratch dir. That is not a security boundary and is
+# not treated as one: pytest's real process exit code is reported alongside these rows,
+# so a tampered/short results file shows up as an inconsistency rather than as a
+# fabricated "all passed".
+_PYTEST_PLUGIN_SOURCE = '''\
+"""Generated by Newton's sandbox-runner. Emits one JSON object per test so the caller
+gets pytest's real per-test outcomes, not parsed terminal output."""
+import json
+
+_RESULTS_PATH = "{results}"
+_MAX_MESSAGE_CHARS = {max_chars}
+
+
+def _write(record):
+    try:
+        with open(_RESULTS_PATH, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\\n")
+    except Exception:
+        pass
+
+
+def _detail(report):
+    text = ""
+    if report.longrepr is not None:
+        try:
+            text = str(report.longrepr)
+        except Exception:
+            text = "<failure detail could not be rendered>"
+    if len(text) > _MAX_MESSAGE_CHARS:
+        text = text[:_MAX_MESSAGE_CHARS] + "\\n...[truncated]"
+    return text
+
+
+def pytest_runtest_logreport(report):
+    if report.when == "call":
+        outcome = report.outcome            # passed / failed / (skipped via pytest.skip in body)
+    elif report.outcome == "failed":
+        outcome = "error"                   # blew up in setup/teardown, not in the test body
+    elif report.when == "setup" and report.outcome == "skipped":
+        outcome = "skipped"
+    else:
+        return
+    _write(
+        {{
+            "name": report.nodeid,
+            "outcome": outcome,
+            "phase": report.when,
+            "duration": float(getattr(report, "duration", 0.0) or 0.0),
+            "message": _detail(report),
+        }}
+    )
+
+
+def pytest_collectreport(report):
+    # A submission that doesn't even import (SyntaxError, a module-level NameError, a
+    # bad import) fails at COLLECTION -- no test ever runs, so pytest_runtest_logreport
+    # never fires for it. Without this hook the student would get "0 tests" and no
+    # reason why.
+    if report.failed:
+        _write(
+            {{
+                "name": report.nodeid or "<collection>",
+                "outcome": "error",
+                "phase": "collect",
+                "duration": 0.0,
+                "message": _detail(report),
+            }}
+        )
+'''
+
+
+def _validate_submission(files: dict[str, str], entrypoint: str) -> str | None:
+    """Returns a human-readable refusal reason, or None if the submission is safe to
+    materialize. Path traversal is rejected segment by segment (never by trusting a
+    single `resolve()` after the fact), and the names this service writes itself are
+    reserved so neither side can silently clobber the other."""
+    if not files:
+        return "files must contain at least one file."
+    if len(files) > MAX_SUBMITTED_FILES:
+        return f"too many files ({len(files)}); the limit is {MAX_SUBMITTED_FILES}."
+
+    total = 0
+    for name, content in files.items():
+        if not isinstance(name, str) or not isinstance(content, str):
+            return "every entry in files must be a filename string mapped to a content string."
+        if not name or name != name.strip():
+            return f"invalid filename {name!r}: must not be empty or padded with whitespace."
+        if "\\" in name or name.startswith("/"):
+            return f"invalid filename {name!r}: must be a relative POSIX path."
+        segments = name.split("/")
+        if len(segments) > MAX_PATH_DEPTH:
+            return f"invalid filename {name!r}: at most {MAX_PATH_DEPTH} path segments."
+        for segment in segments:
+            if not _SAFE_SEGMENT.match(segment):
+                return (
+                    f"invalid filename {name!r}: each path segment must match "
+                    "[A-Za-z0-9_][A-Za-z0-9_.-]* (no '..', no hidden or empty segments)."
+                )
+        if name in RESERVED_FILENAMES or segments[-1] in RESERVED_FILENAMES:
+            return f"filename {name!r} is reserved by sandbox-runner; rename it and resubmit."
+        total += len(content.encode("utf-8", errors="ignore"))
+
+    if total > MAX_SUBMITTED_BYTES:
+        return f"submission is {total} bytes; the limit is {MAX_SUBMITTED_BYTES}."
+    if entrypoint not in files:
+        return f"entrypoint {entrypoint!r} is not one of the submitted files ({sorted(files)})."
+    return None
+
+
+def _materialize(files: dict[str, str], scratch_dir: Path) -> None:
+    """Writes each submitted file into the scratch dir EXACTLY as given -- no
+    reformatting, no import fixing, no injected shims. `_validate_submission` has already
+    rejected anything that could escape the directory; the containment re-check here is
+    a cheap second line of defense, not the primary one."""
+    root = scratch_dir.resolve()
+    for name, content in files.items():
+        path = (scratch_dir / name).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"refusing to write {name!r} outside the scratch directory")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def _read_test_results(scratch_dir: Path) -> list[TestResult]:
+    results_path = scratch_dir / RESULTS_FILENAME
+    if not results_path.exists():
+        return []
+    rows: list[TestResult] = []
+    try:
+        raw = results_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+            rows.append(
+                TestResult(
+                    name=str(record["name"]),
+                    outcome=str(record["outcome"]),
+                    phase=str(record.get("phase", "call")),
+                    duration=float(record.get("duration", 0.0)),
+                    message=str(record.get("message", "")),
+                )
+            )
+        except Exception:
+            # A partially-written or tampered-with row is dropped rather than faked.
+            continue
+        if len(rows) >= MAX_TESTS_REPORTED:
+            break
+    return rows
+
+
+def _run_code_sync(
+    files: dict[str, str],
+    entrypoint: str,
+    test_file: str | None,
+    stdin_data: str | None,
+    scratch_dir: Path,
+) -> tuple[str, str, int, bool, list[TestResult]]:
+    """Blocking; must be run off the event loop (see `run_code` below).
+
+    Runs `python3 -E -s` rather than `/execute`'s `python3 -I`. The ONLY difference is
+    `-P`, which `-I` implies: `-P` refuses to put the script's own directory on
+    sys.path, which would make `import utils` from `main.py` fail -- i.e. it would make
+    multi-file submissions, the entire point of this endpoint, impossible. `-E`
+    (ignore PYTHON* env vars) and `-s` (no user site-packages) are kept, and the
+    directory now on sys.path is a freshly-created scratch dir containing nothing but
+    the caller's own submitted files, so this widens no real boundary: the code being
+    run is already arbitrary code from the same submission.
+
+    Every resource limit is `/execute`'s, unchanged -- see `_run_limited`."""
+    _materialize(files, scratch_dir)
+
+    if test_file is None:
+        stdout, stderr, exit_code, timed_out = _run_limited(
+            ["python3", "-E", "-s", entrypoint], stdin_data, scratch_dir
+        )
+        return stdout, stderr, exit_code, timed_out, []
+
+    (scratch_dir / TEST_FILENAME).write_text(test_file, encoding="utf-8")
+    (scratch_dir / PLUGIN_FILENAME).write_text(
+        _PYTEST_PLUGIN_SOURCE.format(results=RESULTS_FILENAME, max_chars=MAX_TEST_MESSAGE_CHARS),
+        encoding="utf-8",
+    )
+
+    args = [
+        "python3",
+        "-E",
+        "-s",
+        "-m",
+        "pytest",
+        TEST_FILENAME,
+        "-q",
+        "--tb=short",
+        "--color=no",
+        "-p",
+        PLUGIN_MODULE,
+        # No .pytest_cache dir: nothing survives the request anyway (the scratch dir is
+        # wiped), and it keeps the student's directory to exactly what they submitted.
+        "-p",
+        "no:cacheprovider",
+    ]
+    stdout, stderr, exit_code, timed_out = _run_limited(args, stdin_data, scratch_dir)
+    return stdout, stderr, exit_code, timed_out, _read_test_results(scratch_dir)
 
 
 def _limit_latex_child() -> None:
@@ -328,6 +642,65 @@ async def execute(req: ExecuteRequest) -> ExecuteResponse:
                     stdout="", stderr=f"sandbox-runner internal error: {exc}", exit_code=-1, timed_out=False
                 )
             return ExecuteResponse(stdout=stdout, stderr=stderr, exit_code=exit_code, timed_out=timed_out)
+        finally:
+            shutil.rmtree(scratch_dir, ignore_errors=True)
+
+
+def _empty_run_code_response(mode: str, error: str) -> RunCodeResponse:
+    return RunCodeResponse(
+        ok=False,
+        error=error,
+        mode=mode,
+        stdout="",
+        stderr="",
+        exit_code=-1,
+        timed_out=False,
+        tests=[],
+        passed=0,
+        failed=0,
+        errors=0,
+        skipped=0,
+    )
+
+
+@app.post("/run-code", response_model=RunCodeResponse)
+async def run_code(req: RunCodeRequest) -> RunCodeResponse:
+    """Runs a whole (possibly multi-file) Python submission, optionally under pytest.
+
+    Shares `/execute`'s semaphore, so a burst of multi-file submissions can't run more
+    concurrent sandboxed processes than the service already allows, and shares its
+    per-request scratch dir lifecycle (fresh dir, wiped in `finally` whatever happens).
+    Python-only by design -- see the module docstring's SCOPE note."""
+    mode = "tests" if req.test_file is not None else "script"
+    refusal = _validate_submission(req.files, req.entrypoint)
+    if refusal is not None:
+        return _empty_run_code_response(mode, f"sandbox-runner: {refusal}")
+
+    async with _semaphore:
+        scratch_dir = Path(tempfile.mkdtemp(prefix=f"runcode-{uuid.uuid4().hex}-", dir=SCRATCH_BASE))
+        try:
+            try:
+                stdout, stderr, exit_code, timed_out, tests = await asyncio.to_thread(
+                    _run_code_sync, req.files, req.entrypoint, req.test_file, req.stdin, scratch_dir
+                )
+            except Exception as exc:  # noqa: BLE001 - must never crash the service itself
+                logger.exception("run-code execution failed unexpectedly")
+                return _empty_run_code_response(mode, f"sandbox-runner internal error: {exc}")
+
+            return RunCodeResponse(
+                ok=True,
+                error=None,
+                mode=mode,
+                stdout=stdout,
+                stderr=stderr,
+                exit_code=exit_code,
+                timed_out=timed_out,
+                tests=tests,
+                passed=sum(1 for t in tests if t.outcome == "passed"),
+                failed=sum(1 for t in tests if t.outcome == "failed"),
+                errors=sum(1 for t in tests if t.outcome == "error"),
+                skipped=sum(1 for t in tests if t.outcome == "skipped"),
+            )
         finally:
             shutil.rmtree(scratch_dir, ignore_errors=True)
 

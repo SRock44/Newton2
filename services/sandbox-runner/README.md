@@ -6,6 +6,9 @@ Executes untrusted, LLM-generated Python code on request, for the Code Interpret
 `{"stdout": "...", "stderr": "...", "exit_code": N, "timed_out": bool}`. `GET /health`
 is a plain liveness check.
 
+`POST /run-code` is the multi-file sibling of `/execute`, backing the Check Code Work tool
+(`services/api/app/tools/check_code_work.py`) -- see "Multi-file submissions" below.
+
 `POST /compile-latex` compiles a LaTeX document (for the research-paper-writer feature's
 LaTeX assembly step, called via `services/api/app/services/latex_compile.py`) under the
 same isolation pattern as `/execute` -- see "LaTeX compilation" below.
@@ -37,6 +40,69 @@ LLM-generated Python doing ordinary LLM-generated-Python things, but they are no
 security boundary as a VM. If/when arbitrary or adversarial code execution needs a harder
 guarantee than that, the next step up is a gVisor/Firecracker-class sandbox per execution,
 not more rlimits on top of this one.
+
+## Multi-file submissions (`POST /run-code`)
+
+Runs a whole Python submission -- the student's own code, several files if need be --
+and optionally runs a pytest test module against it, returning **real per-test results**.
+This is what makes the API's `check_code_work` tool a verification tool rather than a
+"looks right to me" one. Request:
+
+```json
+{
+  "files": {"main.py": "...", "utils.py": "..."},
+  "entrypoint": "main.py",
+  "test_file": "<optional pytest module content>",
+  "stdin": "<optional>"
+}
+```
+
+Response:
+
+```json
+{
+  "ok": true, "error": null, "mode": "tests" | "script",
+  "stdout": "...", "stderr": "...", "exit_code": 0, "timed_out": false,
+  "tests": [{"name": "test_newton_check.py::test_adds", "outcome": "passed",
+             "phase": "call", "duration": 0.001, "message": ""}],
+  "passed": 1, "failed": 0, "errors": 0, "skipped": 0
+}
+```
+
+Key properties:
+
+- **Identical limits to `/execute`, not looser ones.** Both endpoints go through the same
+  `_run_limited` helper: same `_limit_child` rlimits, same `WALL_CLOCK_TIMEOUT_S`
+  process-group watchdog, same per-request scratch dir wiped afterwards, same
+  `_semaphore` concurrency cap. Unlike `/compile-latex`, `/run-code` gets **no** separate,
+  more generous budget -- a multi-file submission is sandboxed exactly as tightly as a
+  one-liner. `services/sandbox-runner/tests/test_sandbox_integration.py` asserts this
+  directly (infinite loop, memory bomb and network egress, all re-run over `/run-code`).
+- **`python3 -E -s`, not `python3 -I`.** The single difference is `-P`, which `-I`
+  implies: `-P` keeps the script's own directory off `sys.path`, which would make
+  `import utils` from `main.py` impossible -- i.e. would make multi-file submissions
+  impossible. `-E` and `-s` are kept. The directory now on `sys.path` is a fresh scratch
+  dir containing nothing but the caller's own submitted files, and the code being run is
+  already arbitrary code from that same submission, so no real boundary moves.
+- **Per-test results come from pytest itself.** A small plugin is generated into the
+  scratch dir and loaded with `-p _newton_report`; it records each `nodeid`, outcome and
+  `longrepr` from pytest's own report objects (plus collection failures, so a submission
+  that doesn't even import still explains itself). Nothing screen-scrapes pytest's
+  terminal output, and no third-party reporting plugin is added to the image. A
+  submission can of course scribble on that results file -- it is untrusted code in the
+  same directory -- so pytest's real process exit code is always returned alongside the
+  rows; a tampered file shows up as an inconsistency, never as a fabricated "all passed".
+- **Files are written byte-for-byte.** This service never edits, formats or repairs a
+  submission. Filenames are validated segment by segment (no `..`, no absolute paths, no
+  hidden segments, depth and count capped) and the handful of names the service writes
+  itself (`test_newton_check.py`, `_newton_report.py`, `_newton_results.jsonl`) are
+  reserved -- a submission using one is **refused**, never silently overwritten.
+
+**Scope: Python only.** Java/C/C++/Rust submissions would need real compiler toolchains
+(a JDK, gcc/clang, ...) in this image plus a per-language compile-then-run step with its
+own failure modes and its own security review. That is a real, separate piece of work; it
+is deliberately not attempted here, and nothing in this service or in `check_code_work`
+claims to support it.
 
 ## LaTeX compilation (`POST /compile-latex`)
 
