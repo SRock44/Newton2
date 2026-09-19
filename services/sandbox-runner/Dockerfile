@@ -10,11 +10,17 @@ WORKDIR /app
 # TeX Live's net-installer (much faster, and easy to keep to a deliberately hand-picked
 # package set instead of the multi-GB `scheme-full`). Covers:
 #   - texlive-latex-base/-recommended/-extra, texlive-fonts-recommended: core LaTeX,
-#     amsmath, amssymb, graphicx, hyperref, geometry, cite, natbib
+#     amsmath, amssymb, graphicx, hyperref, geometry, cite, natbib -- plus fancyhdr,
+#     mathptmx (the Times clone) and setspace, which app/services/paper_templates.py's
+#     MLA and Chicago renderers build their page layout out of, since neither of those
+#     two styles has a document class of its own the way IEEEtran/apa7 do
 #   - texlive-publishers: IEEEtran and acmart document classes
 #   - texlive-humanities: the apa7 document class (CTAN "apa7", TeX Live
 #     collection-humanities)
-#   - texlive-bibtex-extra: biblatex citation styles beyond the base set
+#   - texlive-bibtex-extra: biblatex citation styles beyond the base set -- this is
+#     specifically what supplies biblatex-mla (MLA 9 "Works Cited") and biblatex-chicago
+#     (CMOS notes-bibliography footnotes + "Bibliography"), the two humanities paper
+#     styles; dropping it would silently take MLA/Chicago papers offline
 #   - biber: the biblatex backend (biblatex is what apa7/IEEEtran-with-biblatex use)
 #   - lmodern: Latin Modern fonts (lmodern.sty) — apa7 requires this directly, and it is
 #     NOT pulled in by any Depends: of the packages above (only ever a Recommends: of

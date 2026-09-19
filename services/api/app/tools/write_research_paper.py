@@ -491,7 +491,14 @@ class WriteResearchPaperTool(Tool):
             "style": {
                 "type": "string",
                 "enum": sorted(RENDERERS),
-                "description": "Exactly as approved.",
+                "description": (
+                    "Exactly as approved. 'ieee' = numbered references (engineering/CS); "
+                    "'apa7' = author-date (psychology/social sciences); 'mla' = "
+                    "parenthetical (Author page) with a Works Cited list (English/"
+                    "literature/languages); 'chicago' = notes-bibliography, i.e. "
+                    "footnote citations plus a Bibliography (history/art history/"
+                    "philosophy) -- NOT the Chicago author-date variant."
+                ),
             },
             "abstract_sketch": {
                 "type": "string",

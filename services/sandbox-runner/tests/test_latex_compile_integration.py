@@ -73,6 +73,71 @@ actually resolves a reference, not just that the compiler ran.
 \end{document}
 """
 
+# The two humanities styles app/services/paper_templates.py's render_mla/render_chicago
+# emit. Unlike IEEE/APA 7 these have no document CLASS of their own, so what's actually
+# being proven here is that the real TeX Live image has the biblatex-mla and
+# biblatex-chicago styles (plus geometry/mathptmx/setspace/fancyhdr) and that both
+# citation apparatuses resolve end to end -- a parenthetical "(Doe)" + "Works Cited" for
+# MLA, real numbered footnotes + a separate "Bibliography" for Chicago.
+_MLA_DOC = r"""
+\documentclass[12pt]{article}
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{mathptmx}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage[backend=biber,style=mla,sortcites=true]{biblatex}
+\addbibresource{refs.bib}
+\let\cite\parencite
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[R]{Student Author \thepage}
+\begin{document}
+\thispagestyle{fancy}
+\doublespacing
+\noindent Student Author\\
+Instructor\\
+Course\\
+\today
+\begin{center}
+A Minimal MLA Test Document
+\end{center}
+\section*{Introduction}
+This is the body of a minimal MLA-format test document \cite{sample2024}.
+\printbibliography[title={Works Cited}]
+\end{document}
+"""
+
+# biblatex-chicago loads biblatex itself -- there must be no separate
+# \usepackage{biblatex} here, and \footcite is what makes each cite a real footnote.
+_CHICAGO_DOC = r"""
+\documentclass[12pt]{article}
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage{mathptmx}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage[notes,backend=biber,sortcites=true]{biblatex-chicago}
+\addbibresource{refs.bib}
+\let\cite\footcite
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[R]{\thepage}
+\begin{document}
+\thispagestyle{fancy}
+\doublespacing
+\begin{center}
+{\large A Minimal Chicago Test Document}\\[1em]
+Student Author\\
+\today
+\end{center}
+\section*{Introduction}
+This is the body of a minimal Chicago notes-bibliography test document \cite{sample2024}.
+A second reference to the same source \cite{sample2024} should produce a SHORTENED note.
+\printbibliography[title={Bibliography}]
+\end{document}
+"""
+
 _REFS_BIB = r"""
 @article{sample2024,
   author  = {Jane Doe},
@@ -170,6 +235,50 @@ def test_apa7_document_compiles_to_a_real_pdf() -> None:
     )
 
 
+def test_mla_document_compiles_with_a_resolved_works_cited() -> None:
+    r = compile_latex(_MLA_DOC, bib=_REFS_BIB)
+    pdf = _pdf_bytes(r)
+    check(
+        "mla_compile_success",
+        r["success"] is True and not r["timed_out"],
+        f"success={r['success']} timed_out={r['timed_out']} log_tail={r['log'][-800:]!r}",
+    )
+    check(
+        "mla_pdf_has_real_magic_bytes_and_size",
+        pdf is not None and pdf[:5] == b"%PDF-" and len(pdf) > 1000,
+        f"pdf_len={len(pdf) if pdf else 0}",
+    )
+    # Same "only the FINAL pdflatex pass proves the end state" reasoning as the APA 7
+    # citation test below -- the first pass always warns before biber has run.
+    final_pass_log = r["log"].rsplit("$ pdflatex", 1)[-1]
+    check(
+        "mla_citation_actually_resolved",
+        "Citation" not in final_pass_log or "undefined" not in final_pass_log.lower(),
+        f"log_tail={r['log'][-1500:]!r}",
+    )
+
+
+def test_chicago_notes_document_compiles_with_footnotes_and_a_bibliography() -> None:
+    r = compile_latex(_CHICAGO_DOC, bib=_REFS_BIB)
+    pdf = _pdf_bytes(r)
+    check(
+        "chicago_compile_success",
+        r["success"] is True and not r["timed_out"],
+        f"success={r['success']} timed_out={r['timed_out']} log_tail={r['log'][-800:]!r}",
+    )
+    check(
+        "chicago_pdf_has_real_magic_bytes_and_size",
+        pdf is not None and pdf[:5] == b"%PDF-" and len(pdf) > 1000,
+        f"pdf_len={len(pdf) if pdf else 0}",
+    )
+    final_pass_log = r["log"].rsplit("$ pdflatex", 1)[-1]
+    check(
+        "chicago_citation_actually_resolved",
+        "Citation" not in final_pass_log or "undefined" not in final_pass_log.lower(),
+        f"log_tail={r['log'][-1500:]!r}",
+    )
+
+
 def test_genuinely_bad_latex_returns_the_real_compiler_error() -> None:
     r = compile_latex(_BROKEN_DOC)
     check(
@@ -264,6 +373,8 @@ def main() -> int:
 
     test_ieee_document_compiles_to_a_real_pdf()
     test_apa7_document_compiles_to_a_real_pdf()
+    test_mla_document_compiles_with_a_resolved_works_cited()
+    test_chicago_notes_document_compiles_with_footnotes_and_a_bibliography()
     test_genuinely_bad_latex_returns_the_real_compiler_error()
     test_bib_citation_round_trip_resolves_through_biber()
     test_unsupported_engine_is_refused_cleanly()

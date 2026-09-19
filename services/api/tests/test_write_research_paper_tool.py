@@ -18,6 +18,7 @@ import io
 import uuid
 from collections.abc import AsyncIterator
 
+import pytest
 import pytest_asyncio
 from pypdf import PdfWriter
 from sqlalchemy import delete, select
@@ -257,12 +258,14 @@ async def test_run_still_works_for_a_focus_mode_disabled_pro_user(paper_user, db
 
 
 async def test_run_rejects_unsupported_style(paper_user):
+    # "mla" used to be the example here, back when RENDERERS only held ieee/apa7 -- it is
+    # a real, supported style now, so this needs a style that genuinely has no renderer.
     result = await WriteResearchPaperTool().run(
-        title="T", style="mla", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}],
+        title="T", style="harvard", abstract_sketch="A", sections=[{"heading": "Intro", "summary": "s"}],
         user_id=str(paper_user.id),
     )
     assert result.startswith("Error:")
-    assert "mla" in result
+    assert "harvard" in result
 
 
 async def test_run_rejects_empty_sections(paper_user):
@@ -570,6 +573,64 @@ async def test_failed_compile_creates_no_document_rows(paper_user, db_session, m
         (await db_session.execute(select(Document).where(Document.user_id == paper_user.id))).scalars().all()
     )
     assert docs == []
+
+
+# ---------------------------------------------------------------------------
+# The humanities styles go through the SAME drafting/citation-key pipeline as
+# ieee/apa7 -- only the final document template differs.
+# ---------------------------------------------------------------------------
+
+
+async def test_mla_and_chicago_are_offered_and_described_in_the_tool_schema():
+    schema = WriteResearchPaperTool().parameters["properties"]["style"]
+    assert set(schema["enum"]) == {"ieee", "apa7", "mla", "chicago"}
+    # The model can only pick these deliberately if the description says what they are.
+    assert "mla" in schema["description"].lower()
+    assert "works cited" in schema["description"].lower()
+    assert "notes-bibliography" in schema["description"].lower()
+
+
+@pytest.mark.parametrize(
+    ("style", "expect_in_tex", "expect_not_in_tex"),
+    [
+        ("mla", "\\printbibliography[title={Works Cited}]", "Bibliography}"),
+        ("chicago", "\\printbibliography[title={Bibliography}]", "Works Cited"),
+    ],
+)
+async def test_humanities_styles_compile_the_same_pipeline_with_their_own_apparatus(
+    paper_user, monkeypatch, style, expect_in_tex, expect_not_in_tex
+):
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "Austen reshaped the form \\\\cite{a1}.", '
+                '"sources": [{"key": "a1", "type": "misc", "author": "Jane Doe", '
+                '"title": "Reading Austen", "year": "2019", '
+                '"url": "https://en.wikipedia.org/wiki/Austen"}]}'
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="Humanities Paper",
+        style=style,
+        abstract_sketch="A short abstract.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    assert "1 source(s) actually cited" in result
+    tex, bib = capture[0]["tex"], capture[0]["bib"]
+    # Same assign_citation_keys pipeline: the model's local "a1" became the real key.
+    assert "\\cite{doe2019reading}" in tex
+    assert "@misc{doe2019reading," in bib
+    assert expect_in_tex in tex
+    assert expect_not_in_tex not in tex
 
 
 # ---------------------------------------------------------------------------

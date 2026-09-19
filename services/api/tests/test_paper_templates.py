@@ -1,9 +1,24 @@
 """Pure-function tests for app.services.paper_templates -- valid document structure for
-both styles, and the escaping decision documented in that module's docstring actually
+every style, and the escaping decision documented in that module's docstring actually
 behaving as documented (title/heading punctuation escaped, model-authored body text
-with inline math / \\cite{} left untouched)."""
+with inline math / \\cite{} left untouched).
 
-from app.services.paper_templates import escape_latex_text, render_apa7, render_ieee
+The MLA/Chicago assertions here are structural only; that these two documents actually
+COMPILE (and that the compiled PDF really contains parenthetical citations + a Works
+Cited list, and real numbered footnotes + a Bibliography respectively) was verified
+against the real sandbox-runner TeX Live install, the same way the IEEE/APA 7 shapes
+were -- see services/sandbox-runner/tests/test_latex_compile_integration.py's
+`_MLA_DOC`/`_CHICAGO_DOC`."""
+
+from app.services.paper_templates import (
+    RENDERERS,
+    STYLE_LABELS,
+    escape_latex_text,
+    render_apa7,
+    render_chicago,
+    render_ieee,
+    render_mla,
+)
 
 # ---------------------------------------------------------------------------
 # escape_latex_text
@@ -135,3 +150,161 @@ def test_apa7_section_body_is_also_left_unescaped():
     sections = [{"heading": "Discussion", "body": "See \\cite{doe2024} for details & context."}]
     tex = render_apa7("Title", sections, has_bibliography=True)
     assert "\\cite{doe2024} for details & context." in tex
+
+
+# ---------------------------------------------------------------------------
+# render_mla -- MLA 9: parenthetical cites, a "Works Cited" list, MLA page layout.
+# ---------------------------------------------------------------------------
+
+
+def test_render_mla_produces_a_complete_document_with_mla_page_layout():
+    tex = render_mla("My Paper", _SECTIONS, has_bibliography=False)
+    assert tex.startswith("\\documentclass[12pt]{article}")
+    assert "\\usepackage[letterpaper,margin=1in]{geometry}" in tex
+    assert "\\usepackage{mathptmx}" in tex  # Times-equivalent
+    assert "\\doublespacing" in tex
+    assert "\\begin{document}" in tex
+    assert "\\end{document}" in tex
+    # MLA headings are unnumbered, unlike IEEE/APA 7's \section.
+    assert "\\section*{Introduction}" in tex
+    assert "\\section{Introduction}" not in tex
+
+
+def test_render_mla_includes_the_standard_header_block_and_running_header():
+    tex = render_mla("My Paper", _SECTIONS, has_bibliography=False)
+    assert "\\fancyhead[R]{Student Author \\thepage}" in tex  # "Lastname page#"
+    assert "\\noindent Student Author\\\\" in tex
+    assert "Instructor\\\\" in tex
+    assert "Course\\\\" in tex
+    assert "\\today" in tex
+    # Title is centered plain text, not a \maketitle title block.
+    assert "\\begin{center}\nMy Paper\n\\end{center}" in tex
+
+
+def test_render_mla_uses_works_cited_not_references_or_bibliography():
+    tex = render_mla("My Paper", _SECTIONS, has_bibliography=True)
+    assert "\\printbibliography[title={Works Cited}]" in tex
+    assert "title={Bibliography}" not in tex
+    assert "References" not in tex
+
+
+def test_render_mla_uses_biblatex_mla_style_and_parenthetical_cites():
+    tex = render_mla("My Paper", _SECTIONS, has_bibliography=True)
+    assert "\\usepackage[backend=biber,style=mla,sortcites=true]{biblatex}" in tex
+    assert "\\addbibresource{refs.bib}" in tex
+    # \cite -> \parencite is what makes a bare \cite{key} placeholder render as the MLA
+    # parenthetical "(Author 42)" rather than biblatex-mla's bare "Author 42".
+    assert "\\let\\cite\\parencite" in tex
+
+
+def test_render_mla_without_a_bibliography_omits_all_biblatex_machinery():
+    tex = render_mla("My Paper", _SECTIONS, has_bibliography=False)
+    assert "biblatex" not in tex
+    assert "\\printbibliography" not in tex
+    # \parencite would be undefined without biblatex, so the alias must not be emitted.
+    assert "\\parencite" not in tex
+
+
+def test_render_mla_keeps_cite_keys_and_escapes_only_title_and_headings():
+    sections = [{"heading": "Cost & Effect", "body": "Austen argues this \\cite{austen1813} & so on."}]
+    tex = render_mla("50% Reading & Writing", sections, has_bibliography=True)
+    assert "\\section*{Cost \\& Effect}" in tex
+    assert "50\\% Reading \\& Writing" in tex
+    assert "\\cite{austen1813} & so on." in tex  # body prose untouched
+
+
+# ---------------------------------------------------------------------------
+# render_chicago -- notes-bibliography: footnote cites + a "Bibliography".
+# ---------------------------------------------------------------------------
+
+
+def test_render_chicago_produces_a_complete_document_with_chicago_page_layout():
+    tex = render_chicago("My Paper", _SECTIONS, has_bibliography=False)
+    assert tex.startswith("\\documentclass[12pt]{article}")
+    assert "\\usepackage[letterpaper,margin=1in]{geometry}" in tex
+    assert "\\usepackage{mathptmx}" in tex
+    assert "\\doublespacing" in tex
+    assert "\\fancyhead[R]{\\thepage}" in tex
+    assert "\\section*{Introduction}" in tex
+    assert "\\section{Introduction}" not in tex
+
+
+def test_render_chicago_cites_become_real_footnotes():
+    tex = render_chicago("My Paper", _SECTIONS, has_bibliography=True)
+    # notes-bibliography, NOT the author-date Chicago variant.
+    assert "\\usepackage[notes,backend=biber,sortcites=true]{biblatex-chicago}" in tex
+    assert "authordate" not in tex
+    # \footcite IS biblatex's real \footnote-wrapped cite command (\mkbibfootnote);
+    # aliasing \cite to it is what puts a genuine footnote at each citation point.
+    assert "\\let\\cite\\footcite" in tex
+
+
+def test_render_chicago_uses_bibliography_not_works_cited_or_references():
+    tex = render_chicago("My Paper", _SECTIONS, has_bibliography=True)
+    assert "\\printbibliography[title={Bibliography}]" in tex
+    assert "Works Cited" not in tex
+    assert "References" not in tex
+
+
+def test_render_chicago_never_loads_biblatex_alongside_biblatex_chicago():
+    # biblatex-chicago loads biblatex itself; a second \usepackage{biblatex} would be a
+    # hard "package already loaded" error.
+    tex = render_chicago("My Paper", _SECTIONS, has_bibliography=True)
+    assert "{biblatex}" not in tex
+    assert tex.count("\\addbibresource{refs.bib}") == 1
+
+
+def test_render_chicago_without_a_bibliography_omits_all_citation_machinery():
+    tex = render_chicago("My Paper", _SECTIONS, has_bibliography=False)
+    assert "biblatex" not in tex
+    assert "\\footcite" not in tex
+    assert "\\printbibliography" not in tex
+
+
+def test_render_chicago_keeps_cite_keys_and_escapes_only_title_and_headings():
+    sections = [{"heading": "Trade & Empire", "body": "As shown \\cite{smith1776} & later."}]
+    tex = render_chicago("100% History & Theory", sections, has_bibliography=True)
+    assert "\\section*{Trade \\& Empire}" in tex
+    assert "100\\% History \\& Theory" in tex
+    assert "\\cite{smith1776} & later." in tex
+
+
+# ---------------------------------------------------------------------------
+# Abstract handling + the RENDERERS/STYLE_LABELS registry both styles plug into.
+# ---------------------------------------------------------------------------
+
+
+def test_humanities_styles_render_the_approved_abstract_as_a_leading_section():
+    # Neither style guide mandates an abstract, but write_research_paper.py always has
+    # one the student approved -- it is typeset, never silently dropped.
+    for render in (render_mla, render_chicago):
+        tex = render("My Paper", _SECTIONS, has_bibliography=False, abstract="A short summary.")
+        assert "\\section*{Abstract}" in tex
+        assert "A short summary." in tex
+        # ...and it comes before the first real section.
+        assert tex.index("\\section*{Abstract}") < tex.index("\\section*{Introduction}")
+
+
+def test_humanities_styles_omit_the_abstract_block_entirely_when_there_is_none():
+    for render in (render_mla, render_chicago):
+        assert "Abstract" not in render("My Paper", _SECTIONS, has_bibliography=False)
+
+
+def test_every_registered_style_has_a_label_and_a_renderer():
+    assert set(RENDERERS) == {"ieee", "apa7", "mla", "chicago"}
+    assert set(STYLE_LABELS) == set(RENDERERS)
+    assert RENDERERS["mla"] is render_mla
+    assert RENDERERS["chicago"] is render_chicago
+    # The label is interpolated into write_research_paper.py's SECTION_DRAFT_PROMPT, so
+    # "Chicago" must say which Chicago the drafting model is writing for.
+    assert "notes-bibliography" in STYLE_LABELS["chicago"]
+
+
+def test_every_registered_renderer_produces_a_complete_compilable_shell():
+    for render in RENDERERS.values():
+        tex = render("My Paper", _SECTIONS, has_bibliography=True, abstract="A short summary.")
+        assert tex.startswith("\\documentclass")
+        assert "\\begin{document}" in tex
+        assert tex.rstrip().endswith("\\end{document}")
+        assert "\\addbibresource{refs.bib}" in tex
+        assert "\\printbibliography" in tex

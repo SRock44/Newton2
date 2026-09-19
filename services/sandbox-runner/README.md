@@ -140,7 +140,8 @@ ways a LaTeX compile legitimately has to:
   `pdflatex` → `pdflatex` again, to resolve citations and cross-references, all sharing
   ONE wall-clock budget (`LATEX_WALL_CLOCK_TIMEOUT_S`) across every pass rather than
   restarting the clock per pass. `biber` (not classic `bibtex`) is used because that's
-  what `biblatex` — what apa7 and IEEEtran-with-biblatex both actually use — expects.
+  what `biblatex` — what apa7, IEEEtran-with-biblatex, biblatex-mla and biblatex-chicago
+  all actually use — expects.
   If the first pdflatex pass fails outright, later passes are skipped and its real error
   log is returned rather than continuing to run passes that can't succeed.
 - **Engine allowlist.** The request's `engine` field is looked up in a small in-code
@@ -156,7 +157,8 @@ ways a LaTeX compile legitimately has to:
 - **TeX Live via apt**, not the official net-installer, and a hand-picked package set
   (`texlive-latex-base`, `-recommended`, `-extra`, `texlive-fonts-recommended`,
   `texlive-publishers` for IEEEtran/acmart, `texlive-humanities` for apa7,
-  `texlive-bibtex-extra`, and `biber`) — not `scheme-full`, which is multi-gigabyte and
+  `texlive-bibtex-extra` for the biblatex-mla/biblatex-chicago citation styles the MLA
+  and Chicago paper renderers use, and `biber`) — not `scheme-full`, which is multi-gigabyte and
   mostly unused here. See the Dockerfile for the exact package list.
 
 ## Required deployment shape (for whoever wires this into `infra/docker-compose.yml`)
@@ -246,7 +248,9 @@ up and immediately served the next request — it never hung or crashed.
 
 `/compile-latex` was verified the same way, against the real deployed image (not a
 mocked compiler) — see `tests/test_latex_compile_integration.py` for exact scenarios:
-a real successful compile in each of the IEEEtran and apa7 document classes, a compile
+a real successful compile in each of the IEEEtran and apa7 document classes, a real
+successful compile of the MLA and Chicago (notes-bibliography) layouts with their
+citations resolving through biblatex-mla/biblatex-chicago, a compile
 error from genuinely invalid LaTeX confirming the real compiler log comes back (not just
 `success: false`), a `.bib`-driven citation actually resolving through the full
 pdflatex→biber→pdflatex→pdflatex pass sequence, and back-to-back requests proving no
