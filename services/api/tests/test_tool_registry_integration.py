@@ -30,6 +30,7 @@ def test_all_expected_tools_are_registered():
         "calculator",
         "unit_converter",
         "symbolic_math",
+        "chemistry_solver",
         "plot_function",
         "code_interpreter",
         "web_search",

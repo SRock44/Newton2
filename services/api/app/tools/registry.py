@@ -5,6 +5,7 @@ from app.providers.base import ToolSpec
 from app.tools.base import Tool
 from app.tools.calculator import CalculatorTool
 from app.tools.check_work import CheckStudentWorkTool
+from app.tools.chemistry import ChemistrySolverTool
 from app.tools.citation import CitationFormatterTool
 from app.tools.classroom_sync import ClassroomSyncTool
 from app.tools.code_interpreter import CodeInterpreterTool
@@ -34,6 +35,7 @@ _TOOLS: dict[str, Tool] = {
         CalculatorTool(),
         UnitConverterTool(),
         SymbolicMathTool(),
+        ChemistrySolverTool(),
         VisualizerTool(),
         CodeInterpreterTool(),
         WebSearchTool(),
@@ -85,6 +87,10 @@ _READ_IMAGE_TOOL_NAME = "read_image"
 # spec's own description text below, so it's kept compact rather than restating each
 # tool's full own description. Order here is just presentation order in that text.
 _ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        ("chemistry_solver",),
+        "any real chemistry computation -- balancing an equation, stoichiometry, PV=nRT, pH",
+    ),
     (("plot_function",), "graphing a function/equation, incl. slider-enabled variants"),
     (("code_interpreter",), "running or testing real code"),
     (("research_fetch",), "reading one specific URL/source in full"),

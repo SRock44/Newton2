@@ -84,6 +84,7 @@ _TOOL_LABELS: dict[str, str] = {
     "calculator": "Doing the math",
     "unit_converter": "Converting units",
     "symbolic_math": "Solving with symbolic math",
+    "chemistry_solver": "Working out the chemistry",
     "plot_function": "Building a visualization",
     "code_interpreter": "Running code",
     "web_search": "Searching the web",
@@ -227,6 +228,14 @@ SYSTEM_PROMPT = (
     'inline $LaTeX$", "step 2", "..."]} -- one clear idea per step, revealed to the '
     "student one at a time, with the final step stating symbolic_math's actual "
     "answer, never one you computed by hand.\n\n"
+    "Chemistry gets the same treatment as math: never balance an equation, work a "
+    "stoichiometry problem, apply PV = nRT, or compute a pH in your head. Call "
+    "chemistry_solver -- it balances by real linear algebra, uses real atomic "
+    "weights, and solves the gas law and equilibrium exactly -- then explain how it "
+    "got there. A coefficient or a mass you reasoned your way to is a guess, however "
+    "confident it feels; state the tool's actual numbers. For unit work a chemistry "
+    "or physics problem needs (moles, energy, pressure, concentration), "
+    "unit_converter handles those too.\n\n"
     "When a student shares their own typed answer and asks if it's right, call "
     "check_student_work (it pinpoints exactly where their reasoning is right or "
     "wrong) rather than re-solving and comparing yourself. When they're stuck and "
