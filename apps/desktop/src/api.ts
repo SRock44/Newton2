@@ -10,6 +10,7 @@ import type {
   DocumentContent,
   Flashcard,
   GamificationStats,
+  GradedFlashcard,
   Note,
   NoteAnnotateAction,
   NoteSummary,
@@ -574,6 +575,26 @@ export async function reviewFlashcard(token: string, cardId: string, rating: 1 |
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't record that review."));
   return (await res.json()) as Flashcard;
+}
+
+/** The production-direction review: the student TYPES the term instead of self-rating,
+ * and the server grades it against the real answer and derives the FSRS rating from
+ * that (see services/api/app/services/flashcards.py's grade_production_answer). Separate
+ * from reviewFlashcard above rather than an extra optional argument, because the two
+ * have genuinely different return shapes — this one carries the verdict the review UI
+ * has to show back immediately. */
+export async function reviewFlashcardWithAnswer(
+  token: string,
+  cardId: string,
+  typedAnswer: string,
+): Promise<GradedFlashcard> {
+  const res = await fetch(`${API_URL}/flashcards/${cardId}/review`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ typed_answer: typedAnswer }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't check that answer."));
+  return (await res.json()) as GradedFlashcard;
 }
 
 export async function deleteFlashcard(token: string, cardId: string): Promise<void> {

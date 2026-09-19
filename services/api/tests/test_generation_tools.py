@@ -117,6 +117,31 @@ async def test_generate_flashcards_works_for_a_free_plan_user(free_user_with_doc
     assert "flashcard" in result.lower()
 
 
+async def test_generate_flashcards_tool_can_add_production_siblings(
+    free_user_with_document, db_session, monkeypatch
+):
+    """The chat path into the recognition/production split. Off by default (the test
+    above already pins that a plain call makes exactly one card per fact); on request it
+    writes a reversed, type-the-term sibling alongside each card."""
+    user, document = free_user_with_document
+    monkeypatch.setattr(flashcards_service, "get_provider", lambda **kwargs: (_flashcards_script(), "fake-model"))
+    monkeypatch.setattr(flashcards_service, "get_document_text", _fake_get_document_text)
+
+    result = await FlashcardGenerationTool().run(
+        document_filename="biology", include_production=True, user_id=str(user.id)
+    )
+
+    assert "2 flashcard(s)" in result
+    cards = (
+        await db_session.execute(select(Flashcard).where(Flashcard.document_id == document.id))
+    ).scalars().all()
+    assert {c.direction for c in cards} == {"recognition", "production"}
+    production = next(c for c in cards if c.direction == "production")
+    recognition = next(c for c in cards if c.direction == "recognition")
+    assert production.front == recognition.back
+    assert production.back == recognition.front
+
+
 async def test_generate_flashcards_targets_the_free_tier_count_by_default(
     free_user_with_document, monkeypatch
 ):

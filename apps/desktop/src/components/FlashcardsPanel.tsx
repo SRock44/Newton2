@@ -7,10 +7,11 @@ import {
   flashcardsPptxUrl,
   listFlashcards,
   reviewFlashcard,
+  reviewFlashcardWithAnswer,
   revokeShareLink,
 } from "../api";
 import { fetchBytes, saveBytesToDisk } from "../lib/download";
-import type { Flashcard } from "../types";
+import type { Flashcard, ProductionGrading } from "../types";
 
 interface FlashcardsPanelProps {
   /** Resolves to an access token guaranteed not to be expired (see App.tsx's
@@ -35,10 +36,26 @@ function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
 }
 
-/** Two modes: review the cards due right now (FSRS-scheduled, one at a time, front
- * first, rate after seeing the back), or browse/delete everything regardless of due
- * date. Generation happens from the Documents panel, not here — this is purely
- * study + management. */
+/** What the student is told the instant they commit to a typed answer — right or wrong,
+ * said plainly, with the real answer shown next to theirs when it wasn't right. "close"
+ * exists for exactly one case: they spelled the word but dropped an accent, which the
+ * server credits as a Hard review rather than a failure. */
+const GRADING_MESSAGES: Record<ProductionGrading["result"], string> = {
+  correct: "Correct.",
+  close: "Almost — that's right apart from the accent marks. Counted as Hard.",
+  wrong: "Not quite.",
+};
+
+/** Two modes: review the cards due right now (FSRS-scheduled, one at a time), or
+ * browse/delete everything regardless of due date. Generation happens from the Documents
+ * panel or from chat, not here — this is purely study + management.
+ *
+ * A due card is reviewed one of two ways, depending on its `direction`. A recognition
+ * card is the original flip-and-self-rate: see the prompt, reveal the answer, rate 1-4.
+ * A production card (language vocabulary, drilled in the harder direction) is shown the
+ * meaning and the student must TYPE the term — they commit before seeing anything, and
+ * the server grades what they typed and derives the FSRS rating from it, so there's no
+ * self-rating step to quietly let yourself off with. */
 function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
   const [mode, setMode] = useState<"review" | "browse">("review");
 
@@ -50,6 +67,13 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
   const [queueFailed, setQueueFailed] = useState(false);
   const [showingBack, setShowingBack] = useState(false);
   const [rating, setRating] = useState(false);
+
+  // Production-direction review only. `grading` being non-null is also what says "this
+  // card has been answered and its review is already recorded" — the card then stays on
+  // screen showing the verdict until the student presses Next, which is the immediate,
+  // specific feedback that makes a typed drill worth doing at all.
+  const [typedAnswer, setTypedAnswer] = useState("");
+  const [grading, setGrading] = useState<ProductionGrading | null>(null);
 
   const [allCards, setAllCards] = useState<Flashcard[]>([]);
   const [allLoading, setAllLoading] = useState(true);
@@ -122,6 +146,7 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
   }, [mode]);
 
   const current = queue[0] ?? null;
+  const isProduction = current?.direction === "production";
 
   async function handleRate(value: 1 | 2 | 3 | 4) {
     if (!current || rating) return;
@@ -130,13 +155,38 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
     try {
       const accessToken = await getAccessToken();
       await reviewFlashcard(accessToken, current.id, value);
-      setQueue((prev) => prev.slice(1));
-      setShowingBack(false);
+      advance();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't record that review.");
     } finally {
       setRating(false);
     }
+  }
+
+  /** Submits a typed production answer. The review is RECORDED by this call — the server
+   * grades the answer and applies the resulting FSRS rating — so the card is already
+   * done; we hold it on screen only to show the verdict. */
+  async function handleSubmitTypedAnswer(event: React.FormEvent) {
+    event.preventDefault();
+    if (!current || rating || grading) return;
+    setRating(true);
+    setError(null);
+    try {
+      const accessToken = await getAccessToken();
+      const result = await reviewFlashcardWithAnswer(accessToken, current.id, typedAnswer);
+      setGrading(result.grading);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't check that answer.");
+    } finally {
+      setRating(false);
+    }
+  }
+
+  function advance() {
+    setQueue((prev) => prev.slice(1));
+    setShowingBack(false);
+    setTypedAnswer("");
+    setGrading(null);
   }
 
   /** Exports every one of this student's cards as a real Anki `.apkg` (decks grouped by
@@ -330,26 +380,79 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
             </p>
           ) : (
             <div className="flashcard-review">
-              <div className="flashcard-box" onClick={() => setShowingBack((s) => !s)}>
-                <div className="flashcard-box-label">{showingBack ? "Answer" : "Question"}</div>
-                <div className="flashcard-box-text">{showingBack ? current.back : current.front}</div>
-                {!showingBack && <div className="flashcard-box-hint">Click to reveal the answer</div>}
-              </div>
+              {isProduction ? (
+                <>
+                  <div className="flashcard-box flashcard-box--production">
+                    <div className="flashcard-box-label">Write it</div>
+                    <div className="flashcard-box-text">{current.front}</div>
+                    {!grading && (
+                      <div className="flashcard-box-hint">Type the term this means</div>
+                    )}
+                  </div>
 
-              {showingBack && (
-                <div className="flashcard-ratings">
-                  {RATINGS.map((r) => (
-                    <button
-                      key={r.value}
-                      type="button"
-                      className={`flashcard-rate ${r.className}`}
-                      onClick={() => handleRate(r.value)}
-                      disabled={rating}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
+                  <form className="flashcard-production-form" onSubmit={handleSubmitTypedAnswer}>
+                    <input
+                      type="text"
+                      className="flashcard-production-input"
+                      aria-label="Your answer"
+                      value={grading ? grading.answer : typedAnswer}
+                      onChange={(e) => setTypedAnswer(e.target.value)}
+                      // Spelling is exactly what this drills — a browser correcting it
+                      // would grade the browser, not the student.
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      autoFocus
+                      disabled={grading !== null || rating}
+                    />
+                    {!grading && (
+                      <button type="submit" className="btn-primary" disabled={rating}>
+                        {rating ? "Checking…" : "Check"}
+                      </button>
+                    )}
+                  </form>
+
+                  {grading && (
+                    <div className={`flashcard-grading flashcard-grading--${grading.result}`}>
+                      <div className="flashcard-grading-verdict">
+                        {GRADING_MESSAGES[grading.result]}
+                      </div>
+                      {/* Always shown, even when they were right: seeing the correct
+                          form next to your own is the feedback, and hiding it on a
+                          correct answer removes the one chance to notice a near-miss. */}
+                      <div className="flashcard-grading-expected">
+                        Answer: <strong>{grading.expected}</strong>
+                      </div>
+                      <button type="button" className="btn-primary" onClick={advance}>
+                        Next card
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flashcard-box" onClick={() => setShowingBack((s) => !s)}>
+                    <div className="flashcard-box-label">{showingBack ? "Answer" : "Question"}</div>
+                    <div className="flashcard-box-text">{showingBack ? current.back : current.front}</div>
+                    {!showingBack && <div className="flashcard-box-hint">Click to reveal the answer</div>}
+                  </div>
+
+                  {showingBack && (
+                    <div className="flashcard-ratings">
+                      {RATINGS.map((r) => (
+                        <button
+                          key={r.value}
+                          type="button"
+                          className={`flashcard-rate ${r.className}`}
+                          onClick={() => handleRate(r.value)}
+                          disabled={rating}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )
@@ -370,6 +473,10 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
                     <div className="item-title">{card.front}</div>
                     <div className="item-meta">
                       {card.state} · due {formatDate(card.due)}
+                      {/* A term drilled in both directions is two rows whose fronts are
+                          each other's backs, which looks like a duplicate in this list
+                          until you say which is which. */}
+                      {card.direction === "production" ? " · type-in" : ""}
                     </div>
                   </div>
                   <button

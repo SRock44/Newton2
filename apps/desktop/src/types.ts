@@ -247,15 +247,39 @@ export interface AccountConsentStatus {
   needs_consent: boolean;
 }
 
+/** `front` is always the prompt shown and `back` always the expected answer, in BOTH
+ * directions — the backend swaps them when it creates a production card, so nothing
+ * that merely displays a card has to know about direction. */
 export interface Flashcard {
   id: string;
   document_id: string | null;
   front: string;
   back: string;
+  /** "recognition" (see the prompt, recall the answer, self-rate) or "production" (type
+   * the answer, graded by the server). Optional here only so older fixtures and any
+   * response predating the field still typecheck; the live API always sends it, and an
+   * absent value means recognition. */
+  direction?: FlashcardDirection;
   due: string;
   state: string;
   last_review: string | null;
   created_at: string;
+}
+
+export type FlashcardDirection = "recognition" | "production";
+
+/** The server's verdict on a typed production answer. `result` maps to an FSRS rating
+ * server-side (correct→Good, close→Hard, wrong→Again); "close" specifically means the
+ * answer matched apart from accent marks. */
+export interface ProductionGrading {
+  result: "correct" | "close" | "wrong";
+  rating: 1 | 2 | 3 | 4;
+  answer: string;
+  expected: string;
+}
+
+export interface GradedFlashcard extends Flashcard {
+  grading: ProductionGrading;
 }
 
 /** A student's OWN calendar entry -- typed in by hand, distinct from a StudyPlanItem,

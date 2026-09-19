@@ -34,10 +34,27 @@ class FlashcardGenerationTool(Tool):
                     "'biology'). Omit to use the most recently uploaded one."
                 ),
             },
+            "include_production": {
+                "type": "boolean",
+                "description": (
+                    "Set true ONLY for vocabulary in a language the student is "
+                    "learning, or when they ask to practise producing terms rather "
+                    "than just recognizing them. It doubles the deck: each card also "
+                    "gets a reversed 'production' card where the student must TYPE the "
+                    "term from its meaning -- a genuinely different skill for language "
+                    "learning, and wasted daily review load for anything else. Default "
+                    "false. Don't set it just because the student seems keen."
+                ),
+            },
         },
     }
 
-    async def run(self, document_filename: str | None = None, user_id: str | None = None) -> str:
+    async def run(
+        self,
+        document_filename: str | None = None,
+        include_production: bool = False,
+        user_id: str | None = None,
+    ) -> str:
         if not user_id:
             return "Error: no signed-in user to generate flashcards for."
         uid = uuid.UUID(user_id)
@@ -53,12 +70,24 @@ class FlashcardGenerationTool(Tool):
             target_count = billing_service.generation_target_count(user)
 
             try:
-                cards = await generate_flashcards(db, uid, document, target_count=target_count)
+                cards = await generate_flashcards(
+                    db,
+                    uid,
+                    document,
+                    target_count=target_count,
+                    include_production_cards=bool(include_production),
+                )
                 await db.commit()
             except Exception as exc:
                 return f"Error: flashcard generation failed ({exc})."
 
+        suffix = (
+            " Half of them are typed 'production' cards: you'll be shown the meaning and "
+            "have to type the term."
+            if include_production
+            else ""
+        )
         return (
             f"Generated {len(cards)} flashcard(s) from '{filename}' — check the "
-            "Flashcards panel to review them."
+            f"Flashcards panel to review them.{suffix}"
         )

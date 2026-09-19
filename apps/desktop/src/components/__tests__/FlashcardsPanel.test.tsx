@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import FlashcardsPanel from "../FlashcardsPanel";
-import type { Flashcard } from "../../types";
+import type { Flashcard, GradedFlashcard, ProductionGrading } from "../../types";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-fs", () => ({ writeFile: vi.fn() }));
@@ -55,6 +55,7 @@ vi.mock("../../api", async () => {
     ...actual,
     listFlashcards: vi.fn(async (_token: string, dueOnly?: boolean) => (dueOnly ? dueCards : allCards)),
     reviewFlashcard: vi.fn(async (_token: string, cardId: string) => dueCards.find((c) => c.id === cardId)!),
+    reviewFlashcardWithAnswer: vi.fn(),
     deleteFlashcard: vi.fn(async () => undefined),
     createShareLink: vi.fn(),
     revokeShareLink: vi.fn(),
@@ -67,6 +68,7 @@ import {
   deleteFlashcard,
   listFlashcards,
   reviewFlashcard,
+  reviewFlashcardWithAnswer,
   revokeShareLink,
 } from "../../api";
 
@@ -85,6 +87,7 @@ describe("FlashcardsPanel", () => {
       dueOnly ? dueCards : allCards,
     );
     vi.mocked(reviewFlashcard).mockClear();
+    vi.mocked(reviewFlashcardWithAnswer).mockReset();
     vi.mocked(deleteFlashcard).mockClear();
     saveDialog.mockReset();
     writeFileMock.mockReset();
@@ -396,6 +399,184 @@ describe("FlashcardsPanel", () => {
       expect(await screen.findByText("Couldn't create a share link.")).toBeInTheDocument();
       expect(writeText).not.toHaveBeenCalled();
       expect(screen.queryByRole("button", { name: /stop sharing/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Production-direction cards — shown the meaning, TYPE the term, graded by the
+  // server. The other direction of the same vocabulary, and a different UI entirely.
+  // ---------------------------------------------------------------------------
+
+  describe("production-direction review", () => {
+    // front is always the prompt shown and back always the expected answer, in BOTH
+    // directions — the backend swaps them when it writes the production sibling. So a
+    // Spanish vocab pair is ("casa" -> "house") for recognition and ("house" -> "casa")
+    // here, NOT a card that needs the panel to read it backwards.
+    const productionCard: Flashcard = {
+      id: "prod-1",
+      document_id: "doc-1",
+      front: "house",
+      back: "la casa",
+      direction: "production",
+      due: "2026-01-01T00:00:00Z",
+      state: "learning",
+      last_review: null,
+      created_at: "2026-01-01T00:00:00Z",
+    };
+
+    function graded(result: ProductionGrading["result"], answer: string): GradedFlashcard {
+      const rating = result === "correct" ? 3 : result === "close" ? 2 : 1;
+      return {
+        ...productionCard,
+        grading: { result, rating: rating as 1 | 2 | 3 | 4, answer, expected: productionCard.back },
+      };
+    }
+
+    function queueProductionFirst(...rest: Flashcard[]) {
+      vi.mocked(listFlashcards).mockImplementation(async (_token: string, dueOnly?: boolean) =>
+        dueOnly ? [productionCard, ...rest] : [productionCard, ...rest],
+      );
+    }
+
+    it("asks for a typed answer instead of offering flip-and-self-rate", async () => {
+      queueProductionFirst();
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+      expect(await screen.findByText("house")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: /your answer/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^check$/i })).toBeInTheDocument();
+      // The self-rating escape hatch must NOT be there: the whole point is that the
+      // student commits to an answer the machine can check.
+      expect(screen.queryByRole("button", { name: /^good$/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/click to reveal the answer/i)).not.toBeInTheDocument();
+      // ...and the answer itself must not be on screen before they commit.
+      expect(screen.queryByText("la casa")).not.toBeInTheDocument();
+    });
+
+    it("submits the typed answer, shows the verdict, and only advances on Next", async () => {
+      const user = userEvent.setup();
+      queueProductionFirst(dueCards[0]);
+      vi.mocked(reviewFlashcardWithAnswer).mockResolvedValue(graded("correct", "la casa"));
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+      await screen.findByText("house");
+      await user.type(screen.getByRole("textbox", { name: /your answer/i }), "la casa");
+      await user.click(screen.getByRole("button", { name: /^check$/i }));
+
+      await waitFor(() =>
+        expect(vi.mocked(reviewFlashcardWithAnswer)).toHaveBeenCalledWith(
+          "test-token",
+          "prod-1",
+          "la casa",
+        ),
+      );
+      expect(await screen.findByText(/^correct\.$/i)).toBeInTheDocument();
+      // The card stays put showing the real answer — feedback before moving on, never
+      // a silent jump to the next card.
+      expect(screen.getByText("la casa")).toBeInTheDocument();
+      expect(screen.getByText("house")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /next card/i }));
+      expect(await screen.findByText("What is FSRS?")).toBeInTheDocument();
+    });
+
+    // The accent case the grading logic was specifically built around: "recuperacion"
+    // for "recuperación" is credited (Hard), not failed, and the UI says so in words
+    // rather than leaving the student to guess why a right-looking answer wasn't a
+    // clean pass.
+    it("reports an accent-only miss as almost-right rather than wrong", async () => {
+      const user = userEvent.setup();
+      const accentCard: Flashcard = {
+        ...productionCard,
+        id: "prod-accent",
+        front: "recovery",
+        back: "recuperación",
+      };
+      vi.mocked(listFlashcards).mockImplementation(async () => [accentCard]);
+      vi.mocked(reviewFlashcardWithAnswer).mockResolvedValue({
+        ...accentCard,
+        grading: {
+          result: "close",
+          rating: 2,
+          answer: "recuperacion",
+          expected: "recuperación",
+        },
+      });
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+      await screen.findByText("recovery");
+      await user.type(screen.getByRole("textbox", { name: /your answer/i }), "recuperacion");
+      await user.click(screen.getByRole("button", { name: /^check$/i }));
+
+      expect(await screen.findByText(/almost.*accent marks.*hard/i)).toBeInTheDocument();
+      // The accented form is shown so they can actually learn the accent they missed.
+      expect(screen.getByText("recuperación")).toBeInTheDocument();
+    });
+
+    it("shows the real answer next to a wrong one", async () => {
+      const user = userEvent.setup();
+      queueProductionFirst();
+      vi.mocked(reviewFlashcardWithAnswer).mockResolvedValue(graded("wrong", "el perro"));
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+      await screen.findByText("house");
+      await user.type(screen.getByRole("textbox", { name: /your answer/i }), "el perro");
+      await user.click(screen.getByRole("button", { name: /^check$/i }));
+
+      expect(await screen.findByText(/not quite/i)).toBeInTheDocument();
+      expect(screen.getByText("la casa")).toBeInTheDocument();
+      // What they typed stays visible beside the right answer.
+      expect(screen.getByRole("textbox", { name: /your answer/i })).toHaveValue("el perro");
+    });
+
+    it("reports a failed check instead of silently eating the review", async () => {
+      const user = userEvent.setup();
+      queueProductionFirst();
+      vi.mocked(reviewFlashcardWithAnswer).mockRejectedValue(new ApiError("Couldn't check that answer."));
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+      await screen.findByText("house");
+      await user.type(screen.getByRole("textbox", { name: /your answer/i }), "la casa");
+      await user.click(screen.getByRole("button", { name: /^check$/i }));
+
+      expect(await screen.findByText("Couldn't check that answer.")).toBeInTheDocument();
+      // Still answerable — a network blip must not consume the card.
+      expect(screen.getByRole("button", { name: /^check$/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /next card/i })).not.toBeInTheDocument();
+    });
+
+    // Regression guard for the existing, unchanged behaviour: a card with no direction
+    // at all (every row predating migration 0021) is a recognition card and must still
+    // get the flip-and-self-rate UI, never a text box.
+    it("leaves recognition cards — including direction-less legacy ones — exactly as they were", async () => {
+      const user = userEvent.setup();
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+      await screen.findByText("What is FSRS?");
+      expect(screen.queryByRole("textbox", { name: /your answer/i })).not.toBeInTheDocument();
+
+      await user.click(screen.getByText("What is FSRS?"));
+      await user.click(await screen.findByRole("button", { name: /^good$/i }));
+
+      await waitFor(() =>
+        expect(vi.mocked(reviewFlashcard)).toHaveBeenCalledWith("test-token", "card-1", 3),
+      );
+      expect(vi.mocked(reviewFlashcardWithAnswer)).not.toHaveBeenCalled();
+    });
+
+    it("labels type-in cards in the All cards list so a pair doesn't look like a duplicate", async () => {
+      const user = userEvent.setup();
+      vi.mocked(listFlashcards).mockImplementation(async (_token: string, dueOnly?: boolean) =>
+        dueOnly ? dueCards : [...allCards, productionCard],
+      );
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+      await screen.findByText("What is FSRS?");
+
+      await user.click(screen.getByRole("button", { name: /all cards/i }));
+
+      const row = (await screen.findByText("house")).closest(".item-row");
+      expect(row).not.toBeNull();
+      expect(row!.textContent).toMatch(/type-in/i);
     });
   });
 });

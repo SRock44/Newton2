@@ -323,7 +323,21 @@ class Flashcard(Base):
     which conveniently also means there's no separate "new" bucket to track by hand.
     `reps`/`lapses` aren't stored here since FlashcardReviewLog already answers those
     (count of rows, count of rows with rating=Again) without a redundant counter to
-    keep in sync."""
+    keep in sync.
+
+    `direction` is what makes this more than a recognition-only trainer. "recognition"
+    (and NULL, which every row predating migration 0021 carries) is the original
+    behaviour: see `front`, recall `back`, self-rate. "production" is the harder,
+    pedagogically distinct skill second-language teaching cares about -- being shown the
+    meaning and having to PRODUCE the target term -- and a production card is its own
+    ordinary row, with `front`/`back` already swapped at generation time so that
+    front is always "the prompt shown" and back is always "the expected answer",
+    whichever direction it is. Everything that reads a flashcard (the Anki/PowerPoint
+    exports, the public share page, weak-area rollups) therefore keeps working with no
+    knowledge of direction at all, and -- the point of modelling it this way -- the FSRS
+    columns above are per-ROW, so a term's recognition and production cards schedule
+    completely independently with zero scheduling-logic changes. See
+    app/services/flashcards.py."""
 
     __tablename__ = "flashcards"
 
@@ -334,6 +348,12 @@ class Flashcard(Base):
     )
     front: Mapped[str] = mapped_column(Text)
     back: Mapped[str] = mapped_column(Text)
+    # Nullable with NO default, column-side or Python-side: backfilling a column on a
+    # table that grows with every generated card is a write this feature doesn't need,
+    # and NULL already means exactly "recognition" everywhere it's read (see
+    # flashcards.card_direction), so a default would only add a second way to say the
+    # same thing. generate_flashcards writes the value explicitly on every row it makes.
+    direction: Mapped[str | None] = mapped_column(String, nullable=True)
     fsrs_state: Mapped[str] = mapped_column(String, default="learning")
     fsrs_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fsrs_stability: Mapped[float | None] = mapped_column(Float, nullable=True)

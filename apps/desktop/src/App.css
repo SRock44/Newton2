@@ -4509,6 +4509,79 @@ body.is-resizing-panel * {
   color: var(--color-success);
 }
 
+/* Production-direction cards: shown the meaning, type the term. The prompt box isn't
+   clickable here (there's nothing to flip to — committing an answer IS the reveal), so
+   it drops the pointer affordance the recognition box carries. */
+.flashcard-box--production {
+  cursor: default;
+}
+
+.flashcard-box--production:hover {
+  border-color: var(--color-border);
+}
+
+.flashcard-production-form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.flashcard-production-input {
+  flex: 1;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+}
+
+.flashcard-production-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.flashcard-production-input:disabled {
+  opacity: 0.8;
+}
+
+.flashcard-grading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+/* The tint is a second cue, never the only one — the verdict line always says in words
+   whether it was right, which is what a color-blind student reads. */
+.flashcard-grading--correct {
+  background-color: var(--color-success-tint);
+  border-left-color: var(--color-success);
+}
+
+.flashcard-grading--close {
+  background-color: var(--color-warning-tint);
+  border-left-color: var(--color-warning);
+}
+
+.flashcard-grading--wrong {
+  background-color: var(--color-danger-tint);
+  border-left-color: var(--color-danger);
+}
+
+.flashcard-grading-verdict {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.flashcard-grading-expected {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
 /* ---------- Progress (gamification) ---------- */
 
 .progress-stats {

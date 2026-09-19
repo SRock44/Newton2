@@ -12,7 +12,14 @@ from app.db.base import get_db
 from app.db.models import Document, Flashcard
 from app.services import billing as billing_service
 from app.services.anki import build_apkg, build_flashcard_decks
-from app.services.flashcards import generate_flashcards, get_due_flashcards, review_flashcard
+from app.services.flashcards import (
+    DIRECTION_PRODUCTION,
+    card_direction,
+    generate_flashcards,
+    get_due_flashcards,
+    review_flashcard,
+    review_production_flashcard,
+)
 from app.services.pptx_export import PPTX_MEDIA_TYPE, build_flashcard_pptx
 from app.services.users import get_or_create_user
 
@@ -25,6 +32,9 @@ def _serialize(card: Flashcard) -> dict:
         "document_id": str(card.document_id) if card.document_id else None,
         "front": card.front,
         "back": card.back,
+        # Always a concrete string, never null, even for the pre-0021 rows whose column
+        # is NULL -- clients shouldn't have to know that NULL means "recognition".
+        "direction": card_direction(card),
         "due": card.due.isoformat(),
         "state": card.fsrs_state,
         "last_review": card.last_review.isoformat() if card.last_review else None,
@@ -35,16 +45,28 @@ def _serialize(card: Flashcard) -> dict:
 @router.post("/generate/{document_id}")
 async def generate(
     document_id: uuid.UUID,
+    include_production: bool = Query(False),
     claims: dict = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
+    """`include_production=true` additionally creates a production-direction sibling for
+    every card -- shown the answer, type the term. Opt-in rather than inferred: it's the
+    right default for vocabulary and the wrong one for a chemistry deck, and doubling a
+    student's daily review load on a guess about content type isn't a call this endpoint
+    should be making for them. See app/services/flashcards.generate_flashcards."""
     user = await get_or_create_user(db, claims)
     document = await db.get(Document, document_id)
     if document is None or document.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
 
     target_count = billing_service.generation_target_count(user)
-    cards = await generate_flashcards(db, user.id, document, target_count=target_count)
+    cards = await generate_flashcards(
+        db,
+        user.id,
+        document,
+        target_count=target_count,
+        include_production_cards=include_production,
+    )
     await db.commit()
     return [_serialize(c) for c in cards]
 
@@ -170,7 +192,18 @@ def _export_filename(decks: list, extension: str) -> str:
 
 
 class ReviewRequest(BaseModel):
-    rating: int = Field(ge=1, le=4)  # 1=Again, 2=Hard, 3=Good, 4=Easy
+    """Exactly one of these is required, and `rating` still means what it always meant.
+
+    `rating` (1=Again, 2=Hard, 3=Good, 4=Easy) is the self-rating a recognition card has
+    always used. `typed_answer` is the production-direction path: the student commits to
+    an answer and the server grades it (app/services/flashcards.grade_production_answer)
+    instead of asking them to judge themselves on a word they may have just failed to
+    produce. Sending both is allowed and `rating` wins -- that's the student overriding a
+    grade they disagree with, which is a reasonable thing to let them do and a bad thing
+    to make them fight the API over."""
+
+    rating: int | None = Field(None, ge=1, le=4)
+    typed_answer: str | None = Field(None, max_length=2000)
 
 
 @router.post("/{card_id}/review")
@@ -185,9 +218,27 @@ async def review(
     if card is None or card.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Flashcard not found")
 
-    updated = await review_flashcard(db, card, body.rating)
+    if body.rating is not None:
+        updated = await review_flashcard(db, card, body.rating)
+        await db.commit()
+        return _serialize(updated)
+
+    if body.typed_answer is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Send either a rating (1-4) or a typed_answer."
+        )
+    if card_direction(card) != DIRECTION_PRODUCTION:
+        # A recognition card's `back` is a full answer, not a term -- typing it out
+        # verbatim is not the skill it drills, and grading against it would fail almost
+        # everyone. Say so rather than silently marking them wrong.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This card is a recognition card -- rate it 1-4 instead of typing an answer.",
+        )
+
+    updated, grading = await review_production_flashcard(db, card, body.typed_answer)
     await db.commit()
-    return _serialize(updated)
+    return {**_serialize(updated), "grading": grading}
 
 
 @router.delete("/{card_id}")
