@@ -51,6 +51,19 @@ export interface ChatMessage {
    * messages for the "Newton Context" panel's token total. */
   prompt_tokens?: number | null;
   completion_tokens?: number | null;
+  /** Client-side only: set on an assistant reply's placeholder the moment it's pushed
+   * (see App.tsx's handleSend) when this turn was sent as a Conversation Practice
+   * exchange (see Composer.tsx's toggle/language picker) -- carried through every
+   * later in-place update via the usual `{...last, ...}` spread, so it's still true by
+   * the time the reply finishes streaming. Gates MessageBubble's auto-play-on-reply
+   * behavior: a plain typed/chat turn never sets this, so the manual "Listen" button
+   * stays the only way to hear an ordinary reply. */
+  conversationPractice?: boolean;
+  /** Client-side only: the ISO 639-1 language code (e.g. "es") Conversation Practice
+   * mode was set to for this turn -- passed to POST /voice/synthesize so the
+   * auto-played reply uses a matching voice (see app/tools/voice_tts.py's language
+   * param) instead of always the default English one. */
+  ttsLanguage?: string;
 }
 
 export interface ChatSession {

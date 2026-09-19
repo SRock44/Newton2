@@ -36,7 +36,7 @@ import NewtonMark from "./components/NewtonMark";
 import Sidebar from "./components/Sidebar";
 import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
-import type { ComposerHandle } from "./components/Composer";
+import type { ComposerHandle, ConversationPracticeOptions } from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
 import HomeView from "./components/HomeView";
 import StudyPlanPanel from "./components/StudyPlanPanel";
@@ -887,7 +887,7 @@ function App() {
   // reply and everything after it. Deliberately NOT a separate send path -- Composer
   // always calls this same onSend, and once the edit branch below finishes truncating,
   // the rest of this function is indistinguishable from an ordinary send.
-  async function handleSend(text: string) {
+  async function handleSend(text: string, conversationPractice?: ConversationPracticeOptions) {
     const socket = wsRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN || !wsAuthedRef.current || !activeSessionId) {
       setMessages((prev) => [
@@ -925,9 +925,36 @@ function App() {
     // indicator" entry; MessageBubble.tsx's showStreamingDots renders this placeholder
     // state, and every WS handler above updates this same message in place from here
     // on, never creating a second one).
-    setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: "", streaming: true }]);
+    // Conversation Practice mode (turn-based spoken roleplay — see Composer.tsx's
+    // toggle/language picker and app/agents/tutor.py's conversation_practice_
+    // addendum): tagged on the assistant placeholder itself, not just sent to the
+    // server, so MessageBubble's auto-play-on-reply (ListenButton's autoPlay prop)
+    // knows THIS specific reply should be spoken automatically once it finishes —
+    // carried through every later in-place update via the usual `{...last, ...}`
+    // spread every WS handler above already uses, so it's still set by the time
+    // streaming ends. Absent entirely for an ordinary send, which is what keeps
+    // normal chat completely unaffected by this feature.
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: text },
+      {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        conversationPractice: conversationPractice?.conversationPractice,
+        ttsLanguage: conversationPractice?.targetLanguage,
+      },
+    ]);
     rememberFirstMessage(activeSessionId, text);
-    socket.send(JSON.stringify({ type: "user_message", content: text }));
+    socket.send(
+      JSON.stringify({
+        type: "user_message",
+        content: text,
+        ...(conversationPractice
+          ? { conversation_practice: true, target_language: conversationPractice.targetLanguage }
+          : {}),
+      }),
+    );
     setIsStreaming(true);
   }
 

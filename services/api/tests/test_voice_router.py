@@ -101,6 +101,65 @@ async def test_synthesize_returns_real_playable_wav_audio(http_client, auth_head
         assert wav_file.getnchannels() == 1
 
 
+@pytest.mark.live_smoke
+async def test_synthesize_returns_real_spanish_audio_with_a_different_voice(http_client, auth_headers, pro_student):
+    """Real, multi-language Piper voices (see services/piper-tts/Dockerfile/app/
+    main.py) -- not just "some audio comes back", but genuinely a DIFFERENT voice than
+    the plain English request above, proven by X-TTS-Voice-Language actually reporting
+    "es" (never a silent fallback) and by producing a real, sane-sized WAV for the
+    input text length."""
+    resp = await http_client.post(
+        "/voice/synthesize",
+        headers=auth_headers,
+        json={"text": "Hola, vamos a practicar espanol juntos.", "language": "es"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "audio/wav"
+    assert resp.headers.get("x-tts-voice-language") == "es"
+    assert resp.headers.get("x-tts-fallback") == "false"
+    assert len(resp.content) > 1000  # real synthesized speech, not an empty/stub body
+
+    with wave.open(BytesIO(resp.content), "rb") as wav_file:
+        assert wav_file.getnframes() > 0
+        assert wav_file.getnchannels() == 1
+
+
+@pytest.mark.live_smoke
+async def test_synthesize_returns_real_french_audio_with_a_different_voice(http_client, auth_headers, pro_student):
+    resp = await http_client.post(
+        "/voice/synthesize",
+        headers=auth_headers,
+        json={"text": "Bonjour, pratiquons le francais ensemble.", "language": "fr"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "audio/wav"
+    assert resp.headers.get("x-tts-voice-language") == "fr"
+    assert resp.headers.get("x-tts-fallback") == "false"
+    assert len(resp.content) > 1000
+
+    with wave.open(BytesIO(resp.content), "rb") as wav_file:
+        assert wav_file.getnframes() > 0
+
+
+@pytest.mark.live_smoke
+async def test_synthesize_falls_back_honestly_for_an_unsupported_language(http_client, auth_headers, pro_student):
+    """A language with no baked-in Piper voice must still return real, playable audio
+    (the default English voice), and say so honestly via X-TTS-Fallback rather than
+    silently mismatching or erroring."""
+    resp = await http_client.post(
+        "/voice/synthesize",
+        headers=auth_headers,
+        json={"text": "This should fall back to English.", "language": "de"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.headers.get("x-tts-voice-language") == "en"
+    assert resp.headers.get("x-tts-fallback") == "true"
+    assert len(resp.content) > 1000
+
+    with wave.open(BytesIO(resp.content), "rb") as wav_file:
+        assert wav_file.getnframes() > 0
+
+
 async def test_synthesize_rejects_a_free_plan_user(http_client, auth_headers):
     # No pro_student fixture here -- student1 is plan="free" by default.
     resp = await http_client.post(

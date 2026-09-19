@@ -443,6 +443,16 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID) -> None:
                     continue
 
                 user_message = frame.get("content") or ""
+                # Conversation Practice mode (turn-based spoken roleplay -- see
+                # Composer.tsx's toggle/language picker and app/agents/tutor.py's
+                # conversation_practice_addendum): both fields ride along on the same
+                # "user_message" frame rather than a separate frame type, since they
+                # describe THIS turn, not a standing connection-level setting. Read
+                # defensively -- a missing/malformed value just behaves as "off"/
+                # "unspecified" rather than erroring the whole turn.
+                conversation_practice = bool(frame.get("conversation_practice"))
+                raw_target_language = frame.get("target_language")
+                target_language = raw_target_language if isinstance(raw_target_language, str) else None
                 if len(user_message) > MAX_USER_MESSAGE_CHARS:
                     await websocket.send_json(
                         {
@@ -548,7 +558,13 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID) -> None:
 
                     async def _drain_generation() -> None:
                         nonlocal full_response, usage
-                        async for event in run_tutor(str(session_id), user_message, user_id=str(user.id)):
+                        async for event in run_tutor(
+                            str(session_id),
+                            user_message,
+                            user_id=str(user.id),
+                            conversation_practice=conversation_practice,
+                            target_language=target_language,
+                        ):
                             if isinstance(event, PlanChunk):
                                 await websocket.send_json({"type": "plan_chunk", "content": event.text})
                             elif isinstance(event, TextChunk):
@@ -642,6 +658,13 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID) -> None:
                             "type": "stopped" if stopped else "done",
                             "prompt_tokens": usage.prompt_tokens if usage else None,
                             "completion_tokens": usage.completion_tokens if usage else None,
+                            # Echoed back so the frontend's auto-play-the-reply logic
+                            # (Conversation Practice mode) doesn't have to trust its own
+                            # possibly-stale local state by the time a long reply
+                            # finishes -- this is what the tutor ACTUALLY answered
+                            # under, straight from the same turn.
+                            "conversation_practice": conversation_practice,
+                            "target_language": target_language,
                         }
                     )
 

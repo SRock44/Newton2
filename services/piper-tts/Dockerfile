@@ -8,11 +8,26 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Bake the voice model into the image at build time (piper.download_voices is the
+# Bake every voice model into the image at build time (piper.download_voices is the
 # package's own downloader, hits Hugging Face — needs build-time internet egress, same
 # as any other `docker build` that pulls a base image) so the running container never
 # needs outbound network access and startup never depends on Hugging Face being up.
-RUN mkdir -p /voices && python -m piper.download_voices en_US-lessac-medium --download-dir /voices
+#
+# Three real, pretrained Piper voices (rhasspy/piper-voices on Hugging Face) matching
+# app/main.py's VOICE_MODELS — each verified (before adding here) to actually exist as
+# a real <voice>.onnx + <voice>.onnx.json pair, not guessed at:
+#   - en_US-lessac-medium: English (the original, still the default/fallback voice)
+#   - es_ES-davefx-medium: Spanish (Spain)
+#   - fr_FR-siwis-medium:  French — chosen over Mandarin for the second added language.
+#     Mandarin does have a real medium-quality zh_CN voice (huayan), so this wasn't a
+#     hard blocker either way, but fr_FR-siwis is one of Piper's more mature, widely-
+#     used voices (real 63MB model + config pair, same size/shape as the other two
+#     here), so it was the safer bet for a first non-English addition under real time
+#     constraints.
+RUN mkdir -p /voices \
+    && python -m piper.download_voices en_US-lessac-medium --download-dir /voices \
+    && python -m piper.download_voices es_ES-davefx-medium --download-dir /voices \
+    && python -m piper.download_voices fr_FR-siwis-medium --download-dir /voices
 
 COPY app ./app
 

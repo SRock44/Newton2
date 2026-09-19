@@ -893,4 +893,59 @@ describe("MessageBubble 'Listen'", () => {
     expect(audios[0].pause).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:spoken");
   });
+
+  // Conversation Practice mode (turn-based spoken roleplay -- see Composer.tsx's
+  // toggle/App.tsx's handleSend, app/agents/tutor.py's conversation_practice_
+  // addendum): the reply is meant to be HEARD without a manual click. `conversation
+  // Practice`/`ttsLanguage` on the message (set by App.tsx only for a Conversation
+  // Practice send) drive ListenButton's `autoPlay`/`language` props.
+  describe("Conversation Practice auto-play", () => {
+    it("plays automatically, with no click, when the message is tagged conversationPractice", async () => {
+      renderAssistant({ conversationPractice: true, ttsLanguage: "es" });
+
+      await waitFor(() => expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "The Krebs cycle produces ATP.", expect.any(AbortSignal), "es"));
+      await waitFor(() => expect(audios).toHaveLength(1));
+      expect(audios[0].play).toHaveBeenCalledTimes(1);
+    });
+
+    it("requests the matching-language voice, not the default, when auto-playing", async () => {
+      renderAssistant({ conversationPractice: true, ttsLanguage: "fr" });
+
+      await waitFor(() =>
+        expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "The Krebs cycle produces ATP.", expect.any(AbortSignal), "fr"),
+      );
+    });
+
+    it("an ordinary reply (no conversationPractice flag) never auto-plays -- Listen stays manual", async () => {
+      renderAssistant();
+
+      // Give any stray auto-play effect a tick to (not) fire.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(synthesizeSpeech).not.toHaveBeenCalled();
+      expect(audios).toHaveLength(0);
+      expect(screen.getByRole("button", { name: /read this message aloud/i })).toHaveTextContent("Listen");
+    });
+
+    it("a plain manual Listen click still omits the language argument entirely (unaffected by this feature)", async () => {
+      const user = userEvent.setup();
+      renderAssistant(); // no conversationPractice/ttsLanguage at all
+
+      await user.click(screen.getByRole("button", { name: /read this message aloud/i }));
+
+      await waitFor(() =>
+        expect(synthesizeSpeech).toHaveBeenCalledWith("tok", "The Krebs cycle produces ATP.", expect.any(AbortSignal)),
+      );
+    });
+
+    it("the auto-played reply can still be paused/stopped manually like any other", async () => {
+      const user = userEvent.setup();
+      renderAssistant({ conversationPractice: true, ttsLanguage: "es" });
+
+      await screen.findByRole("button", { name: /pause reading this message aloud/i });
+      await user.click(screen.getByRole("button", { name: /pause reading this message aloud/i }));
+
+      expect(await screen.findByRole("button", { name: /resume reading this message aloud/i })).toBeInTheDocument();
+    });
+  });
 });

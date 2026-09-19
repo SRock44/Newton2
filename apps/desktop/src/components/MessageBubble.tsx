@@ -96,8 +96,26 @@ type ListenStatus = "idle" | "loading" | "playing" | "paused";
  * would then have no way to discover.
  *
  * The synthesized audio is kept for the life of the bubble, so replaying a message
- * costs nothing and doesn't re-run real TTS compute on the server. */
-function ListenButton({ token, text }: { token: string; text: string }) {
+ * costs nothing and doesn't re-run real TTS compute on the server.
+ *
+ * `language`/`autoPlay`: Conversation Practice mode (see Composer.tsx's toggle/
+ * language picker, app/tools/voice_tts.py's language param) — `language` requests a
+ * matching Piper voice instead of always the default English one, and `autoPlay`
+ * starts playback itself, once, the moment this button mounts (which only happens
+ * once a reply has real, finished, non-streaming content — see the render condition
+ * below), so the tutor's spoken reply is actually heard without a manual click. Every
+ * other caller of this component leaves both unset and behaves exactly as before. */
+function ListenButton({
+  token,
+  text,
+  language,
+  autoPlay,
+}: {
+  token: string;
+  text: string;
+  language?: string;
+  autoPlay?: boolean;
+}) {
   const [status, setStatus] = useState<ListenStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   // The current chunk's audio element (see lib/speech.ts for why a reply is spoken in
@@ -174,7 +192,13 @@ function ListenButton({ token, text }: { token: string; text: string }) {
 
     const controller = abortRef.current ?? new AbortController();
     abortRef.current = controller;
-    const promise = synthesizeSpeech(token, chunks[index], controller.signal).then((blob) => {
+    // Omits the 4th arg entirely (rather than passing `undefined` positionally) when
+    // no language was requested, so a plain "Listen" click sends exactly the same
+    // 3-argument call it always has.
+    const promise = (language
+      ? synthesizeSpeech(token, chunks[index], controller.signal, language)
+      : synthesizeSpeech(token, chunks[index], controller.signal)
+    ).then((blob) => {
       const url = URL.createObjectURL(blob);
       urlsRef.current.set(index, url);
       pendingRef.current.delete(index);
@@ -248,24 +272,11 @@ function ListenButton({ token, text }: { token: string; text: string }) {
     setStatus("playing");
   }
 
-  async function handleClick() {
-    // A click while a chunk is still being synthesized CANCELS it. Previously the button
-    // was simply disabled for this whole stretch, which on a long reply meant the student
-    // had asked for narration and then had to sit and wait for it with no way out.
-    if (status === "loading") {
-      stop();
-      return;
-    }
-    if (status === "playing") {
-      audioRef.current?.pause();
-      setStatus("paused");
-      return;
-    }
-    if (status === "paused" && audioRef.current) {
-      await audioRef.current.play();
-      setStatus("playing");
-      return;
-    }
+  /** Starts playback from scratch (chunk 0) -- the idle-state branch of a manual click
+   * AND Conversation Practice's automatic play-on-mount (see the effect below), so
+   * both paths share the exact same real synthesis/playback/error handling instead of
+   * a second, parallel implementation. */
+  async function beginPlayback() {
     if (chunks.length === 0) return;
 
     setError(null);
@@ -284,6 +295,39 @@ function ListenButton({ token, text }: { token: string; text: string }) {
       setStatus("idle");
       setError(err instanceof ApiError ? err.message : "Couldn't read that message aloud.");
     }
+  }
+
+  // Conversation Practice's auto-play: fires exactly once, right when this button
+  // mounts with autoPlay set — which only happens once (see the render condition
+  // below: not streaming, real content, no error), so this never re-triggers on a
+  // later unrelated re-render of the same bubble. Deliberately does NOT depend on
+  // `status` (which would re-run this every time playback's own state changes) — only
+  // on the identity of the text/autoPlay this bubble was mounted with.
+  useEffect(() => {
+    if (!autoPlay) return;
+    void beginPlayback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay, text]);
+
+  async function handleClick() {
+    // A click while a chunk is still being synthesized CANCELS it. Previously the button
+    // was simply disabled for this whole stretch, which on a long reply meant the student
+    // had asked for narration and then had to sit and wait for it with no way out.
+    if (status === "loading") {
+      stop();
+      return;
+    }
+    if (status === "playing") {
+      audioRef.current?.pause();
+      setStatus("paused");
+      return;
+    }
+    if (status === "paused" && audioRef.current) {
+      await audioRef.current.play();
+      setStatus("playing");
+      return;
+    }
+    await beginPlayback();
   }
 
   const label =
@@ -497,7 +541,12 @@ function MessageBubble({
             for a still-streaming (or empty/errored) message, and a control that appears
             mid-stream and then changes what it would say is worse than one that waits. */}
         {!isUser && message.role === "assistant" && !message.streaming && !message.error && displayContent.trim() && (
-          <ListenButton token={token} text={displayContent} />
+          <ListenButton
+            token={token}
+            text={displayContent}
+            language={message.ttsLanguage}
+            autoPlay={message.conversationPractice}
+          />
         )}
       </div>
     </div>

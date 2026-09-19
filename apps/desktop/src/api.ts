@@ -789,11 +789,24 @@ export async function transcribeAudio(token: string, blob: Blob): Promise<string
  * treats a click during "Preparing…" as a cancel. An aborted fetch rejects with a
  * DOMException named "AbortError", which callers are expected to treat as a normal
  * outcome, not an error worth showing. */
-export async function synthesizeSpeech(token: string, text: string, signal?: AbortSignal): Promise<Blob> {
+/** `language` is an ISO 639-1 code (e.g. "es", "fr") -- Conversation Practice mode
+ * (see Composer.tsx) passes the language the conversation is actually in, so the
+ * reply is read back in a matching voice instead of always English. Left unset for
+ * the plain "Listen" button, which keeps getting the default voice exactly as before
+ * this parameter existed. See app/routers/voice.py's SynthesizeRequest/response --
+ * the server falls back to the default voice (never a silent mismatch) and reports
+ * the real voice/fallback via X-TTS-* response headers, which this exposes since a
+ * caller that cares (a11y/debugging) shouldn't have to re-derive it. */
+export async function synthesizeSpeech(
+  token: string,
+  text: string,
+  signal?: AbortSignal,
+  language?: string,
+): Promise<Blob> {
   const res = await fetch(`${API_URL}/voice/synthesize`, {
     method: "POST",
     headers: { ...authHeaders(token), "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(language ? { text, language } : { text }),
     signal,
   });
   if (!res.ok) {

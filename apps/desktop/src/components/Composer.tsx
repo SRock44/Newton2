@@ -5,6 +5,28 @@ import type { UploadedDocument } from "../types";
 import { useVoiceRecorder } from "../lib/useVoiceRecorder";
 import Toggle from "./Toggle";
 
+/** Conversation Practice mode (turn-based spoken roleplay -- see
+ * app/agents/tutor.py's conversation_practice_addendum and services/piper-tts's
+ * multi-language voices): the languages this app can both (a) ask the tutor to
+ * roleplay in and (b) actually play back in a matching voice, kept as one list since
+ * offering a language Piper has no voice for would just mean an honest-but-confusing
+ * silent fallback to English audio under a Spanish/French conversation. Mirrors
+ * services/piper-tts/app/main.py's VOICE_MODELS keys exactly. */
+export const CONVERSATION_PRACTICE_LANGUAGES: { code: string; label: string }[] = [
+  { code: "es", label: "Spanish" },
+  { code: "fr", label: "French" },
+  { code: "en", label: "English" },
+];
+
+/** Options threaded through onSend only for a Conversation Practice turn -- absent
+ * (undefined) for every ordinary chat message, which is what keeps ordinary chat
+ * completely unaffected by this feature (see app/agents/tutor.py's own regression
+ * test). */
+export interface ConversationPracticeOptions {
+  conversationPractice: true;
+  targetLanguage: string;
+}
+
 /** Imperative handle exposed via ref — currently just `focus()`, used by
  * PaperPlanCard's "Request Changes" action (see App.tsx's handleFocusComposer) to put
  * the cursor in the composer so the student can type their own tweaks, without sending
@@ -16,7 +38,11 @@ export interface ComposerHandle {
 }
 
 interface ComposerProps {
-  onSend: (text: string) => void;
+  /** `options` is only ever present for a Conversation Practice send (see
+   * ConversationPracticeOptions) -- every other call site (a plain typed/dictated
+   * message, an "options"-picker/paper-plan-approval auto-send from MessageContent,
+   * the attached-image auto-send) calls this with just `text`, unaffected. */
+  onSend: (text: string, options?: ConversationPracticeOptions) => void;
   onStop?: () => void;
   disabled: boolean;
   /** True specifically while a reply is being generated — distinct from `disabled`,
@@ -102,6 +128,18 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   const [learnModeLoaded, setLearnModeLoaded] = useState(false);
   const [savingLearnMode, setSavingLearnMode] = useState(false);
   const [learnModeError, setLearnModeError] = useState<string | null>(null);
+
+  // Conversation Practice mode (turn-based spoken roleplay, distinct from ordinary
+  // chat -- see app/agents/tutor.py's conversation_practice_addendum). Deliberately
+  // client-only, per-turn, NEVER persisted server-side like Learn Mode above: this is
+  // "practice a spoken exchange right now," not a standing account preference, and
+  // resets with everything else when the student switches chats (see the
+  // session-switch effect below). Defaults to Spanish (the first non-English option)
+  // since picking a language to practice IS the point of turning this on.
+  const [conversationPracticeEnabled, setConversationPracticeEnabled] = useState(false);
+  const [conversationPracticeLanguage, setConversationPracticeLanguage] = useState(
+    CONVERSATION_PRACTICE_LANGUAGES[0]!.code,
+  );
 
   // The "+" button's own small popover menu ("Upload from your computer" / "Attach an
   // existing document" — see the composer-attach-menu/-document-picker CSS) and, once
@@ -210,6 +248,11 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     setAttachError(null);
     setMenuOpen(false);
     setPickerOpen(false);
+    // Conversation Practice is per-turn/per-chat, not a standing preference (see its
+    // own state declaration above) -- a new/switched chat starts back in ordinary
+    // chat mode, never carrying over a practice language from whatever chat was open
+    // before.
+    setConversationPracticeEnabled(false);
     // A recording started for the last chat has no meaning for this one: release the
     // mic AND drop what it captured, rather than landing the previous conversation's
     // half-sentence in this one's draft.
@@ -296,7 +339,14 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     // is in progress and, if so, deletes-and-truncates before resending. No parallel
     // send mechanism here; editing is indistinguishable from a brand new message once
     // that truncation has happened.
-    onSend(text);
+    // Omits the 2nd arg entirely (rather than passing `undefined` positionally) for
+    // an ordinary send, so every existing caller's onSend(text) contract -- and every
+    // test asserting a single-argument call -- stays completely unchanged.
+    if (conversationPracticeEnabled) {
+      onSend(text, { conversationPractice: true, targetLanguage: conversationPracticeLanguage });
+    } else {
+      onSend(text);
+    }
     setDraft("");
     setAttachedImage(null);
     setAttachedDocument(null);
@@ -393,6 +443,41 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           <span>Learn Mode</span>
         </div>
         {learnModeError && <span className="composer-learn-mode-error">{learnModeError}</span>}
+        {/* Conversation Practice: a turn-based spoken roleplay mode, distinct from
+            ordinary chat (see app/agents/tutor.py's conversation_practice_addendum).
+            Turning it on tags the NEXT sent message so the tutor replies briefly, in
+            the chosen language, roleplaying a spoken scenario -- and (see
+            MessageBubble.tsx's ListenButton autoPlay prop) automatically speaks that
+            reply back once it finishes, no manual "Listen" click needed. Still
+            explicitly turn-based/push-to-talk: dictate with the mic button above,
+            review/edit the transcript like normal, then Send. */}
+        <div
+          className="composer-conversation-practice-toggle"
+          title="Newton replies briefly, in the chosen language, roleplaying a spoken scenario -- and reads its reply back automatically"
+        >
+          <Toggle
+            checked={conversationPracticeEnabled}
+            onChange={setConversationPracticeEnabled}
+            label="Conversation Practice"
+            size="sm"
+            emphasized={conversationPracticeEnabled}
+          />
+          <span>Conversation Practice</span>
+          {conversationPracticeEnabled && (
+            <select
+              className="composer-conversation-practice-language"
+              value={conversationPracticeLanguage}
+              onChange={(e) => setConversationPracticeLanguage(e.target.value)}
+              aria-label="Language to practice"
+            >
+              {CONVERSATION_PRACTICE_LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
       {(attachedImage || attachedDocument) && (
         <div className="composer-attachments">

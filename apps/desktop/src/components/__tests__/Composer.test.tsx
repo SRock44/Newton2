@@ -322,6 +322,108 @@ describe("Composer", () => {
     });
   });
 
+  // Conversation Practice mode (turn-based spoken roleplay -- see App.tsx's
+  // handleSend/app/agents/tutor.py's conversation_practice_addendum). Client-only,
+  // per-turn state: this suite covers the toggle/language-picker UI and exactly what
+  // gets passed to onSend, not the backend prompt behavior (see test_agents_tutor.py
+  // for that).
+  describe("Conversation Practice toggle", () => {
+    it("is visible directly in the composer, off by default, with no language picker showing yet", () => {
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const toggle = screen.getByRole("switch", { name: /conversation practice/i });
+      expect(toggle).not.toBeChecked();
+      expect(screen.queryByRole("combobox", { name: /language to practice/i })).not.toBeInTheDocument();
+    });
+
+    it("sending an ordinary message (toggle off) calls onSend with no second argument", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await user.type(screen.getByRole("textbox"), "just a normal message");
+      await user.keyboard("{Enter}");
+
+      expect(onSend).toHaveBeenCalledWith("just a normal message");
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onSend.mock.calls[0]).toHaveLength(1); // no options arg at all
+    });
+
+    it("turning it on reveals a language picker defaulting to Spanish", async () => {
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await user.click(screen.getByRole("switch", { name: /conversation practice/i }));
+
+      const picker = await screen.findByRole("combobox", { name: /language to practice/i });
+      expect(picker).toHaveValue("es");
+    });
+
+    it("sending while enabled tags the message with conversationPractice + the selected language", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await user.click(screen.getByRole("switch", { name: /conversation practice/i }));
+      await user.type(screen.getByRole("textbox"), "Hola, como estas?");
+      await user.keyboard("{Enter}");
+
+      expect(onSend).toHaveBeenCalledWith("Hola, como estas?", {
+        conversationPractice: true,
+        targetLanguage: "es",
+      });
+    });
+
+    it("changing the language picker changes what's sent", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await user.click(screen.getByRole("switch", { name: /conversation practice/i }));
+      const picker = await screen.findByRole("combobox", { name: /language to practice/i });
+      await user.selectOptions(picker, "fr");
+
+      await user.type(screen.getByRole("textbox"), "Bonjour!");
+      await user.keyboard("{Enter}");
+
+      expect(onSend).toHaveBeenCalledWith("Bonjour!", {
+        conversationPractice: true,
+        targetLanguage: "fr",
+      });
+    });
+
+    it("turning it back off hides the picker and returns to plain sends", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const toggle = screen.getByRole("switch", { name: /conversation practice/i });
+      await user.click(toggle);
+      await user.click(toggle);
+
+      expect(screen.queryByRole("combobox", { name: /language to practice/i })).not.toBeInTheDocument();
+
+      await user.type(screen.getByRole("textbox"), "back to normal");
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith("back to normal");
+    });
+
+    it("resets to off when the student switches to a different chat", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="session-a" />,
+      );
+
+      await user.click(screen.getByRole("switch", { name: /conversation practice/i }));
+      expect(screen.getByRole("switch", { name: /conversation practice/i })).toBeChecked();
+
+      rerender(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="session-b" />);
+
+      expect(screen.getByRole("switch", { name: /conversation practice/i })).not.toBeChecked();
+      expect(screen.queryByRole("combobox", { name: /language to practice/i })).not.toBeInTheDocument();
+    });
+  });
+
   // Message editing (ROADMAP.md): Composer's own contract for the `editing` prop --
   // App.tsx owns the actual delete-and-resend logic (see App.test.tsx's "message
   // editing" suite for that full flow), this just covers Composer's piece of it in

@@ -522,6 +522,119 @@ async def test_run_tutor_does_not_append_learn_mode_addendum_for_an_anonymous_ca
     assert fake.calls_seen[0]["messages"][0].content == tutor.SYSTEM_PROMPT
 
 
+# ---------------------------------------------------------------------------
+# Conversation Practice mode (per-turn, NOT a persisted User setting -- see
+# app/agents/tutor.py's conversation_practice_addendum/CONVERSATION_PRACTICE_LANGUAGE_
+# NAMES). Mirrors the Focus Mode/Learn Mode test shapes above: a regression-proof that
+# ordinary chat (the flag simply absent/False) is completely unaffected, plus real
+# content assertions on the addendum text.
+# ---------------------------------------------------------------------------
+
+
+async def test_run_tutor_appends_conversation_practice_addendum_when_flagged(monkeypatch):
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c
+        async for c in tutor.run_tutor(
+            str(uuid.uuid4()), "hola", conversation_practice=True, target_language="es"
+        )
+    ]
+
+    assert text_of(events) == "ok"
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == tutor.SYSTEM_PROMPT + tutor.conversation_practice_addendum("es")
+    assert "Spanish" in system_content
+
+
+async def test_run_tutor_does_not_append_conversation_practice_addendum_by_default(monkeypatch):
+    """The regression-proof the task asked for: an ORDINARY chat turn (no
+    conversation_practice flag at all, matching every existing call site/test in this
+    file) must get exactly SYSTEM_PROMPT, unaffected by this feature's addition."""
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi")]
+
+    assert text_of(events) == "ok"
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == tutor.SYSTEM_PROMPT
+    assert "Conversation Practice mode is ON" not in system_content
+
+
+async def test_run_tutor_does_not_append_conversation_practice_addendum_when_explicitly_false(monkeypatch):
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c
+        async for c in tutor.run_tutor(
+            str(uuid.uuid4()), "hi", conversation_practice=False, target_language="es"
+        )
+    ]
+
+    assert text_of(events) == "ok"
+    system_content = fake.calls_seen[0]["messages"][0].content
+    assert system_content == tutor.SYSTEM_PROMPT
+
+
+async def test_run_tutor_conversation_practice_stacks_with_focus_and_learn_mode(tutor_user, monkeypatch):
+    """A per-turn flag, deliberately independent of the persisted Focus/Learn Mode user
+    settings -- all three can be on for the same turn, appended in the same fixed
+    order (Focus, then Learn, then Conversation Practice) every time."""
+    user = await tutor_user(focus_mode_enabled=True, learn_mode_enabled=True)
+    fake = ScriptedToolCallingProvider([["ok"]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c
+        async for c in tutor.run_tutor(
+            str(uuid.uuid4()),
+            "hi",
+            user_id=str(user.id),
+            conversation_practice=True,
+            target_language="fr",
+        )
+    ]
+
+    assert text_of(events) == "ok"
+    expected = (
+        tutor.SYSTEM_PROMPT
+        + tutor.FOCUS_MODE_SYSTEM_ADDENDUM
+        + tutor.LEARN_MODE_SYSTEM_ADDENDUM
+        + tutor.conversation_practice_addendum("fr")
+    )
+    assert fake.calls_seen[0]["messages"][0].content == expected
+
+
+def test_conversation_practice_addendum_names_the_real_language_and_stays_brief_and_gentle():
+    """Pure string-content assertions: it must name the actual requested language (not
+    a generic placeholder), instruct brief/conversational replies (not essay-length),
+    and describe gentle, non-derailing correction of mistakes rather than either
+    ignoring them or turning every reply into a grammar lecture."""
+    addendum = tutor.conversation_practice_addendum("es")
+    lowered = addendum.lower()
+
+    assert "spanish" in lowered
+    assert "conversation practice mode is on" in lowered
+    assert "brief" in lowered
+    assert "gently" in lowered
+    # It should mention what NOT to do, proving this isn't just "correct everything".
+    assert "lecture" in lowered or "derail" in lowered
+
+
+def test_conversation_practice_addendum_falls_back_gracefully_for_an_unknown_language_code():
+    """A missing/unrecognized language must still produce a coherent instruction (using
+    whatever string was given, or a generic phrase for nothing at all) rather than
+    raising -- run_tutor has no other validation on this value before it reaches here."""
+    assert "xx" in tutor.conversation_practice_addendum("xx").lower()
+    generic = tutor.conversation_practice_addendum(None)
+    assert "the target language" in generic
+    generic_blank = tutor.conversation_practice_addendum("   ")
+    assert "the target language" in generic_blank
+
+
 @pytest.mark.parametrize(
     "focus_enabled,learn_enabled",
     [(False, False), (True, False), (False, True), (True, True)],

@@ -424,6 +424,54 @@ LEARN_MODE_SYSTEM_ADDENDUM = (
     "rather than just accepting anything and moving on."
 )
 
+# Conversation Practice mode (turn-based spoken roleplay -- see Composer.tsx's
+# Conversation Practice toggle/language picker and chat.py's chat_ws, which passes
+# `conversation_practice`/`target_language` straight through from the "user_message" WS
+# frame). Unlike Focus Mode/Learn Mode above, this is a PER-TURN flag, not a persisted
+# User setting -- a student can flip it on for a single practice exchange without it
+# following them into ordinary chat, and it takes an explicit target_language because
+# (unlike Focus/Learn Mode) the addendum text itself needs to name a real language.
+#
+# Mirrors services/piper-tts/app/main.py's VOICE_MODELS keys / app/tools/voice_tts.py's
+# SUPPORTED_LANGUAGES: the single source of truth for the human-readable name shown to
+# the model. Deliberately NOT the same object as SUPPORTED_LANGUAGES -- a student can
+# ask to practice a language this dict names but voice_tts.py has no Piper voice for
+# yet; the roleplay instruction and the playback fallback are two independent decisions
+# that are allowed to disagree without either one breaking (see voice_tts.py's own
+# fallback handling).
+CONVERSATION_PRACTICE_LANGUAGE_NAMES: dict[str, str] = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+}
+
+
+def conversation_practice_addendum(target_language: str | None) -> str:
+    """Built fresh per-turn (not a fixed module constant like FOCUS_MODE_SYSTEM_
+    ADDENDUM/LEARN_MODE_SYSTEM_ADDENDUM above) because it has to name the actual
+    language the student picked. Falls back to a generic phrase for a missing/
+    unrecognized code rather than crashing -- a student typing an unexpected value
+    still gets a coherent (if less specific) instruction, never a 500."""
+    key = (target_language or "").strip().lower()
+    language_name = CONVERSATION_PRACTICE_LANGUAGE_NAMES.get(key) or (target_language or "").strip() or "the target language"
+    return (
+        "\n\nConversation Practice mode is ON -- this turn is a SPOKEN practice "
+        f"exchange, not a normal written chat. Roleplay a real, natural spoken "
+        f"scenario in {language_name} (ordering food, asking directions, a job "
+        f"interview, small talk -- pick or continue whatever scenario already fits "
+        f"the conversation), staying in {language_name} yourself unless the student "
+        "switches languages first. Keep every reply brief and conversational -- a "
+        "few short sentences, the length a real person would actually say out loud "
+        "in one turn, never an essay, a bulleted breakdown, or a wall of text. The "
+        "student's turn came from real speech-to-text, so minor transcription noise "
+        "is normal and not a mistake to flag -- but if their actual wording had a "
+        "genuine pronunciation or grammar slip, note the correction gently and "
+        "briefly, a short aside, not a grammar lecture -- then keep the roleplay "
+        "moving forward rather than derailing into a full explanation unless they "
+        "actually ask for one."
+    )
+
+
 # A confused/looping model shouldn't be able to hold the WS connection open forever
 # calling tools back-to-back with no final answer.
 #
@@ -559,7 +607,13 @@ async def run_tutor(
     user_message: str,
     byok_anthropic_key: str | None = None,
     user_id: str | None = None,
+    conversation_practice: bool = False,
+    target_language: str | None = None,
 ) -> AsyncIterator[TutorEvent]:
+    """`conversation_practice`/`target_language`: per-turn Conversation Practice mode
+    (see conversation_practice_addendum's own docstring above) -- set from the
+    "user_message" WS frame's own fields (see chat.py's chat_ws), never a persisted
+    User setting like focus_mode_enabled/learn_mode_enabled below."""
     # Fired immediately, concurrently with the bundle/user-load/turn-assembly work
     # below -- NEVER awaited with any timeout budget of its own from this point on.
     # This must add zero latency to a real turn. Two PM re-verification passes already
@@ -585,6 +639,8 @@ async def run_tutor(
         system_prompt += FOCUS_MODE_SYSTEM_ADDENDUM
     if user is not None and user.learn_mode_enabled:
         system_prompt += LEARN_MODE_SYSTEM_ADDENDUM
+    if conversation_practice:
+        system_prompt += conversation_practice_addendum(target_language)
 
     turns = [ChatTurn(role="system", content=system_prompt)]
     if bundle["profile_facts"]:

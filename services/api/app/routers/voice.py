@@ -66,6 +66,12 @@ async def transcribe(
 
 class SynthesizeRequest(BaseModel):
     text: str
+    # ISO 639-1 code (e.g. "es", "fr") -- Conversation Practice mode (see
+    # Composer.tsx's language picker) sends the language the conversation is actually
+    # in, so the reply is read back in a matching voice instead of always English. Left
+    # unset for the existing manual "Listen" button, which never picked a language
+    # before this existed and keeps getting the default voice exactly as before.
+    language: str | None = None
 
 
 @router.post("/synthesize")
@@ -76,15 +82,28 @@ async def synthesize(
 ) -> Response:
     """Synthesizes text (typically an assistant message) to speech so it can be read
     back. Returns raw WAV bytes the frontend plays directly — a "listen" action on a
-    message bubble, not part of the agent tool-call loop."""
+    message bubble, or (Conversation Practice mode) an automatic read-aloud of a
+    just-finished reply — not part of the agent tool-call loop.
+
+    The actual voice/language used, and whether a request for an unsupported language
+    honestly fell back to the default voice rather than silently mismatching, come back
+    as response headers (see VoiceTTSClient.synthesize's TTSResult) — a caller that
+    doesn't care (the plain "Listen" button) can just ignore them."""
     if not body.text.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "text must not be empty")
 
     await _require_pro(claims, db)
 
     try:
-        audio = await _tts.synthesize(body.text)
+        result = await _tts.synthesize(body.text, language=body.language)
     except VoiceTTSError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
-    return Response(content=audio, media_type="audio/wav")
+    return Response(
+        content=result.audio,
+        media_type="audio/wav",
+        headers={
+            "X-TTS-Voice-Language": result.language,
+            "X-TTS-Fallback": "true" if result.fallback else "false",
+        },
+    )

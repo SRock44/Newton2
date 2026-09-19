@@ -4238,6 +4238,32 @@ body.is-resizing-panel * {
   color: var(--color-danger);
 }
 
+/* Conversation Practice's chat-interface toggle -- same compact shape as Learn Mode's
+   just above (see Composer.tsx's own doc comment), plus an inline language <select>
+   that only appears once the toggle is on. */
+.composer-conversation-practice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.composer-conversation-practice-toggle:has(.toggle--checked) {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+}
+
+.composer-conversation-practice-language {
+  margin-left: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: inherit;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-1);
+}
+
 /* ---------- Login screen ---------- */
 
 .login-screen {
