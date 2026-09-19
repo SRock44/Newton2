@@ -3,7 +3,7 @@ from typing import Any
 import sympy
 
 from app.tools.base import Tool
-from app.tools.symbolic_math import _OPERATIONS, _parse, solve_math
+from app.tools.symbolic_math import _MATRIX_OPERATIONS, _OPERATIONS, _parse, solve_math
 
 _APPROACH_HINTS = {
     "solve": (
@@ -28,12 +28,82 @@ _APPROACH_HINTS = {
         "think about distributing each term across the others systematically (e.g. "
         "FOIL for two binomials) rather than trying to do it all in one move."
     ),
+    "determinant": (
+        "expand along whichever row or column has the most zeros (cofactor "
+        "expansion), or row-reduce first and multiply the pivots -- don't try to "
+        "guess it from the entries."
+    ),
+    "inverse": (
+        "check the determinant is nonzero first (a zero determinant means no inverse "
+        "exists at all), then either augment the matrix with the identity and "
+        "row-reduce to [I | A^-1], or use the adjugate/cofactor formula for a small "
+        "matrix."
+    ),
+    "eigenvalues": (
+        "look for eigenvalues via the characteristic polynomial det(A - lambda*I) = "
+        "0 -- set that determinant up first, then solve the resulting polynomial "
+        "equation for lambda."
+    ),
+    "rref": (
+        "use row operations (swap two rows, scale a row, add a multiple of one row "
+        "to another) to reach leading 1s (pivots) with zeros above and below each "
+        "one, working left to right."
+    ),
+    "null_space": (
+        "row-reduce the matrix to rref first, identify the free variables from the "
+        "columns with no pivot, then express the pivot variables in terms of them to "
+        "build the basis vector(s)."
+    ),
 }
 
 
 def _first_step(operation: str, expression: str, variable: str) -> str:
     """The first concrete move, grounded in real sympy computation on a piece of the
     actual problem -- never a generic, made-up-sounding step."""
+    if operation in _MATRIX_OPERATIONS:
+        matrix = _parse(expression)
+        if not isinstance(matrix, sympy.MatrixBase):
+            return f"'{expression}' isn't recognized as a matrix -- use SymPy's own literal syntax, e.g. 'Matrix([[1, 2], [3, 4]])'."
+
+        if operation == "determinant":
+            return (
+                f"Look at {matrix}: pick the row or column with the most zeros and "
+                "expand the determinant along it (cofactor expansion), rather than "
+                "picking one arbitrarily."
+            )
+        if operation == "inverse":
+            det = matrix.det()
+            if det == 0:
+                return f"First compute the determinant of {matrix}: it's {det}, which is 0 -- this matrix has NO inverse, so stop here rather than trying to find one."
+            return (
+                f"First compute the determinant of {matrix}: it's {det}, which is "
+                "nonzero, so the inverse exists. Now augment it with the identity "
+                "matrix, [A | I], and row-reduce the left side to the identity."
+            )
+        if operation == "eigenvalues":
+            lam = sympy.Symbol("lambda")
+            char_matrix = matrix - lam * sympy.eye(matrix.shape[0])
+            return (
+                f"Form A - lambda*I = {char_matrix}, then set its determinant equal "
+                "to 0 -- that equation (the characteristic polynomial) is what you "
+                "solve for lambda."
+            )
+        if operation == "rref":
+            return (
+                f"Starting from {matrix}, find a pivot in the first column (a nonzero "
+                "entry -- swap rows if needed to bring one to the top), scale that row "
+                "to make the pivot a 1, then use it to zero out every other entry in "
+                "that column before moving to the next column."
+            )
+        if operation == "null_space":
+            rref_matrix, pivots = matrix.rref()
+            return (
+                f"Row-reduce first: {matrix} becomes {rref_matrix} in rref, with "
+                f"pivot columns {pivots}. Any column WITHOUT a pivot corresponds to a "
+                "free variable -- set it to a parameter and solve the pivot variables "
+                "in terms of it to build the null space basis vector(s)."
+            )
+
     var = sympy.Symbol(variable)
 
     if operation == "solve":
