@@ -42,11 +42,19 @@ class TextChunk:
 @dataclass
 class ToolActivity:
     """The Tutor started or finished executing a tool call — surfaced to the UI so
-    "Newton is doing something" is visible, not silent."""
+    "Newton is doing something" is visible, not silent.
+
+    `verified`: only meaningful when phase="finished" (a "started"/"progress" event
+    fires before the tool has actually run, so there's no outcome to report yet — see
+    _tool_result_verified's own docstring for exactly what this does and doesn't mean).
+    Defaults False so every non-finished event, and every finished event for a tool
+    outside _COMPUTATIONALLY_VERIFIED_TOOLS, is unambiguously "not a verified-computation
+    claim" rather than an unset/null value the frontend would have to special-case."""
 
     tool: str
     label: str
     phase: Literal["started", "progress", "finished"]
+    verified: bool = False
 
 
 @dataclass
@@ -124,6 +132,85 @@ _ARTIFACT_PLANNING_LABELS: dict[str, str] = {
     "interactive": "Planning your interactive demo",
     "quiz": "Planning your quiz game",
 }
+
+
+# The product review this addresses (see ROADMAP.md): "verified, not vibes" is Newton's
+# core differentiator, but nothing in the product actually told a student, parent, or
+# teacher WHEN an answer was real computation vs. an LLM judgment call -- the tool
+# result said "Verified via symbolic math" and the model paraphrased that away. This is
+# the server-computed signal that fixes that: a real, explicit allow-list (never a
+# guess based on the tool's name alone -- a tool not listed here is never marked
+# verified, no matter what its result text says) of the tools whose result is grounded
+# in actual computation rather than model reasoning. Deliberately narrower than "every
+# tool that does real computation" (calculator/unit_converter are just as real, but
+# they're plain utility lookups, not a verdict on a STUDENT'S OWN claimed answer/proof/
+# code/chemistry -- the review's concern was specifically about a graded verdict
+# reading as certain when the underlying tool only reasoned about it). Threaded through
+# to the WS frame by chat.py at the "finished" phase only.
+_COMPUTATIONALLY_VERIFIED_TOOLS = frozenset(
+    {
+        "check_student_work",
+        "symbolic_math",
+        "chemistry_solver",
+        "check_code_work",
+        "check_proof_work",
+    }
+)
+
+# check_proof_work's own result text (see app/tools/check_proof_work.py's
+# _verify_algebraic_claims) literally writes this exact parenthetical onto every
+# algebraic sub-claim it actually ran through sympy -- "VERIFIED CORRECT (real symbolic
+# math)" or "VERIFIED WRONG (real symbolic math)". Both count as "verified" here: a
+# wrong equation was still REALLY checked by computation, which is exactly the
+# distinction this feature exists to surface (a computed "no" is not a guess either).
+_PROOF_ALGEBRA_VERIFIED_MARKER = "(real symbolic math)"
+
+# check_student_work's own result text (see app/tools/check_work.py's _math_verdict)
+# only reaches a real SymPy-grounded verdict for a math problem; for a conceptual/
+# written problem it explicitly falls back to "verify it with careful, honest
+# reasoning instead" -- a model judgment call, not a computation, and marking THAT
+# branch "verified" would be exactly the overclaiming this feature exists to prevent.
+# Every one of the tool's three real-math-verdict branches (an ungraded "here's ground
+# truth", a graded CORRECT, or a graded INCORRECT) shares this exact substring; the
+# conceptual-fallback branch never contains it.
+_STUDENT_WORK_VERIFIED_MARKER = "via symbolic math"
+
+
+def _tool_result_verified(tool_name: str, result: str) -> bool:
+    """Server-computed, honest "was this specific tool call's result actually grounded
+    in real computation" signal -- never trusted from the model, always derived here
+    from the tool's own real output. A str-returning `Tool.run()` (see app/tools/
+    registry.py's run_tool, which every tool call in run_tutor goes through and whose
+    return value is what's appended to the conversation as the tool's result) is the
+    one shared contract every tool in this codebase honors, so this reads the same
+    text the model itself is handed rather than adding a second, parallel return shape
+    that only this one feature would need to keep in sync.
+
+    Deliberately conservative in three ways:
+      1. Only tools in _COMPUTATIONALLY_VERIFIED_TOOLS are ever eligible at all.
+      2. Any result that reads as a tool-level error (run_tool's own "Error: bad
+         arguments..."/"Error running..." wrapping, or a tool's own "Error: ..." for
+         bad input) is never verified -- nothing was actually computed.
+      3. check_proof_work and check_student_work each have a real branch where the
+         tool did NOT reach a computed ground truth (proof: no extractable algebraic
+         sub-claim; student work: a conceptual/written problem) -- those branches
+         check a marker string the tool's own result text always carries on its
+         genuinely-computed branches (see the two markers above) rather than treating
+         "the tool ran without erroring" as good enough on its own. This is the one
+         deliberate, documented judgment call in this whole feature: Tool.run() only
+         returns a plain str, so rather than widening that shared interface just for
+         this, the already-existing, human-readable text the tool emits on its
+         genuinely-verified branches doubles as the structured signal. If either
+         tool's own wording ever changes, this marker needs to move with it."""
+    if tool_name not in _COMPUTATIONALLY_VERIFIED_TOOLS:
+        return False
+    if not isinstance(result, str) or result.startswith("Error"):
+        return False
+    if tool_name == "check_proof_work":
+        return _PROOF_ALGEBRA_VERIFIED_MARKER in result
+    if tool_name == "check_student_work":
+        return _STUDENT_WORK_VERIFIED_MARKER in result
+    return True
 
 
 def _label_for(tool_name: str, arguments: dict | None = None) -> str:
@@ -281,6 +368,17 @@ SYSTEM_PROMPT = (
     "honestly what that does and doesn't prove -- it passed THESE tests, which is not "
     "the same as being correct for every input. code_interpreter is the different tool: "
     "that one is for running scratch code YOU wrote, never for grading a student's.\n\n"
+    "When a tool result actually came from real computation -- symbolic_math, "
+    "chemistry_solver, check_student_work's or check_proof_work's math-verified "
+    "branches, or check_code_work's real test run -- say so plainly in your own words "
+    "as part of the answer (e.g. \"I checked this with real math computation, not a "
+    "guess\" or \"this ran your actual code against the tests\"), rather than defaulting "
+    "to brief, encouraging confirmation language that quietly drops the fact. Don't "
+    "make this a repeated tagline on every single message in a long conversation -- say "
+    "it naturally, once it's clear per answer, not as a bolted-on disclaimer every time. "
+    "For check_proof_work specifically, keep saying which part was verified and which "
+    "was your own structural judgment (see above) -- never claim the whole critique was "
+    "verified just because one algebraic line in it was.\n\n"
     "Generating flashcards, a practice exam, or a study plan aims for up to "
     f"{billing_service.FREE_GENERATION_TARGET} items per request on the free plan, or up to "
     f"{billing_service.PRO_GENERATION_TARGET} on Pro (never a time-based limit — a free-plan "
@@ -380,6 +478,210 @@ FOCUS_MODE_SYSTEM_ADDENDUM = (
     "real graded exam -- so offer those instead of a quiz artifact, rather than just "
     "declining. Don't call create_artifact for any of them; it will just decline."
 )
+
+# --- Focus Mode server-side enforcement ------------------------------------------
+#
+# FOCUS_MODE_SYSTEM_ADDENDUM above is a real instruction and most of the time the model
+# genuinely follows it -- but an independent review correctly flagged that nothing on
+# the server ever actually checked: a model that ignores the instruction (or just gets
+# it wrong under real prompting pressure) could hand a student the direct final answer
+# with Focus Mode on, and nothing here would know. Everything below makes that promise
+# real: the server inspects the model's own draft reply before the student ever sees
+# it, and blocks -- with one bounded, corrective retry, never an infinite loop -- a
+# reply that looks like an ungated direct-answer dump, UNLESS the student's OWN current
+# message already looks like an explicit request to be checked or told the answer
+# outright (see looks_like_unlock_request below, which mirrors FOCUS_MODE_SYSTEM_
+# ADDENDUM's own "once they've made a real attempt and still want the direct answer --
+# they ask explicitly, or want their attempt checked -- go ahead" clause exactly).
+#
+# The real trade-off this requires (see run_tutor's `should_buffer_for_focus_mode`
+# branch below for exactly where it happens): checking a COMPLETE reply before it
+# reaches the student is fundamentally incompatible with live, token-by-token
+# streaming of that same reply -- you cannot both show a token as it arrives AND
+# withhold the reply pending a check that can only run once every token has arrived.
+# So for exactly the turns this engages on, the reply is generated server-side as
+# normal (tools included) but held back from the student until the whole thing is
+# ready and has passed the check -- a longer silent pause before anything appears,
+# instead of the usual immediate token-by-token reveal. This mechanism only ever
+# engages for a turn where Focus Mode is ON and the student hasn't unlocked the direct
+# answer -- Focus Mode is already opt-in and off by default -- so this cost lands only
+# on students who chose stricter coaching for themselves; a Focus-Mode-off turn (the
+# overwhelming majority of traffic) is completely untouched by any of this and keeps
+# streaming exactly as it always has.
+
+_UNLOCK_REQUEST_PATTERNS: tuple = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"\bjust (give|tell|show) me the answer\b",
+        r"\b(give|tell|show) me the (real |actual |full |correct )?answer\b",
+        r"\bwhat(?:'s| is) the (final |real |actual |correct )?answer\b",
+        r"\b(can|could) you (just )?(give|tell|show) me the answer\b",
+        r"\bjust (solve|answer) (it|this)( for me)?\b",
+        r"\bsolve (it|this) for me\b",
+        r"\bcheck my (work|answer|proof|solution)\b",
+        r"\bcheck (if|whether) (i'?m|i am|this is|that is) (right|correct)\b",
+        r"\bam i (right|correct)\b",
+        r"\bis (this|that|it) (right|correct)\b",
+        r"\bis my answer (right|correct|wrong)\b",
+        r"\bdid i get (it|this) (right|correct)\b",
+        r"\bdid i do (this|it) (right|correctly)\b",
+        r"\bgrade my (work|answer|proof)\b",
+        r"\bverify my (answer|work|solution|proof)\b",
+        r"\bwhat did i (get|do) wrong\b",
+        r"\bwhere did i go wrong\b",
+        r"\bi give up\b",
+        r"\bjust want(?:ed)? the answer\b",
+        r"\bno more hints\b",
+        r"\b(skip|stop with) the hints\b",
+        r"\breveal the answer\b",
+        r"\bspoil it\b",
+        r"\bspoilers?\b",
+        r"\bcut to the chase\b",
+        r"\bstop being socratic\b",
+        r"\bturn off focus mode\b",
+    )
+)
+
+
+def looks_like_unlock_request(message: str) -> bool:
+    """A fast, deterministic classifier for whether the student's OWN current message
+    already looks like an explicit request to be checked or told the answer outright --
+    the one case FOCUS_MODE_SYSTEM_ADDENDUM itself says to stop withholding for. A real
+    phrase/regex match covering realistic phrasings ("just give me the answer", "check
+    my work", "am I right", "is this correct", "where did I go wrong", "I give up",
+    "no more hints", ...), case-insensitively -- not a single exact string. Deliberately
+    a plain keyword/phrase match rather than another LLM call: this has to run on every
+    Focus Mode turn with effectively zero added latency. A false negative here just
+    costs the student one more turn of coaching before they try phrasing it more
+    directly (never silence, never data loss), so speed matters far more than perfect
+    recall for this particular check."""
+    return any(pattern.search(message) for pattern in _UNLOCK_REQUEST_PATTERNS)
+
+
+# Coaching signals: ANY of these appearing anywhere in a Focus Mode draft reply means
+# the model is genuinely guiding rather than dumping the answer -- checked BEFORE the
+# direct-answer patterns below, so a reply that both poses a question/gives a "try it"
+# nudge AND happens to also state a number somewhere is correctly treated as coaching,
+# not a dump. "try " (with the trailing space) is deliberately broad -- it's the single
+# most common way a Socratic nudge actually starts ("Try isolating x...", "Try squaring
+# both sides..."), and catching it this way avoids having to enumerate every "try X
+# yourself" phrasing individually.
+_ANSWER_DUMP_COACHING_SIGNALS: tuple = (
+    "?",
+    "try ",
+    "your turn",
+    "on your own",
+    "give it a try",
+    "give it a go",
+    "have a go",
+    "your attempt",
+    "your own attempt",
+    "what do you think",
+    "what would you do",
+    "see if you can",
+    "attempt it",
+    "take a stab",
+    "start by",
+    "let's start",
+    "first, ",
+    "show me your work",
+    "walk me through",
+    "before i tell you",
+    "before i give you",
+    "next step is for you",
+    "let me know what you get",
+    "let me know",
+)
+
+# A direct-final-answer phrase has to appear THIS early to count as "opening with the
+# answer" -- the same phrase appearing only deep inside an already-long, already-
+# Socratic explanation is a different (much rarer) case this coarse heuristic doesn't
+# try to catch.
+_ANSWER_DUMP_LEAD_CHARS = 300
+
+_ANSWER_DUMP_PATTERNS: tuple = tuple(
+    re.compile(p, re.IGNORECASE | re.MULTILINE)
+    for p in (
+        r"\bthe answer is\b",
+        r"\bthe final answer is\b",
+        r"\bfinal answer\s*:",
+        r"\bthe result is\b",
+        r"\bthe solution is\b",
+        r"\bthat(?:'s| is) the answer\b",
+        r"^-?\d+(\.\d+)?\s*\.?\s*$",  # a bare number alone on its own line
+        r"=\s*-?\d+(\.\d+)?\s*[.\n]",  # "... = 42." / "... = 42\n"
+        r"\b[a-z]\s*=\s*-?\d+(\.\d+)?\b",  # "x = 5", "y = -3.2"
+    )
+)
+
+
+def looks_like_answer_dump(reply_text: str) -> bool:
+    """Post-hoc heuristic run on the model's own COMPLETE, buffered draft reply (never
+    on a partial one -- see run_tutor): does this look like it handed over a clean,
+    direct final answer stated early with no guiding question posed back and no "try
+    this yourself" framing anywhere -- exactly the failure mode FOCUS_MODE_SYSTEM_
+    ADDENDUM is supposed to prevent but has no way to enforce on its own.
+
+    Deliberately a coarse, fast, local heuristic (regex/keyword matching, no LLM call),
+    not a precise one: it WILL occasionally misjudge a genuinely fine reply as a dump
+    (costing one harmless extra regeneration -- see run_tutor's corrective retry) or let
+    a truly evasive dump slip through unflagged. That's an accepted, documented
+    trade-off for something that has to run on every Focus Mode turn with no added
+    model call and near-zero latency.
+
+    Empty/whitespace-only text is never a dump -- there's nothing to hand over yet."""
+    text = reply_text.strip()
+    if not text:
+        return False
+    lower = text.lower()
+    if any(signal in lower for signal in _ANSWER_DUMP_COACHING_SIGNALS):
+        return False
+    lead = lower[:_ANSWER_DUMP_LEAD_CHARS]
+    return any(pattern.search(lead) for pattern in _ANSWER_DUMP_PATTERNS)
+
+
+FOCUS_MODE_CORRECTIVE_RETRY_ADDENDUM = (
+    "\n\nYour previous draft handed over the direct final answer despite Focus Mode "
+    "being active and the student not asking for it (their message wasn't \"check my "
+    "work\", wasn't \"just give me the answer\", nothing like that). Regenerate your "
+    "reply from scratch as a genuine coaching response instead: ask a guiding question "
+    "or point at the next concrete step the student should try themselves. Do not "
+    "state the final answer, and do not just soften the same answer by tacking a "
+    "question onto the end of it -- the final answer itself must not appear."
+)
+
+# Prepended to a Focus Mode reply only in the rare case where BOTH the original draft
+# AND the one corrective retry still looked like a direct-answer dump -- see run_tutor's
+# should_buffer_for_focus_mode branch. Sending this (rather than silence, or looping
+# indefinitely) is the honest, bounded fallback: the student gets a real answer plus an
+# honest note about what happened, never nothing at all.
+FOCUS_MODE_HONEST_FALLBACK_NOTE = (
+    "_(Focus Mode note: Newton tried to hold this back so you could attempt it "
+    "first, but couldn't regenerate it as a coaching response after one retry -- "
+    "here's the direct answer anyway, rather than leaving you with nothing.)_\n\n"
+)
+
+# Small, fast simulated "typing" reveal for a Focus Mode reply that was generated in
+# full server-side and is now cleared to release -- see should_buffer_for_focus_mode.
+# Not trying to imitate real token-by-token timing; the student already waited through
+# the entire buffered generation (and possibly one regeneration) before anything
+# appeared, so a few tenths of a second more for a smoother reveal than one giant paste
+# costs nothing extra they'd notice.
+_REVEAL_CHUNK_CHARS = 40
+_REVEAL_CHUNK_DELAY_SECONDS = 0.02
+
+
+async def _reveal_buffered_reply(text: str) -> AsyncIterator["TextChunk"]:
+    """Releases an already-fully-generated Focus Mode reply to the student as a
+    sequence of small TextChunks with a tiny real delay between them, rather than one
+    giant paste. Never used on the live-streaming path (unlock requests / Focus Mode
+    off), which keeps real token-by-token streaming exactly as it always has."""
+    if not text:
+        return
+    for start in range(0, len(text), _REVEAL_CHUNK_CHARS):
+        yield TextChunk(text[start : start + _REVEAL_CHUNK_CHARS])
+        await asyncio.sleep(_REVEAL_CHUNK_DELAY_SECONDS)
+
 
 # Appended to SYSTEM_PROMPT only for a user with User.learn_mode_enabled=True -- a
 # self-service setting a student opts THEMSELVES into (see app/routers/billing.py's
@@ -642,6 +944,18 @@ async def run_tutor(
     if conversation_practice:
         system_prompt += conversation_practice_addendum(target_language)
 
+    # See the "Focus Mode server-side enforcement" comment block above
+    # FOCUS_MODE_SYSTEM_ADDENDUM's definition for the full design and the real
+    # streaming-vs-enforcement trade-off this represents. Computed once, from the
+    # student's raw current message, before turns/tools are even assembled -- reused
+    # below (after the model's full reply is generated) to decide whether to hold it
+    # back pending the post-hoc check, or let it stream live exactly as on `main` today.
+    should_buffer_for_focus_mode = (
+        user is not None
+        and user.focus_mode_enabled
+        and not looks_like_unlock_request(user_message)
+    )
+
     turns = [ChatTurn(role="system", content=system_prompt)]
     if bundle["profile_facts"]:
         facts_text = "\n".join(bundle["profile_facts"])
@@ -702,18 +1016,68 @@ async def run_tutor(
     prompt_tokens_total = 0
     completion_tokens_total = 0
 
-    try:
+    # `draft_parts`/`hit_round_limit` are written from inside `_generate_attempt` below
+    # via closure (list mutation / `nonlocal`) rather than a return value, because an
+    # async generator's `return` can't carry data the way a plain function's can --
+    # exactly the same reason `prompt_tokens_total`/`completion_tokens_total` above are
+    # accumulated the same way. `draft_parts` is deliberately a SEPARATE accumulation
+    # from whatever chat.py's own `full_response` builds from the TextChunks it
+    # actually receives: on the live-streaming path the two end up identical, but on
+    # the Focus Mode buffering path `draft_parts` captures text that was withheld and
+    # never yielded at all, which is exactly what the post-hoc check needs to see.
+    draft_parts: list[str] = []
+    hit_round_limit = False
+
+    async def _generate_attempt(
+        *, suppress_text: bool, race_plan_chunk: bool, system_prompt_override: str | None = None
+    ) -> AsyncIterator[TutorEvent]:
+        """One full attempt at answering: the tool-calling round loop, run to either a
+        final text answer or MAX_TOOL_ROUNDS exhaustion. A plain extraction of what used
+        to be run_tutor's own inline loop body -- zero behavior change for a normal
+        (non-Focus-Mode-buffered) turn, which calls this exactly once with
+        suppress_text=False, race_plan_chunk=True, system_prompt_override=None, i.e.
+        exactly today's behavior. Mutates `turns` in place (appends each round's
+        assistant tool-call turn and each tool's result turn), so a second call --
+        the Focus Mode corrective retry -- picks up with the first attempt's own tool
+        results already in context, rather than re-running tools that already ran.
+
+        `suppress_text`: when True (Focus Mode buffering), TextDelta text is
+        accumulated into `draft_parts` instead of being yielded live as TextChunk --
+        ToolActivity is still yielded live either way (tool-activity chips don't reveal
+        the final answer). When False, text is yielded live exactly as before AND still
+        accumulated into `draft_parts`, so the caller always has the complete text
+        either way.
+
+        `race_plan_chunk`: True only for the very first attempt's very first round --
+        races the plan-narration call against this attempt's first real event, exactly
+        as before. Always False for a Focus Mode corrective retry: the plan chip (if
+        any) already fired during the first attempt; racing it again would either
+        double-send it or do nothing, since plan_task is already resolved/cancelled by
+        then.
+
+        `system_prompt_override`: when given, replaces turns[0]'s content for this
+        attempt only (the Focus Mode corrective retry's one-time-only instruction) --
+        `turns[0]` is left untouched otherwise, so the FIRST attempt always uses
+        exactly the `system_prompt` already built above.
+
+        Sets the outer `hit_round_limit = True` if MAX_TOOL_ROUNDS is exhausted without
+        a final text answer for this attempt.
+        """
+        nonlocal prompt_tokens_total, completion_tokens_total, hit_round_limit
+        if system_prompt_override is not None:
+            turns[0] = ChatTurn(role="system", content=system_prompt_override)
         for _round in range(MAX_TOOL_ROUNDS):
             pending_calls = None
             stream_iter = provider.stream_chat(turns, model, tools=tools).__aiter__()
 
-            if _round == 0:
+            if _round == 0 and race_plan_chunk:
                 # The one point in this whole call where the plan-narration chip can
                 # still legitimately win: race "fetch the real answer's first event"
                 # against "the plan-narration call finishes" -- whichever resolves
                 # first wins, with zero extra latency added to either. Only ever done
-                # for the very first event of the very first round; every later event
-                # (this round's own rest, or any later round's) is fetched normally.
+                # for the very first event of the very first round of the very first
+                # attempt; every later event (this round's own rest, any later round's,
+                # or anything in a corrective retry) is fetched normally.
                 next_event_fut = asyncio.ensure_future(_anext_or_end(stream_iter))
                 if not plan_task.done():
                     done, _pending = await asyncio.wait(
@@ -751,7 +1115,9 @@ async def run_tutor(
 
             async for event in _prepend(first_event, stream_iter):
                 if isinstance(event, TextDelta):
-                    yield TextChunk(event.text)
+                    draft_parts.append(event.text)
+                    if not suppress_text:
+                        yield TextChunk(event.text)
                 elif isinstance(event, ToolCallRequest):
                     pending_calls = event.calls
                     break
@@ -761,8 +1127,7 @@ async def run_tutor(
                 completion_tokens_total += provider.last_usage.get("completion_tokens", 0)
 
             if pending_calls is None:
-                yield UsageInfo(prompt_tokens_total, completion_tokens_total)
-                return  # model gave a final text answer — done
+                return  # model gave a final text answer for this attempt — done
 
             turns.append(ChatTurn(role="assistant", content="", tool_calls=pending_calls))
             for call in pending_calls:
@@ -833,13 +1198,95 @@ async def run_tutor(
                     session_id,
                     len(result) if isinstance(result, str) else None,
                 )
-                yield ToolActivity(tool=call.name, label=label, phase="finished")
+                verified = _tool_result_verified(call.name, result) if isinstance(result, str) else False
+                yield ToolActivity(tool=call.name, label=label, phase="finished", verified=verified)
                 turns.append(ChatTurn(role="tool", content=result, tool_call_id=call.id, name=call.name))
             # loop again: the model sees the tool results and either answers or calls again
 
-        yield TextChunk(
-            "\n\n_(Newton hit the tool-use round limit without a final answer — try rephrasing.)_"
+        hit_round_limit = True
+
+    try:
+        async for event in _generate_attempt(suppress_text=should_buffer_for_focus_mode, race_plan_chunk=True):
+            yield event
+
+        if hit_round_limit:
+            # Not a Focus Mode enforcement case either way -- this is a failure state
+            # (the model never produced a final answer), so it's released as-is rather
+            # than run through the answer-dump check. On the buffering path, whatever
+            # text WAS drafted before the round budget ran out was never sent live, so
+            # it's revealed now, followed by the same round-limit note as always; on
+            # the live-streaming path that text already streamed live in the loop
+            # above, so only the note itself is new here -- identical to `main` today.
+            if should_buffer_for_focus_mode:
+                async for chunk in _reveal_buffered_reply("".join(draft_parts)):
+                    yield chunk
+            yield TextChunk(
+                "\n\n_(Newton hit the tool-use round limit without a final answer — try rephrasing.)_"
+            )
+            yield UsageInfo(prompt_tokens_total, completion_tokens_total)
+            return
+
+        if not should_buffer_for_focus_mode:
+            # The exact `main`-today path: Focus Mode is off, or this message already
+            # looked like an explicit unlock request -- every TextChunk was already
+            # streamed live inside _generate_attempt above, so there's nothing left to
+            # do but report usage and finish, unchanged from before this task.
+            yield UsageInfo(prompt_tokens_total, completion_tokens_total)
+            return
+
+        # Focus Mode buffering path: `draft_parts` now holds the model's COMPLETE reply
+        # for this turn, generated normally (tools included) but never yielded live
+        # above -- nothing has reached the student yet. Decide whether it's safe to
+        # release as-is.
+        draft_text = "".join(draft_parts)
+        if not looks_like_answer_dump(draft_text):
+            async for chunk in _reveal_buffered_reply(draft_text):
+                yield chunk
+            yield UsageInfo(prompt_tokens_total, completion_tokens_total)
+            return
+
+        # The draft looked like a direct answer dump -- do NOT send it to the student
+        # at all. Exactly one bounded corrective regeneration: same conversation
+        # (including the first attempt's own tool results, already appended to `turns`
+        # above), with an explicit corrective instruction appended to the system prompt
+        # for this retry only.
+        logger.info(
+            "focus mode: draft looked like a direct answer dump, regenerating once "
+            "session_id=%s",
+            session_id,
         )
+        draft_parts.clear()
+        hit_round_limit = False
+        retry_system_prompt = system_prompt + FOCUS_MODE_CORRECTIVE_RETRY_ADDENDUM
+        async for event in _generate_attempt(
+            suppress_text=True, race_plan_chunk=False, system_prompt_override=retry_system_prompt
+        ):
+            yield event  # only ToolActivity can reach here -- suppress_text withholds text again
+
+        retry_text = "".join(draft_parts)
+        if hit_round_limit:
+            async for chunk in _reveal_buffered_reply(retry_text):
+                yield chunk
+            yield TextChunk(
+                "\n\n_(Newton hit the tool-use round limit without a final answer — try rephrasing.)_"
+            )
+            yield UsageInfo(prompt_tokens_total, completion_tokens_total)
+            return
+
+        # Bounded retries, never an infinite loop: if the regenerated draft STILL looks
+        # like a direct answer dump, send it anyway with an honest note rather than
+        # looping again or leaving the student with nothing.
+        if looks_like_answer_dump(retry_text):
+            logger.info(
+                "focus mode: regenerated reply still looked like a direct answer "
+                "dump; sending it anyway with an honest note session_id=%s",
+                session_id,
+            )
+            final_text = FOCUS_MODE_HONEST_FALLBACK_NOTE + retry_text
+        else:
+            final_text = retry_text
+        async for chunk in _reveal_buffered_reply(final_text):
+            yield chunk
         yield UsageInfo(prompt_tokens_total, completion_tokens_total)
     finally:
         # Runs whether this call ended in a final answer, the round-limit message, or

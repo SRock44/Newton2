@@ -1162,3 +1162,255 @@ async def test_run_tutor_tool_belt_resets_between_separate_calls(monkeypatch):
     assert text_of(events2) == "hi there"
     assert "format_citation" not in tool_names_of(fake2, 0)
     assert tool_names_of(fake2, 0) == {"calculator", "unit_converter", "symbolic_math", "web_search", "use_capability"}
+
+
+# ---------------------------------------------------------------------------
+# Focus Mode server-side enforcement (app/agents/tutor.py's looks_like_unlock_request/
+# looks_like_answer_dump/should_buffer_for_focus_mode/_generate_attempt). Closes the
+# real gap an independent review flagged: FOCUS_MODE_SYSTEM_ADDENDUM was a real
+# instruction the model could still ignore with nothing on the server ever checking.
+# Pure heuristic-function tests first (fast, no provider involved), then integration
+# tests proving run_tutor actually buffers/blocks/regenerates/falls back for real.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "just give me the answer",
+        "Just Give Me The Answer already",
+        "can you just tell me the answer?",
+        "What's the answer?",
+        "what is the correct answer",
+        "just solve it for me",
+        "solve this for me please",
+        "check my work",
+        "Can you check my answer?",
+        "check my proof",
+        "am I right?",
+        "Am I correct",
+        "is this right?",
+        "is that correct",
+        "is my answer wrong",
+        "did I get it right",
+        "did I do this correctly",
+        "grade my work",
+        "verify my solution",
+        "where did I go wrong",
+        "what did I get wrong",
+        "I give up, just tell me",
+        "no more hints please",
+        "skip the hints",
+        "reveal the answer",
+        "spoiler please",
+        "cut to the chase",
+    ],
+)
+def test_looks_like_unlock_request_matches_realistic_phrasings(message):
+    assert tutor.looks_like_unlock_request(message) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "hi",
+        "what is 6 times 7?",
+        "can you help me understand derivatives?",
+        "I think the answer might be 5, but I'm not sure why",
+        "what's next in this problem?",
+        "explain photosynthesis",
+        "how do I start factoring this?",
+        "I'm stuck on step 2",
+    ],
+)
+def test_looks_like_unlock_request_does_not_false_positive_on_ordinary_questions(message):
+    assert tutor.looks_like_unlock_request(message) is False
+
+
+@pytest.mark.parametrize(
+    "reply_text",
+    [
+        "The answer is 42.",
+        "x = 5",
+        "y = -3.2 is the solution.",
+        "2 + 2 = 4.",
+        "Final answer: 12",
+        "The result is 17.",
+        "The solution is x=3.",
+        "9",
+    ],
+)
+def test_looks_like_answer_dump_flags_clean_ungated_final_answers(reply_text):
+    assert tutor.looks_like_answer_dump(reply_text) is True
+
+
+@pytest.mark.parametrize(
+    "reply_text",
+    [
+        "What have you tried so far?",
+        "Try isolating x on one side first.",
+        "Let's start by expanding the left side of the equation.",
+        "What do you think the first step should be?",
+        "Give it a try and let me know what you get.",
+        "See if you can simplify the left side before we go further.",
+        "",
+        "   ",
+    ],
+)
+def test_looks_like_answer_dump_passes_genuine_coaching_replies(reply_text):
+    assert tutor.looks_like_answer_dump(reply_text) is False
+
+
+def test_looks_like_answer_dump_a_question_mark_anywhere_overrides_an_answer_pattern():
+    """A reply that both states a clean final answer AND poses a real question back is
+    coaching, not a dump -- e.g. confirming a sub-result before moving on. The coaching
+    signal must win over the answer-shaped pattern."""
+    assert tutor.looks_like_answer_dump("If x = 5, does that satisfy the original equation?") is False
+
+
+async def test_run_tutor_focus_mode_blocks_a_direct_dump_then_sends_the_corrected_reply(
+    tutor_user, monkeypatch
+):
+    """The core enforcement case: Focus Mode is on, the student hasn't unlocked, and the
+    model's first draft is a bare answer dump. It must never reach the student -- only
+    the regenerated, coaching-style second attempt does."""
+    user = await tutor_user(focus_mode_enabled=True)
+    fake = ScriptedToolCallingProvider(
+        [
+            ["The answer is 3."],
+            ["Try dividing 12 by 4 yourself. What do you get?"],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c async for c in tutor.run_tutor(str(uuid.uuid4()), "What is 12 divided by 4?", user_id=str(user.id))
+    ]
+
+    full_text = text_of(events)
+    # The blocked draft's exact wording must never reach the student.
+    assert "The answer is 3." not in full_text
+    assert "Try dividing 12 by 4 yourself" in full_text
+
+    # Exactly one bounded retry -- two provider calls total, not more.
+    assert len(fake.calls_seen) == 2
+    retry_system_prompt = fake.calls_seen[1]["messages"][0].content
+    assert retry_system_prompt == tutor.SYSTEM_PROMPT + tutor.FOCUS_MODE_SYSTEM_ADDENDUM + tutor.FOCUS_MODE_CORRECTIVE_RETRY_ADDENDUM
+    # The first (blocked) attempt used the plain Focus Mode prompt, no corrective text.
+    first_system_prompt = fake.calls_seen[0]["messages"][0].content
+    assert first_system_prompt == tutor.SYSTEM_PROMPT + tutor.FOCUS_MODE_SYSTEM_ADDENDUM
+
+
+async def test_run_tutor_focus_mode_unlock_phrase_streams_live_unchanged(tutor_user, monkeypatch):
+    """The control case the brief calls out explicitly: once the student's own message
+    already looks like an explicit unlock request, behavior must be identical to `main`
+    today -- one provider call, no buffering, no blocking, even though the model's reply
+    is a bare direct answer."""
+    user = await tutor_user(focus_mode_enabled=True)
+    fake = ScriptedToolCallingProvider([["The answer is 3."]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c
+        async for c in tutor.run_tutor(
+            str(uuid.uuid4()), "Just give me the answer: what is 12 divided by 4?", user_id=str(user.id)
+        )
+    ]
+
+    assert text_of(events) == "The answer is 3."
+    assert len(fake.calls_seen) == 1  # never buffered/regenerated
+
+
+async def test_run_tutor_focus_mode_off_never_buffers(tutor_user, monkeypatch):
+    """The other control case: Focus Mode entirely off must behave exactly like `main`
+    today -- this whole mechanism must not engage at all, even for a message that would
+    trigger buffering if Focus Mode were on and even though the reply is a bare answer."""
+    user = await tutor_user(focus_mode_enabled=False)
+    fake = ScriptedToolCallingProvider([["The answer is 3."]])
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c async for c in tutor.run_tutor(str(uuid.uuid4()), "What is 12 divided by 4?", user_id=str(user.id))
+    ]
+
+    assert text_of(events) == "The answer is 3."
+    assert len(fake.calls_seen) == 1  # never buffered/regenerated
+
+
+async def test_run_tutor_focus_mode_bounded_retry_still_fails_sends_honest_fallback(
+    tutor_user, monkeypatch
+):
+    """Bounded retries, never an infinite loop: if the ONE corrective retry still looks
+    like a direct answer dump, the student must still get a real answer (never silence,
+    never an endless loop) plus an honest note about what happened."""
+    user = await tutor_user(focus_mode_enabled=True)
+    fake = ScriptedToolCallingProvider(
+        [
+            ["The answer is 3."],
+            ["The answer is still 3."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c async for c in tutor.run_tutor(str(uuid.uuid4()), "What is 12 divided by 4?", user_id=str(user.id))
+    ]
+
+    full_text = text_of(events)
+    assert "The answer is still 3." in full_text
+    assert tutor.FOCUS_MODE_HONEST_FALLBACK_NOTE in full_text
+    # Exactly two provider calls -- bounded, never a third attempt.
+    assert len(fake.calls_seen) == 2
+
+
+async def test_run_tutor_focus_mode_buffering_still_runs_tools_live_before_the_check(
+    tutor_user, monkeypatch
+):
+    """Tools still run normally while buffering (per the task brief): a calculator call
+    mid-turn surfaces its ToolActivity chips live, exactly as on the unbuffered path --
+    only the model's own final TEXT is withheld pending the post-hoc check."""
+    user = await tutor_user(focus_mode_enabled=True)
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="call_1", name="calculator", arguments={"expression": "12/4"})],
+            ["Nice work getting to 3 -- what would you do with that result next?"],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c
+        async for c in tutor.run_tutor(str(uuid.uuid4()), "What is 12 divided by 4?", user_id=str(user.id))
+    ]
+
+    activity = [e for e in events if isinstance(e, ToolActivity)]
+    assert [(a.tool, a.phase) for a in activity] == [("calculator", "started"), ("calculator", "finished")]
+    # Tool activity happened live, before the (buffered, then revealed) text.
+    last_activity_index = max(i for i, e in enumerate(events) if isinstance(e, ToolActivity))
+    first_text_index = next(i for i, e in enumerate(events) if isinstance(e, TextChunk))
+    assert last_activity_index < first_text_index
+    assert text_of(events) == "Nice work getting to 3 -- what would you do with that result next?"
+    assert len(fake.calls_seen) == 2  # calculator round + final-answer round, no retry needed
+
+
+async def test_run_tutor_focus_mode_round_limit_still_reveals_whatever_was_drafted(
+    tutor_user, monkeypatch
+):
+    """A buffered turn that hits MAX_TOOL_ROUNDS without ever reaching a final answer is
+    a failure state, not a Focus Mode enforcement case -- it must still surface the
+    round-limit message (released, not silently dropped) exactly like `main` today."""
+    user = await tutor_user(focus_mode_enabled=True)
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id=f"call_{i}", name="calculator", arguments={"expression": "1+1"})]
+            for i in range(tutor.MAX_TOOL_ROUNDS)
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c async for c in tutor.run_tutor(str(uuid.uuid4()), "What is 12 divided by 4?", user_id=str(user.id))
+    ]
+
+    assert "round limit" in text_of(events)
+    assert len(fake.calls_seen) == tutor.MAX_TOOL_ROUNDS  # bounded, no corrective retry fired
