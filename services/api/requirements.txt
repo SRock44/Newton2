@@ -30,6 +30,6 @@ pandas==3.0.5
 statsmodels==0.15.0
 fsrs==6.3.2
 stripe==15.6.1
-sentry-sdk==2.69.1
+sentry-sdk==2.69.2
 pytest==8.3.4
 pytest-asyncio==0.25.2
