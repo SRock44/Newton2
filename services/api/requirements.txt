@@ -19,6 +19,15 @@ python-docx==1.1.2
 genanki==0.13.1
 python-multipart==0.0.31
 sympy==1.14.0
+# Real numeric/statistical computation for app/tools/numeric_methods.py and
+# app/tools/statistics.py -- deterministic library calls (not LLM inference), same
+# "verified, not vibes" pattern as sympy/chemistry.py above, on structured numeric
+# input the model supplies, never arbitrary code execution (that stays sandboxed via
+# services/sandbox-runner, see that service's own requirements.txt).
+numpy==2.4.6
+scipy==1.18.1
+pandas==3.0.5
+statsmodels==0.15.0
 fsrs==6.3.2
 stripe==15.6.1
 sentry-sdk==2.69.1
