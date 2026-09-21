@@ -153,6 +153,64 @@ async def test_weak_topic_surfaces_with_real_examples(performance_user, db_sessi
     assert "What produces the most ATP in the Krebs cycle?" in weak_area.missed_questions
 
 
+async def test_weak_area_carries_the_real_document_id(performance_user, db_session):
+    user, weak_doc, _good_doc = performance_user
+
+    areas = await get_weak_areas(db_session, user.id)
+
+    weak_area = next(a for a in areas if a.label == weak_doc.filename)
+    assert weak_area.document_id == weak_doc.id
+
+
+async def test_weak_flashcard_ids_correspond_to_the_right_underlying_rows(performance_user, db_session):
+    """Not just present -- correct: each id in weak_flashcard_ids must point at the real
+    Flashcard row whose front is the text at the SAME index in weak_flashcards."""
+    user, weak_doc, _good_doc = performance_user
+
+    areas = await get_weak_areas(db_session, user.id)
+
+    weak_area = next(a for a in areas if a.label == weak_doc.filename)
+    assert len(weak_area.weak_flashcard_ids) == len(weak_area.weak_flashcards)
+    for front, card_id in zip(weak_area.weak_flashcards, weak_area.weak_flashcard_ids):
+        card = await db_session.get(Flashcard, card_id)
+        assert card is not None
+        assert card.front == front
+        assert card.user_id == user.id
+        assert card.document_id == weak_doc.id
+    # The specific weak card from the fixture must be among them, by real id.
+    krebs_card = (
+        await db_session.execute(select(Flashcard).where(Flashcard.front == "What is the Krebs cycle?"))
+    ).scalar_one()
+    assert krebs_card.id in weak_area.weak_flashcard_ids
+
+
+async def test_missed_question_ids_and_exam_ids_correspond_to_the_right_underlying_rows(
+    performance_user, db_session
+):
+    """Not just present -- correct: each id in missed_question_ids must point at the real
+    PracticeExamQuestion row whose text is at the same index, and the paired exam id must
+    be the exam that question actually belongs to."""
+    user, weak_doc, _good_doc = performance_user
+
+    areas = await get_weak_areas(db_session, user.id)
+
+    weak_area = next(a for a in areas if a.label == weak_doc.filename)
+    assert len(weak_area.missed_question_ids) == len(weak_area.missed_questions)
+    assert len(weak_area.missed_question_exam_ids) == len(weak_area.missed_questions)
+    for text, q_id, exam_id in zip(
+        weak_area.missed_questions, weak_area.missed_question_ids, weak_area.missed_question_exam_ids
+    ):
+        question = await db_session.get(PracticeExamQuestion, q_id)
+        assert question is not None
+        assert question.question == text
+        assert question.is_correct is False
+        assert question.exam_id == exam_id
+        exam = await db_session.get(PracticeExam, exam_id)
+        assert exam is not None
+        assert exam.user_id == user.id
+        assert exam.document_id == weak_doc.id
+
+
 async def test_fine_topic_does_not_surface_as_weak(performance_user, db_session):
     user, _weak_doc, good_doc = performance_user
 
@@ -263,11 +321,49 @@ async def test_weak_areas_endpoint_returns_a_list_of_the_expected_shape(http_cli
     # what matters is that it's a list, and that any entry carries the full shape.
     assert isinstance(body, list)
     for area in body:
-        assert set(area.keys()) == {"label", "weak_flashcards", "missed_questions", "weak_count"}
+        assert set(area.keys()) == {
+            "label",
+            "weak_flashcards",
+            "missed_questions",
+            "weak_flashcard_ids",
+            "missed_question_ids",
+            "missed_question_exam_ids",
+            "document_id",
+            "weak_count",
+        }
         assert isinstance(area["label"], str)
         assert isinstance(area["weak_flashcards"], list)
         assert isinstance(area["missed_questions"], list)
+        assert isinstance(area["weak_flashcard_ids"], list)
+        assert isinstance(area["missed_question_ids"], list)
+        assert isinstance(area["missed_question_exam_ids"], list)
+        assert area["document_id"] is None or isinstance(area["document_id"], str)
+        assert len(area["weak_flashcard_ids"]) == len(area["weak_flashcards"])
+        assert len(area["missed_question_ids"]) == len(area["missed_questions"])
+        assert len(area["missed_question_exam_ids"]) == len(area["missed_questions"])
         assert area["weak_count"] == len(area["weak_flashcards"]) + len(area["missed_questions"])
+
+
+async def test_weak_areas_endpoint_ids_are_real_uuids_for_the_signed_in_users_own_rows(
+    http_client, auth_headers, db_session
+):
+    """Router-level version of the service-level id-correspondence tests above: proves
+    the ids that actually reach JSON (post string-serialization) still resolve to real
+    rows owned by the authenticated user, not just well-formed strings."""
+    resp = await http_client.get("/weak-areas", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    for area in body:
+        for card_id in area["weak_flashcard_ids"]:
+            card = await db_session.get(Flashcard, uuid.UUID(card_id))
+            assert card is not None
+        for q_id in area["missed_question_ids"]:
+            question = await db_session.get(PracticeExamQuestion, uuid.UUID(q_id))
+            assert question is not None
+        if area["document_id"] is not None:
+            doc = await db_session.get(Document, uuid.UUID(area["document_id"]))
+            assert doc is not None
+            assert doc.filename == area["label"]
 
 
 async def test_weak_areas_endpoint_is_worst_first(http_client, auth_headers):

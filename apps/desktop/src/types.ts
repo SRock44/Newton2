@@ -168,6 +168,19 @@ export interface WeakArea {
   label: string;
   weak_flashcards: string[];
   missed_questions: string[];
+  /** Real Flashcard row ids, paired 1:1 (same order, same truncation) with
+   * `weak_flashcards` — what lets a caller scope a review session to exactly these
+   * cards instead of the whole due queue. */
+  weak_flashcard_ids: string[];
+  /** Real PracticeExamQuestion row ids, paired 1:1 with `missed_questions`. */
+  missed_question_ids: string[];
+  /** The completed PracticeExam id each entry in `missed_questions`/`missed_question_ids`
+   * came from, paired 1:1 with them — missed questions on one document can span several
+   * separate completed exams. */
+  missed_question_exam_ids: string[];
+  /** The real Document id this area was grouped by, or null for the "general" bucket
+   * (cards/questions with no source document). */
+  document_id: string | null;
   /** weak_flashcards.length + missed_questions.length as the server counted it — the
    * list arrives sorted by this, worst first. */
   weak_count: number;

@@ -50,12 +50,20 @@ const WEAK_AREAS = [
     label: "biology-ch4.pdf",
     weak_flashcards: ["What is the Krebs cycle?"],
     missed_questions: ["What produces the most ATP?"],
+    weak_flashcard_ids: ["card-krebs"],
+    missed_question_ids: ["q-atp"],
+    missed_question_exam_ids: ["exam-1"],
+    document_id: "doc-bio",
     weak_count: 2,
   },
   {
     label: "general",
     weak_flashcards: ["What is a derivative?"],
     missed_questions: [],
+    weak_flashcard_ids: ["card-deriv"],
+    missed_question_ids: [],
+    missed_question_exam_ids: [],
+    document_id: null,
     weak_count: 1,
   },
 ];
@@ -428,6 +436,51 @@ describe("HomeView", () => {
 
       await user.click(screen.getByRole("button", { name: /practice again/i }));
       expect(onOpenPracticeExams).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes the loop: 'Review flashcards' scopes to this area's specific weak card ids", async () => {
+      const user = userEvent.setup();
+      const onOpenFlashcards = vi.fn();
+      render(<HomeView {...baseProps({ onOpenFlashcards })} />);
+      await screen.findByText("biology-ch4.pdf");
+
+      // Two areas both offer "Review flashcards" -- clicking the FIRST one (biology-ch4.pdf)
+      // must pass THAT area's card id, not the other area's or the whole deck.
+      await user.click(screen.getAllByRole("button", { name: /review flashcards/i })[0]);
+      expect(onOpenFlashcards).toHaveBeenCalledWith({ cardIds: ["card-krebs"] });
+    });
+
+    it("closes the loop: 'Practice again' scopes to the real exam id backing this area's missed question", async () => {
+      const user = userEvent.setup();
+      const onOpenPracticeExams = vi.fn();
+      render(<HomeView {...baseProps({ onOpenPracticeExams })} />);
+      await screen.findByText("biology-ch4.pdf");
+
+      await user.click(screen.getByRole("button", { name: /practice again/i }));
+      expect(onOpenPracticeExams).toHaveBeenCalledWith({ examId: "exam-1" });
+    });
+
+    it("'Practice again' jumps to the ONE exam holding the most of this area's missed questions, when they span several", async () => {
+      const user = userEvent.setup();
+      const onOpenPracticeExams = vi.fn();
+      getWeakAreas.mockResolvedValue([
+        {
+          label: "chem-101.pdf",
+          weak_flashcards: [],
+          missed_questions: ["Q1", "Q2", "Q3"],
+          weak_flashcard_ids: [],
+          missed_question_ids: ["q1", "q2", "q3"],
+          // Two questions from exam-A, one from exam-B -- exam-A has the most.
+          missed_question_exam_ids: ["exam-A", "exam-B", "exam-A"],
+          document_id: "doc-chem",
+          weak_count: 3,
+        },
+      ]);
+      render(<HomeView {...baseProps({ onOpenPracticeExams })} />);
+      await screen.findByText("chem-101.pdf");
+
+      await user.click(screen.getByRole("button", { name: /practice again/i }));
+      expect(onOpenPracticeExams).toHaveBeenCalledWith({ examId: "exam-A" });
     });
 
     it("shows an honest, actionable empty state for a student with no review history yet", async () => {

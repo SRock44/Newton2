@@ -13,6 +13,14 @@ import type { PracticeExamDetail, PracticeExamSummary } from "../types";
 interface PracticeExamsPanelProps {
   token: string;
   onClose: () => void;
+  /** When provided (e.g. the Home dashboard's weak-areas widget closing its loop to one
+   * specific topic), opens directly into this exam once the list has loaded — the same
+   * openExam() path a manual click already uses, just triggered automatically instead
+   * of requiring the student to find and click it themselves. Missed questions from a
+   * weak area can span several completed exams; the caller is expected to have already
+   * picked the single exam with the most of them. Omitted (the default), behavior is
+   * unchanged: the plain exam list. */
+  initialExamId?: string;
 }
 
 function formatDate(iso: string): string {
@@ -29,10 +37,14 @@ function scoreLabel(exam: PracticeExamSummary): string {
  * one screen, pick a choice per question, submit) or review it (score + per-question
  * correct/incorrect + explanation, once completed). Generation happens from the
  * Documents panel, matching Flashcards/Study Plan. */
-function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
+function PracticeExamsPanel({ token, onClose, initialExamId }: PracticeExamsPanelProps) {
   const [exams, setExams] = useState<PracticeExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Guards against re-opening initialExamId a second time — e.g. if `exams` refreshes
+  // after a delete/submit while the student is still looking at the exam this panel
+  // auto-opened for them, which should not yank them back to it.
+  const [autoOpened, setAutoOpened] = useState(false);
 
   const [active, setActive] = useState<PracticeExamDetail | null>(null);
   const [activeLoading, setActiveLoading] = useState(false);
@@ -61,6 +73,18 @@ function PracticeExamsPanel({ token, onClose }: PracticeExamsPanelProps) {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Jumps straight to the requested exam (the weak-areas widget's "Practice again",
+  // scoped to the one exam with the most of that topic's missed questions) the instant
+  // the exam list has actually loaded and contains it, rather than leaving the student
+  // to find it themselves in the list. Reuses openExam() as-is -- no separate fetch path.
+  useEffect(() => {
+    if (!initialExamId || autoOpened || loading) return;
+    if (!exams.some((e) => e.id === initialExamId)) return;
+    setAutoOpened(true);
+    openExam(initialExamId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialExamId, autoOpened, loading, exams]);
 
   async function openExam(id: string) {
     setActiveLoading(true);

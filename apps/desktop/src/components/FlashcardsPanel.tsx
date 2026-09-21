@@ -22,6 +22,14 @@ interface FlashcardsPanelProps {
    * hadn't caught up yet" race that once caused chats to fail with a stale token too. */
   getAccessToken: () => Promise<string>;
   onClose: () => void;
+  /** When provided, the review queue is scoped to exactly these card ids (e.g. the
+   * Home dashboard's weak-areas widget closing its loop to one specific topic's weak
+   * cards) instead of the normal due queue. Ordering among that subset is still real —
+   * this filters the same listFlashcards(token, false) response (every card, backend-
+   * sorted by `due`) down to the requested ids, rather than a separate queue-building
+   * code path. Omitted (the default), behavior is byte-identical to before this prop
+   * existed: the due-only queue, unfiltered. */
+  initialCardIds?: string[];
 }
 
 const RATINGS: { value: 1 | 2 | 3 | 4; label: string; className: string }[] = [
@@ -56,7 +64,7 @@ const GRADING_MESSAGES: Record<ProductionGrading["result"], string> = {
  * meaning and the student must TYPE the term — they commit before seeing anything, and
  * the server grades what they typed and derives the FSRS rating from it, so there's no
  * self-rating step to quietly let yourself off with. */
-function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
+function FlashcardsPanel({ getAccessToken, onClose, initialCardIds }: FlashcardsPanelProps) {
   const [mode, setMode] = useState<"review" | "browse">("review");
 
   const [queue, setQueue] = useState<Flashcard[]>([]);
@@ -103,7 +111,15 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
     (async () => {
       try {
         const accessToken = await getAccessToken();
-        const cards = await listFlashcards(accessToken, true);
+        // Scoped mode (initialCardIds set): a weak card the review flow surfaced might
+        // not be strictly "due" yet by FSRS scheduling, so this fetches every card
+        // (still real, backend-sorted-by-`due` ordering — see listFlashcards) and
+        // filters down to the requested subset, rather than intersecting with the due
+        // queue and risking an empty result for cards that are exactly the point of
+        // opening this panel. Unscoped mode (the default) is untouched: due cards only.
+        const cards = initialCardIds
+          ? (await listFlashcards(accessToken, false)).filter((c) => initialCardIds.includes(c.id))
+          : await listFlashcards(accessToken, true);
         if (cancelled) return;
         setQueue(cards);
       } catch (err) {
@@ -118,7 +134,7 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialCardIds]);
 
   useEffect(() => {
     if (mode !== "browse") return;
@@ -367,6 +383,15 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
         {error && <div className="banner banner--error">{error}</div>}
         {exportStatus && <div className="item-status">{exportStatus}</div>}
         {shareStatus && <div className="item-status">{shareStatus}</div>}
+        {/* Only shown in scoped mode, so a student who followed a weak-area button here
+            knows this queue was actually filtered down to what they were struggling
+            with, not the full due deck they'd otherwise expect. */}
+        {initialCardIds && mode === "review" && !queueLoading && !queueFailed && (
+          <div className="item-status">
+            Reviewing {initialCardIds.length} flashcard{initialCardIds.length === 1 ? "" : "s"} you're
+            struggling with.
+          </div>
+        )}
 
         {mode === "review" ? (
           queueLoading ? (
@@ -375,8 +400,9 @@ function FlashcardsPanel({ getAccessToken, onClose }: FlashcardsPanelProps) {
             <p className="empty-state-text">Couldn't check for due flashcards — try reopening this panel.</p>
           ) : !current ? (
             <p className="empty-state-text">
-              All caught up — nothing due right now. Generate more from a document in Documents, or ask
-              Newton in chat.
+              {initialCardIds
+                ? "All done — you've reviewed every one of these cards."
+                : "All caught up — nothing due right now. Generate more from a document in Documents, or ask Newton in chat."}
             </p>
           ) : (
             <div className="flashcard-review">

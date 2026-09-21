@@ -62,8 +62,17 @@ interface HomeViewProps {
    * as-is for the "Upload a document" quick action. */
   onOpenDocuments: () => void;
   onOpenStudyPlan: () => void;
-  onOpenFlashcards: () => void;
-  onOpenPracticeExams: () => void;
+  /** Opens the Flashcards panel. `cardIds`, when given, scopes the review queue to
+   * exactly those cards (see FlashcardsPanel's `initialCardIds`) — the weak-areas
+   * widget's "Review flashcards" button uses this to close the loop to the specific
+   * cards it already identified; every other caller here omits it for the normal,
+   * unfiltered due queue. */
+  onOpenFlashcards: (options?: { cardIds?: string[] }) => void;
+  /** Opens the Practice exams panel. `examId`, when given, jumps straight to that exam
+   * (see PracticeExamsPanel's `initialExamId`) — the weak-areas widget's "Practice
+   * again" button uses this, having already picked the one exam with the most of that
+   * area's missed questions. Every other caller here omits it for the plain exam list. */
+  onOpenPracticeExams: (options?: { examId?: string }) => void;
 }
 
 const RECENT_LIMIT = 6;
@@ -110,6 +119,28 @@ type DueItem = {
 function formatShortDate(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** A weak area's missed questions can span several separate completed exams (see
+ * WeakArea.missed_question_exam_ids in types.ts, paired 1:1 with missed_questions) —
+ * there's no single "the exam" for the area as a whole. Rather than inventing a new
+ * cross-exam review mode, "Practice again" jumps to whichever ONE exam actually holds
+ * the most of this area's missed questions, so the student lands somewhere concretely
+ * useful. Returns null when there's nothing to jump to (no missed questions at all). */
+function examWithMostMissedQuestions(area: WeakArea): string | null {
+  const counts = new Map<string, number>();
+  for (const examId of area.missed_question_exam_ids) {
+    counts.set(examId, (counts.get(examId) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [examId, count] of counts) {
+    if (count > bestCount) {
+      best = examId;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 /** Opens (or focuses, if already open) the Newton Notepad companion window — the real
@@ -416,7 +447,7 @@ function HomeView({
         <button type="button" className="btn-secondary" onClick={openNotepad}>
           New note
         </button>
-        <button type="button" className="btn-secondary" onClick={onOpenPracticeExams}>
+        <button type="button" className="btn-secondary" onClick={() => onOpenPracticeExams()}>
           Start a practice session
         </button>
       </div>
@@ -566,12 +597,23 @@ function HomeView({
                     new "start a targeted session" mechanism was invented for this. */}
                 <div className="home-weak-area-actions">
                   {area.weak_flashcards.length > 0 && (
-                    <button type="button" className="btn-secondary-sm" onClick={onOpenFlashcards}>
+                    <button
+                      type="button"
+                      className="btn-secondary-sm"
+                      onClick={() => onOpenFlashcards({ cardIds: area.weak_flashcard_ids })}
+                    >
                       Review flashcards
                     </button>
                   )}
                   {area.missed_questions.length > 0 && (
-                    <button type="button" className="btn-secondary-sm" onClick={onOpenPracticeExams}>
+                    <button
+                      type="button"
+                      className="btn-secondary-sm"
+                      onClick={() => {
+                        const examId = examWithMostMissedQuestions(area);
+                        onOpenPracticeExams(examId ? { examId } : undefined);
+                      }}
+                    >
                       Practice again
                     </button>
                   )}

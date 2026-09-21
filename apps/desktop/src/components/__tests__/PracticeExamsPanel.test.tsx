@@ -146,6 +146,37 @@ describe("PracticeExamsPanel", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // ---------------------------------------------------------------------------
+  // initialExamId — the Home dashboard's weak-areas widget's "Practice again" jumping
+  // straight to the one exam holding the most of a topic's missed questions, instead of
+  // leaving the student to find it themselves in the plain list.
+  // ---------------------------------------------------------------------------
+
+  describe("initialExamId (deep link from the weak-areas widget)", () => {
+    it("jumps straight into the given exam once the list has loaded, with no click needed", async () => {
+      render(<PracticeExamsPanel token="test-token" onClose={vi.fn()} initialExamId="exam-1" />);
+
+      expect(await screen.findByText(/what is f=ma\?/i)).toBeInTheDocument();
+      expect(vi.mocked(getPracticeExam)).toHaveBeenCalledWith("test-token", "exam-1");
+    });
+
+    it("stays on the plain list when the given exam id isn't one of this student's exams", async () => {
+      render(
+        <PracticeExamsPanel token="test-token" onClose={vi.fn()} initialExamId="does-not-exist" />,
+      );
+
+      await screen.findByText("physics-notes.txt");
+      expect(vi.mocked(getPracticeExam)).not.toHaveBeenCalled();
+    });
+
+    it("is unchanged, plain-list behavior when omitted (default)", async () => {
+      render(<PracticeExamsPanel token="test-token" onClose={vi.fn()} />);
+
+      await screen.findByText("physics-notes.txt");
+      expect(vi.mocked(getPracticeExam)).not.toHaveBeenCalled();
+    });
+  });
+
   describe("share link", () => {
     it("mints a public link for one exam and copies its URL", async () => {
       const user = userEvent.setup();

@@ -191,6 +191,14 @@ function App() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
   const [showPracticeExams, setShowPracticeExams] = useState(false);
+  // Set right before opening Flashcards/Practice exams from the Home dashboard's
+  // weak-areas widget (see handleOpenFlashcards/handleOpenPracticeExams below) so the
+  // panel opens scoped to the specific weak items that button was for, instead of the
+  // full deck/exam list every other "Flashcards"/"Practice exams" entry point opens.
+  // Cleared whenever the panel closes so the NEXT plain open (Sidebar, due-soon widget)
+  // isn't accidentally left scoped to a stale weak area.
+  const [flashcardsInitialCardIds, setFlashcardsInitialCardIds] = useState<string[] | undefined>(undefined);
+  const [practiceExamsInitialExamId, setPracticeExamsInitialExamId] = useState<string | undefined>(undefined);
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [snipDataUrl, setSnipDataUrl] = useState<string | null>(null);
@@ -1067,6 +1075,24 @@ function App() {
     else if (panel === "documents") setMainView("documents");
   }
 
+  // The single place that opens Flashcards, for every entry point (Sidebar nav, the
+  // Home dashboard's due-soon and weak-areas widgets, ...). `options.cardIds`, passed
+  // only by the weak-areas widget, scopes FlashcardsPanel's review queue to exactly
+  // those cards (see its `initialCardIds` prop) -- every other caller omits it and gets
+  // the normal unfiltered due queue, unchanged from before this existed.
+  function handleOpenFlashcards(options?: { cardIds?: string[] }) {
+    setFlashcardsInitialCardIds(options?.cardIds);
+    setShowFlashcards(true);
+  }
+
+  // Same idea as handleOpenFlashcards, for Practice exams: `options.examId`, passed
+  // only by the weak-areas widget (already picked as the one exam with the most of that
+  // area's missed questions), jumps PracticeExamsPanel straight to it.
+  function handleOpenPracticeExams(options?: { examId?: string }) {
+    setPracticeExamsInitialExamId(options?.examId);
+    setShowPracticeExams(true);
+  }
+
   async function handleDeleteSession(sessionId: string) {
     try {
       const accessToken = await tokenManager.getValidAccessToken();
@@ -1169,8 +1195,8 @@ function App() {
           onOpenDocuments={handleToggleDocuments}
           onOpenStudyPlan={() => setShowStudyPlan(true)}
           onOpenCalendar={() => setShowCalendar(true)}
-          onOpenFlashcards={() => setShowFlashcards(true)}
-          onOpenPracticeExams={() => setShowPracticeExams(true)}
+          onOpenFlashcards={() => handleOpenFlashcards()}
+          onOpenPracticeExams={() => handleOpenPracticeExams()}
           onOpenSettings={() => setShowSettings(true)}
           onOpenHelp={() => setShowHelp(true)}
           mainView={mainView}
@@ -1212,8 +1238,8 @@ function App() {
               onOpenDocument={handleOpenDocument}
               onOpenDocuments={handleToggleDocuments}
               onOpenStudyPlan={() => setShowStudyPlan(true)}
-              onOpenFlashcards={() => setShowFlashcards(true)}
-              onOpenPracticeExams={() => setShowPracticeExams(true)}
+              onOpenFlashcards={handleOpenFlashcards}
+              onOpenPracticeExams={handleOpenPracticeExams}
             />
           ) : (
             <>
@@ -1285,11 +1311,22 @@ function App() {
       {showFlashcards && (
         <FlashcardsPanel
           getAccessToken={() => tokenManager.getValidAccessToken()}
-          onClose={() => setShowFlashcards(false)}
+          onClose={() => {
+            setShowFlashcards(false);
+            setFlashcardsInitialCardIds(undefined);
+          }}
+          initialCardIds={flashcardsInitialCardIds}
         />
       )}
       {showPracticeExams && (
-        <PracticeExamsPanel token={token} onClose={() => setShowPracticeExams(false)} />
+        <PracticeExamsPanel
+          token={token}
+          onClose={() => {
+            setShowPracticeExams(false);
+            setPracticeExamsInitialExamId(undefined);
+          }}
+          initialExamId={practiceExamsInitialExamId}
+        />
       )}
       {showSettings && (
         <SettingsPanel

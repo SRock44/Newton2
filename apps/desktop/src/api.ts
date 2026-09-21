@@ -844,7 +844,13 @@ export async function synthesizeSpeech(
  * review ratings and missed practice-exam questions (see app/services/weak_areas.py) —
  * the same data the chat tutor's `get_weak_areas` tool reads, now reachable directly
  * for the Home dashboard's "What to study next" widget. An empty array is the normal
- * answer for a student with no review/exam history yet, not an error. */
+ * answer for a student with no review/exam history yet, not an error.
+ *
+ * Each area's shape (see WeakArea in types.ts) now carries real row ids alongside the
+ * display text — weak_flashcard_ids/missed_question_ids/missed_question_exam_ids/
+ * document_id — which is what lets the widget open a review/exam session scoped to the
+ * exact items it already identified, not just the text describing them. No field-by-
+ * field parsing needed here: the response body already matches WeakArea's shape 1:1. */
 export async function getWeakAreas(token: string): Promise<WeakArea[]> {
   const res = await fetch(`${API_URL}/weak-areas`, { headers: authHeaders(token) });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't work out what to study next."));

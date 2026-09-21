@@ -215,6 +215,67 @@ describe("FlashcardsPanel", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // initialCardIds — the Home dashboard's weak-areas widget closing its loop to the
+  // specific cards it already identified, instead of opening the whole due queue.
+  // ---------------------------------------------------------------------------
+
+  describe("initialCardIds (scoped review queue)", () => {
+    it("scopes the queue to exactly the given card ids, fetching every card (not just due) so a not-yet-due weak card still shows up", async () => {
+      render(
+        <FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} initialCardIds={["card-3"]} />,
+      );
+
+      // card-3 ("Not due yet") would never appear in the plain due queue, but IS one of
+      // the requested ids, so it must show up here.
+      expect(await screen.findByText("Not due yet")).toBeInTheDocument();
+      expect(vi.mocked(listFlashcards)).toHaveBeenCalledWith("test-token", false);
+      // The due cards NOT in initialCardIds must be excluded from this scoped queue.
+      expect(screen.queryByText("What is FSRS?")).not.toBeInTheDocument();
+    });
+
+    it("shows a banner naming how many scoped cards are being reviewed", async () => {
+      render(
+        <FlashcardsPanel
+          getAccessToken={getAccessToken}
+          onClose={vi.fn()}
+          initialCardIds={["card-1", "card-2"]}
+        />,
+      );
+
+      expect(
+        await screen.findByText(/reviewing 2 flashcards you're struggling with/i),
+      ).toBeInTheDocument();
+    });
+
+    it("reviewing a scoped card still goes through the same real FSRS review endpoint, no separate code path", async () => {
+      const user = userEvent.setup();
+      render(
+        <FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} initialCardIds={["card-1"]} />,
+      );
+
+      await screen.findByText("What is FSRS?");
+      await user.click(screen.getByText("What is FSRS?"));
+      await user.click(await screen.findByRole("button", { name: /^good$/i }));
+
+      await waitFor(() =>
+        expect(vi.mocked(reviewFlashcard)).toHaveBeenCalledWith("test-token", "card-1", 3),
+      );
+      // Distinct copy from the unscoped "all caught up" empty state, since "nothing due
+      // right now" would be a misleading thing to tell a student who just finished a
+      // deliberately narrow set of weak cards.
+      expect(await screen.findByText(/all done.*reviewed every one of these cards/i)).toBeInTheDocument();
+    });
+
+    it("is byte-identical to the default, unfiltered behavior when omitted", async () => {
+      render(<FlashcardsPanel getAccessToken={getAccessToken} onClose={vi.fn()} />);
+
+      await screen.findByText("What is FSRS?");
+      expect(vi.mocked(listFlashcards)).toHaveBeenCalledWith("test-token", true);
+      expect(screen.queryByText(/you're struggling with/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Anki export — the cards leaving the app as a real .apkg.
   // ---------------------------------------------------------------------------
 

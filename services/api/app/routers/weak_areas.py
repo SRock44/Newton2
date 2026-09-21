@@ -41,6 +41,13 @@ async def weak_areas(
             "label": area.label,
             "weak_flashcards": area.weak_flashcards,
             "missed_questions": area.missed_questions,
+            # Real row ids, paired 1:1 with the text lists above -- what lets the
+            # desktop app open a review/exam session scoped to exactly these items
+            # instead of the whole deck/exam list.
+            "weak_flashcard_ids": [str(i) for i in area.weak_flashcard_ids],
+            "missed_question_ids": [str(i) for i in area.missed_question_ids],
+            "missed_question_exam_ids": [str(i) for i in area.missed_question_exam_ids],
+            "document_id": str(area.document_id) if area.document_id is not None else None,
             # Computed property on the dataclass, not recomputed here -- the widget
             # sorts/labels by it and must agree exactly with what the tutor sees.
             "weak_count": area.weak_count,
