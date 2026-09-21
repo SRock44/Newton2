@@ -70,6 +70,44 @@ overlays that real metadata onto the model-reported source dict for the SAME URL
 runs -- extracted values win where present; a URL with no extracted metadata (a PDF
 fetch, a page without these tags, or a source that isn't a fetched URL at all, e.g. the
 student's own document) falls back to the model's self-reported guess exactly as before.
+
+--- Citation GROUNDING check (the actual content-to-source linkage, not just metadata) --
+Citation-metadata verification above only checks that a cited source's author/title/year
+are real. It says nothing about whether the SENTENCE the model wrote next to `\\cite{key}`
+is actually supported by that source -- a model can cite a real, successfully-fetched page
+while writing a claim the page doesn't actually say (citation-shaped hallucination: the
+source is real, the attribution isn't). `_gather_section_material` now also returns a
+url -> real fetched page text map for the section's own fetches; `_draft_section` feeds
+that, together with the drafted prose and sources, to
+app.services.citation_grounding.check_section_grounding, which computes a real,
+deterministic lexical-overlap score between each cited claim and its source's actual
+fetched text (see that module's own docstring for the algorithm and how its threshold was
+picked empirically). Each `SectionDraft` carries its own `grounding: list[GroundingResult]`
+(still keyed by the section's LOCAL citation keys, same as `sources`).
+
+After `assign_citation_keys` renames every section's local keys to final, collision-free
+bibliography keys, `_aggregate_grounding_by_final_key`/`_build_grounding_summary` (below)
+remap and combine this per-section grounding data onto the FINAL source list, distinguish
+two different failure cases explicitly (never collapsing them into one):
+
+  - "ungrounded": the source WAS actually fetched, but the specific claim citing it wasn't
+    clearly supported by the source's real text.
+  - "not_fetched": the model cited a source URL research_fetch never actually retrieved in
+    ANY section -- there is no real page text to check that citation against at all, which
+    the docstring of `GroundingResult` calls out as the WORSE of the two cases (pure
+    unverified model claim vs. a checked-and-unclear one).
+
+Both cases are surfaced two ways, honestly rather than silently: (1) appended to this
+tool's own returned result text, so the calling model can tell the student plainly which
+specific citations couldn't be corroborated (mirroring app/tools/check_proof_work.py's
+explicit "COMPUTATIONALLY VERIFIED" vs "STRUCTURAL/LOGICAL CRITIQUE" split -- this tool
+says out loud what was actually checked and what wasn't); (2) a `note` field is added to
+the affected entries in `final_sources` BEFORE `assemble_bib` runs, so the compiled
+bibliography itself carries the caveat via BibTeX's own standard `note` field (rendered by
+every style this tool supports) -- a bibliography-level note, not bespoke visual PDF
+markup layered onto app/services/paper_templates.py's existing renderers, which the
+grounding check does not touch. A citation that clears the threshold gets no note and
+renders exactly as it always did.
 """
 
 from __future__ import annotations
@@ -88,6 +126,7 @@ from app.providers.base import ChatTurn, TextDelta
 from app.providers.registry import get_provider
 from app.services import billing as billing_service
 from app.services.bibliography import assemble_bib, assign_citation_keys
+from app.services.citation_grounding import GroundingResult, check_section_grounding
 from app.services.documents import get_document_text, upload_document_bytes
 from app.services.latex_compile import compile_latex
 from app.services.paper_templates import RENDERERS, STYLE_LABELS
@@ -220,6 +259,11 @@ class SectionDraft:
     # docstring's "Citation-metadata verification" section. Empty for a section that
     # fetched nothing, or fetched only sources with no such metadata.
     url_metadata: dict[str, dict[str, str]] = field(default_factory=dict)
+    # This section's own citation-grounding verdicts, still keyed by LOCAL \cite{} keys
+    # (i.e. `sources`' own "key" field, not yet the final bibliography key) -- see this
+    # module's docstring's "Citation GROUNDING check" section. Empty for a section whose
+    # drafting failed before the check could run (the except-branch SectionDraft below).
+    grounding: list[GroundingResult] = field(default_factory=list)
 
 
 def parse_section_response(raw: str) -> tuple[str, list[dict[str, Any]]]:
@@ -286,7 +330,7 @@ async def _gather_section_material(
     *,
     session_id: str | None,
     user_id: str | None,
-) -> tuple[str, dict[str, dict[str, str]]]:
+) -> tuple[str, dict[str, dict[str, str]], dict[str, str]]:
     """Assembles the "gathered material" block fed into SECTION_DRAFT_PROMPT: an excerpt
     of the student's own document (if any) plus, when a search turns up allowlisted
     sources, 1-2 fetched pages of real external text. Finding nothing fetchable is a
@@ -299,9 +343,16 @@ async def _gather_section_material(
     real `citation_*`/`DC.*` <meta> tags -- calls `ResearchFetchTool.fetch()` (not
     `.run()`) specifically to get that structured data, then re-applies `.run()`'s own
     untrusted-content banner itself via `_wrap_untrusted` so the text handed to the
-    section-drafting prompt is byte-for-byte the same shape it always was."""
+    section-drafting prompt is byte-for-byte the same shape it always was.
+
+    Also returns a THIRD dict, url -> the full real fetched page text (see this module's
+    docstring's "Citation GROUNDING check" section) for every URL this section actually
+    fetched -- this is the real ground truth `_draft_section` checks the drafted prose's
+    `\\cite{}`'d claims against, independent of (and unaffected by) MAX_FETCH_EXCERPT_CHARS
+    truncating what actually made it into the prompt string above."""
     parts: list[str] = []
     url_metadata: dict[str, dict[str, str]] = {}
+    url_fetched_text: dict[str, str] = {}
     if document_text:
         parts.append("Excerpt from the student's own uploaded document (their own material, no citation needed):\n" + document_text)
 
@@ -317,6 +368,7 @@ async def _gather_section_material(
                     continue  # "Error: ..." -- same skip-on-failure behavior as before
                 if fetched.metadata:
                     url_metadata[url] = fetched.metadata
+                url_fetched_text[url] = fetched.text
                 wrapped = _wrap_untrusted(url, fetched.text, fetched.truncated)
                 parts.append(f"Fetched from {url}:\n{wrapped[:MAX_FETCH_EXCERPT_CHARS]}")
 
@@ -325,8 +377,9 @@ async def _gather_section_material(
             "(No external material was gathered for this section -- rely only on "
             "general knowledge, and do NOT invent any \\cite{} sources.)",
             url_metadata,
+            url_fetched_text,
         )
-    return "\n\n---\n\n".join(parts), url_metadata
+    return "\n\n---\n\n".join(parts), url_metadata, url_fetched_text
 
 
 async def _draft_section(
@@ -349,7 +402,7 @@ async def _draft_section(
     codebase's "a tool should give the caller something useful to react to, not crash"
     convention (see app/tools/base.py's Tool docstring)."""
     try:
-        material, url_metadata = await _gather_section_material(
+        material, url_metadata, url_fetched_text = await _gather_section_material(
             heading, summary, document_text, session_id=session_id, user_id=user_id
         )
         prompt = SECTION_DRAFT_PROMPT.format(
@@ -366,7 +419,10 @@ async def _draft_section(
             if isinstance(event, TextDelta):
                 raw += event.text
         prose, sources = parse_section_response(raw)
-        return SectionDraft(heading=heading, prose=prose, sources=sources, url_metadata=url_metadata)
+        grounding = check_section_grounding(prose, sources, url_fetched_text)
+        return SectionDraft(
+            heading=heading, prose=prose, sources=sources, url_metadata=url_metadata, grounding=grounding
+        )
     except Exception as exc:  # noqa: BLE001 - one bad section must not sink the whole paper
         return SectionDraft(
             heading=heading,
@@ -440,6 +496,142 @@ def _prefer_extracted_metadata(
                 merged[field_name] = meta[field_name]
         result.append(merged)
     return result
+
+
+# --- Citation grounding: aggregate per-section verdicts onto the FINAL, de-duplicated
+# source list, and build the honest report text -- see this module's docstring's
+# "Citation GROUNDING check" section for the full picture. -------------------------
+
+_NOT_FETCHED_NOTE = (
+    "Newton could not verify this citation: the source page was never actually fetched, "
+    "so this entry's details are the model's own unverified claim, not checked against "
+    "any real source text."
+)
+_UNGROUNDED_NOTE = (
+    "Newton's automated grounding check found that at least one claim citing this source "
+    "was not clearly supported by the source's own fetched text -- verify this citation "
+    "manually."
+)
+
+
+def _aggregate_grounding_by_final_key(
+    drafts: list[SectionDraft], rename_maps: list[dict[str, str]]
+) -> dict[str, list[tuple[str, GroundingResult]]]:
+    """Remaps every section's own LOCAL-key grounding verdicts to FINAL bibliography keys
+    (via the same per-section rename_map `_rewrite_cite_keys` uses for the prose itself),
+    grouping by final key since two different sections' citations can collapse onto the
+    same final source (see app/services/bibliography.py's assign_citation_keys). Keeps
+    the section heading alongside each verdict so the report below can say WHERE an
+    unclear claim came from, not just which source."""
+    by_final_key: dict[str, list[tuple[str, GroundingResult]]] = {}
+    for draft, rename_map in zip(drafts, rename_maps, strict=True):
+        for verdict in draft.grounding:
+            final_key = rename_map.get(verdict.key, verdict.key)
+            by_final_key.setdefault(final_key, []).append((draft.heading, verdict))
+    return by_final_key
+
+
+def _worst_grounding_status(instances: list[GroundingResult]) -> str:
+    """One final source can be cited by more than one section, each with its own verdict
+    for that citation -- this decides what to report/flag for the source AS A WHOLE.
+    "ungrounded" wins over a mix that also includes "grounded" (a real check that failed
+    once is worth surfacing even if another section's use of the same source was fine --
+    erring toward disclosure, not hiding a problem). "not_fetched" is only reported when
+    EVERY instance was never fetched at all -- the moment even one section actually
+    fetched and checked this source, there IS real page text behind it somewhere, so the
+    worse "we never even fetched this" framing would be misleading."""
+    if all(i.status == "not_fetched" for i in instances):
+        return "not_fetched"
+    if any(i.status == "ungrounded" for i in instances):
+        return "ungrounded"
+    return "grounded"
+
+
+def _build_grounding_summary(
+    final_sources: list[dict[str, Any]],
+    grounding_by_final_key: dict[str, list[tuple[str, GroundingResult]]],
+) -> tuple[str, dict[str, str]]:
+    """Builds (a) the honest, human-readable grounding report appended to this tool's own
+    returned result text -- so the calling model can tell the student plainly which
+    citations couldn't be corroborated, mirroring check_proof_work.py's explicit
+    "verified" vs "critique" split -- and (b) a {final_key: note_text} dict for the
+    caller to stamp onto the matching `final_sources` entries as a real BibTeX `note`
+    field before assemble_bib runs (see to_bibtex_entry). A source with no grounding
+    data at all (e.g. every section citing it failed to draft before the check could
+    run) is silently left out of both -- there's nothing honest to say about it either
+    way, and it already surfaces as a compile-breaking `\\cite{}` to an undefined key if
+    something went genuinely wrong upstream."""
+    ungrounded_lines: list[str] = []
+    not_fetched_lines: list[str] = []
+    notes_by_key: dict[str, str] = {}
+    checked = 0
+    grounded_count = 0
+
+    for source in final_sources:
+        key = source["key"]
+        instances = [v for _heading, v in grounding_by_final_key.get(key, [])]
+        if not instances:
+            continue
+        status = _worst_grounding_status(instances)
+        title = str(source.get("title") or key)
+
+        if status == "grounded":
+            checked += 1
+            grounded_count += 1
+        elif status == "ungrounded":
+            checked += 1
+            worst = next(i for i in instances if i.status == "ungrounded")
+            score_text = f"{worst.score:.2f}" if worst.score is not None else "n/a"
+            excerpt = worst.claim_excerpt or "(no citing sentence found)"
+            ungrounded_lines.append(
+                f'  - "{title}" [{key}]: the claim citing it -- "{excerpt}" -- scored '
+                f"{score_text} lexical overlap against the source's real fetched text, "
+                "below the threshold for confident support."
+            )
+            notes_by_key[key] = _UNGROUNDED_NOTE
+        else:  # not_fetched
+            not_fetched_lines.append(
+                f'  - "{title}" [{key}]: this source was never actually fetched -- its '
+                "bibliographic details are the model's own unverified claim, not checked "
+                "against any real source text."
+            )
+            notes_by_key[key] = _NOT_FETCHED_NOTE
+
+    if not ungrounded_lines and not not_fetched_lines:
+        if checked:
+            summary = (
+                f"\n\nCitation grounding check: all {checked} checkable citation(s) were "
+                "verified as textually supported by their real fetched source text (real "
+                "lexical-overlap comparison, not a guess)."
+            )
+        else:
+            summary = ""
+        return summary, notes_by_key
+
+    parts = [
+        "\n\nCitation grounding check (real lexical-overlap comparison between each "
+        "drafted claim and its source's actually-fetched text -- not a guess):"
+    ]
+    if checked:
+        parts.append(f"{grounded_count}/{checked} checkable citation(s) were verified as textually supported.")
+    if not_fetched_lines:
+        parts.append(
+            f"{len(not_fetched_lines)} citation(s) reference a source that was NEVER "
+            "actually fetched -- worse than an unclear match, this is purely unverified "
+            "model metadata:"
+        )
+        parts.extend(not_fetched_lines)
+    if ungrounded_lines:
+        parts.append(
+            f"{len(ungrounded_lines)} citation(s) WERE fetched but the specific claim "
+            "attributed to them wasn't clearly supported by the source's real text:"
+        )
+        parts.extend(ungrounded_lines)
+    parts.append(
+        "Be explicit with the student about exactly which citations above couldn't be "
+        "corroborated -- don't present the whole bibliography as equally verified."
+    )
+    return "\n".join(parts), notes_by_key
 
 
 _UNSAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9 _.\-]")
@@ -607,6 +799,18 @@ class WriteResearchPaperTool(Tool):
             for draft, rename_map in zip(drafts, rename_maps, strict=True)
         ]
 
+        # Citation grounding check (see this module's docstring's "Citation GROUNDING
+        # check" section): real per-citation lexical-overlap verdicts, remapped from each
+        # section's local keys onto the FINAL bibliography keys, then stamped onto
+        # `final_sources` as a `grounding_note` BEFORE assemble_bib runs so a flagged
+        # citation carries a real BibTeX `note` in the compiled bibliography itself.
+        grounding_by_final_key = _aggregate_grounding_by_final_key(drafts, rename_maps)
+        grounding_summary, grounding_notes_by_key = _build_grounding_summary(final_sources, grounding_by_final_key)
+        for source in final_sources:
+            note = grounding_notes_by_key.get(source["key"])
+            if note:
+                source["grounding_note"] = note
+
         has_bibliography = bool(final_sources)
         bib_text = assemble_bib(final_sources) if has_bibliography else None
 
@@ -657,4 +861,4 @@ class WriteResearchPaperTool(Tool):
             f"{len(final_sources)} source(s) actually cited) has been compiled to a real "
             f'PDF and saved to your Documents as "{base_name}.pdf" (the raw LaTeX source '
             f'is also saved as "{base_name}.tex").'
-        )
+        ) + grounding_summary

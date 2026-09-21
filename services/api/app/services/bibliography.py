@@ -170,8 +170,19 @@ def to_bibtex_entry(key: str, source: dict[str, Any]) -> str:
     if source.get("url"):
         fields.append(("url", str(source["url"])))
 
+    # `grounding_note` is stamped on by write_research_paper.py's citation-grounding
+    # check (app/services/citation_grounding.py) -- a citation that cleared the check
+    # carries no such field and renders exactly as before. Combined with the "no
+    # bibliographic detail at all" fallback below (a genuinely separate, older reason to
+    # have a note) rather than one replacing the other, so a source that's BOTH
+    # bare-metadata AND grounding-flagged still gets both messages instead of losing one.
+    note_bits: list[str] = []
     if not fields:
-        fields.append(("note", "No further bibliographic detail was available."))
+        note_bits.append("No further bibliographic detail was available.")
+    if source.get("grounding_note"):
+        note_bits.append(str(source["grounding_note"]))
+    if note_bits:
+        fields.append(("note", escape_latex_text(" ".join(note_bits))))
 
     body = ",\n  ".join(f"{name} = {{{value}}}" for name, value in fields)
     return f"@{entry_type}{{{key},\n  {body}\n}}"

@@ -73,8 +73,8 @@ class _FakeSectionProvider(ChatProvider):
         raise AssertionError(f"no scripted response for prompt:\n{prompt}")
 
 
-async def _no_op_material(*args, **kwargs) -> tuple[str, dict]:
-    return "(stubbed material -- no live web_search/research_fetch in this test tier)", {}
+async def _no_op_material(*args, **kwargs) -> tuple[str, dict, dict]:
+    return "(stubbed material -- no live web_search/research_fetch in this test tier)", {}, {}
 
 
 @pytest_asyncio.fixture
@@ -397,6 +397,147 @@ async def test_run_deduplicates_a_source_cited_by_two_sections(paper_user, monke
 
 
 # ---------------------------------------------------------------------------
+# Citation GROUNDING check, full pipeline: a real lexical-overlap comparison between a
+# section's drafted \cite{}'d claims and the real (stubbed-in) fetched text of each cited
+# source -- one claim genuinely supported, one fabricated against the same-topic source.
+# Mirrors the "mocked provider/material, real orchestration+compile-mock" tier the rest
+# of this file uses; see test_run_produces_a_real_compiled_pdf_with_grounding_wired_in
+# below (marked live_smoke) for the version that hits the REAL sandbox-runner compiler.
+# ---------------------------------------------------------------------------
+
+_GROUNDING_REAL_SOURCE_TEXT = (
+    "Global installed solar photovoltaic capacity reached approximately 1,600 gigawatts "
+    "by the end of 2023, roughly quadrupling over the preceding six years, driven by "
+    "falling module prices and supportive government policy."
+)
+
+
+async def test_run_surfaces_an_honest_grounding_summary_and_flags_the_bib_entry(paper_user, monkeypatch):
+    prose = (
+        "Solar capacity has grown rapidly, quadrupling in six years to reach about 1,600 "
+        "gigawatts, driven by cheaper panels and government policy \\\\cite{good}. "
+        "Solar panels were first invented in 1839 by Edmond Becquerel \\\\cite{bad}."
+    )
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "' + prose + '", '
+                '"sources": ['
+                '{"key": "good", "type": "misc", "title": "Solar Capacity Report", '
+                '"url": "https://en.wikipedia.org/wiki/Solar_A"}, '
+                '{"key": "bad", "type": "misc", "title": "Solar History", '
+                '"url": "https://en.wikipedia.org/wiki/Solar_B"}'
+                "]}"
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+
+    async def _gather_with_real_text(*args, **kwargs):
+        return (
+            "(stubbed material)",
+            {},
+            {
+                "https://en.wikipedia.org/wiki/Solar_A": _GROUNDING_REAL_SOURCE_TEXT,
+                "https://en.wikipedia.org/wiki/Solar_B": _GROUNDING_REAL_SOURCE_TEXT,
+            },
+        )
+
+    monkeypatch.setattr(wrp, "_gather_section_material", _gather_with_real_text)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="Grounding Summary Test",
+        style="ieee",
+        abstract_sketch="Testing grounding summary.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    assert "Citation grounding check" in result
+    assert "1/2 checkable citation(s)" in result
+    assert "Solar History" in result  # the flagged one named honestly in the report
+    assert "Solar Capacity Report" not in result  # the clean one isn't called out
+
+    bib = capture[0]["bib"]
+    # The flagged source's real BibTeX entry carries the grounding caveat as a real
+    # `note` field; the clean source's entry does not get one.
+    assert bib.count("Newton's automated grounding check") == 1
+
+
+async def test_run_reports_all_grounded_when_every_citation_is_supported(paper_user, monkeypatch):
+    prose = (
+        "Solar capacity has grown rapidly, quadrupling in six years to reach about 1,600 "
+        "gigawatts, driven by cheaper panels and government policy \\\\cite{good}."
+    )
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "' + prose + '", '
+                '"sources": [{"key": "good", "type": "misc", "title": "Solar Capacity Report", '
+                '"url": "https://en.wikipedia.org/wiki/Solar_A"}]}'
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+
+    async def _gather_with_real_text(*args, **kwargs):
+        return "(stubbed material)", {}, {"https://en.wikipedia.org/wiki/Solar_A": _GROUNDING_REAL_SOURCE_TEXT}
+
+    monkeypatch.setattr(wrp, "_gather_section_material", _gather_with_real_text)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="All Grounded Test",
+        style="ieee",
+        abstract_sketch="Testing the clean-bill-of-health path.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    assert "all 1 checkable citation(s) were verified" in result
+    assert "note = {Newton" not in capture[0]["bib"]  # no caveat note for a clean citation
+
+
+async def test_run_reports_a_never_fetched_citation_distinctly_from_an_ungrounded_one(paper_user, monkeypatch):
+    """Case 4 from the brief: a citation whose source was never actually fetched at all is
+    a DIFFERENT, worse case than one that was fetched but didn't clearly match -- this
+    must show up as its own distinct category in the report, not collapsed into
+    "ungrounded"."""
+    prose = "The model just knows this is true \\\\cite{ghost}."
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "' + prose + '", '
+                '"sources": [{"key": "ghost", "type": "misc", "title": "Phantom Source", '
+                '"url": "https://en.wikipedia.org/wiki/Never_Fetched"}]}'
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)  # nothing ever fetched
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    result = await WriteResearchPaperTool().run(
+        title="Never Fetched Test",
+        style="ieee",
+        abstract_sketch="Testing the not-fetched path.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    assert "NEVER actually fetched" in result
+    assert "Phantom Source" in result
+    assert "Newton could not verify this citation" in capture[0]["bib"]
+
+
+# ---------------------------------------------------------------------------
 # Citation-metadata verification, full pipeline (ROADMAP Phase 7): real extracted
 # citation_*/DC.* metadata from a fetched URL should win over the model's own
 # self-reported guess for that same URL in the FINAL assembled .bib, and fall back
@@ -428,6 +569,7 @@ async def test_run_prefers_extracted_metadata_over_models_self_reported_guess(pa
                     "venue": "Real Extracted Venue",
                 }
             },
+            {},
         )
 
     monkeypatch.setattr(wrp, "_gather_section_material", _gather_with_real_metadata)
@@ -468,7 +610,7 @@ async def test_run_falls_back_to_models_guess_when_cited_url_has_no_extracted_me
     async def _gather_metadata_for_a_different_url(*args, **kwargs):
         # Real metadata was extracted, but for a URL the model did NOT cite -- the
         # actually-cited URL has nothing to prefer, so its guess must survive untouched.
-        return "(stubbed material)", {"https://arxiv.org/abs/1": {"author": "Unrelated Real Author"}}
+        return "(stubbed material)", {"https://arxiv.org/abs/1": {"author": "Unrelated Real Author"}}, {}
 
     monkeypatch.setattr(wrp, "_gather_section_material", _gather_metadata_for_a_different_url)
     capture: list = []
@@ -631,6 +773,76 @@ async def test_humanities_styles_compile_the_same_pipeline_with_their_own_appara
     assert "@misc{doe2019reading," in bib
     assert expect_in_tex in tex
     assert expect_not_in_tex not in tex
+
+
+# ---------------------------------------------------------------------------
+# Real, UNMOCKED LaTeX compile through the live sandbox-runner -- same live_smoke tier
+# services/sandbox-runner/tests/test_latex_compile_integration.py's own real-compile
+# checks live in (see pytest.ini's marker doc: excluded from the hermetic CI run, meant
+# to be run manually against the real deployed stack). Confirms the citation-grounding
+# check's `grounding_note` -> real BibTeX `note` field doesn't break a REAL biblatex
+# compile, and that a real PDF still comes out the other end with the check wired in.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.live_smoke
+async def test_run_produces_a_real_compiled_pdf_with_grounding_wired_in(paper_user, db_session, monkeypatch):
+    prose = (
+        "Solar capacity has grown rapidly, quadrupling in six years to reach about 1,600 "
+        "gigawatts, driven by cheaper panels and government policy \\\\cite{good}. "
+        "Solar panels were first invented in 1839 by Edmond Becquerel \\\\cite{bad}."
+    )
+    fake_provider = _FakeSectionProvider(
+        {
+            "Introduction": (
+                '{"prose": "' + prose + '", '
+                '"sources": ['
+                '{"key": "good", "type": "misc", "title": "Solar Capacity Report", '
+                '"url": "https://en.wikipedia.org/wiki/Solar_A"}, '
+                '{"key": "bad", "type": "misc", "title": "Solar History", '
+                '"url": "https://en.wikipedia.org/wiki/Solar_B"}'
+                "]}"
+            )
+        }
+    )
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+
+    async def _gather_with_real_text(*args, **kwargs):
+        return (
+            "(stubbed material)",
+            {},
+            {
+                "https://en.wikipedia.org/wiki/Solar_A": _GROUNDING_REAL_SOURCE_TEXT,
+                "https://en.wikipedia.org/wiki/Solar_B": _GROUNDING_REAL_SOURCE_TEXT,
+            },
+        )
+
+    monkeypatch.setattr(wrp, "_gather_section_material", _gather_with_real_text)
+    # compile_latex is intentionally left UNMOCKED here -- this sends a real .tex + .bib
+    # (including the grounding-flagged `note` field) to the real sandbox-runner over HTTP.
+
+    result = await WriteResearchPaperTool().run(
+        title="Real Compile Grounding Test",
+        style="ieee",
+        abstract_sketch="A real end-to-end citation-grounding test.",
+        sections=[{"heading": "Introduction", "summary": "s"}],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —"), result
+    assert "Citation grounding check" in result
+    assert "Solar History" in result
+
+    docs = (
+        (await db_session.execute(select(Document).where(Document.user_id == paper_user.id))).scalars().all()
+    )
+    pdf_doc = next(d for d in docs if d.filename.endswith(".pdf"))
+    raw_pdf = await documents_service.get_document_raw(pdf_doc)
+    assert raw_pdf[:5] == b"%PDF-"  # a REAL compiled PDF, not a mock
+
+    notes = {s["key"]: s.get("grounding_note") for s in pdf_doc.paper_sources}
+    flagged_keys = [key for key, note in notes.items() if note]
+    assert len(flagged_keys) == 1  # exactly the ungrounded one, not the grounded one
 
 
 # ---------------------------------------------------------------------------
