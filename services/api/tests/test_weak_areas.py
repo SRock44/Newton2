@@ -246,7 +246,17 @@ async def test_empty_history_returns_no_areas(db_session):
     try:
         areas = await get_weak_areas(db_session, user.id)
         assert areas == []
-        assert "not enough" in format_weak_areas(areas).lower()
+        empty_state = format_weak_areas(areas)
+        assert "not enough" in empty_state.lower()
+        # Regression for the onboarding dead-end a self-directed-learner critique found:
+        # this used to tell the model to send a brand-new (zero-document) student to
+        # generate flashcards/take a practice exam, which was guaranteed to fail since
+        # those tools were hard-gated on an existing document. Now that they accept a
+        # bare `topic` instead, the guidance must say so rather than silently steering
+        # the model toward a dead end.
+        assert "topic" in empty_state.lower()
+        assert "generate_flashcards" in empty_state
+        assert "no upload" in empty_state.lower() or "no document" in empty_state.lower()
     finally:
         await db_session.execute(delete(User).where(User.id == user.id))
         await db_session.commit()

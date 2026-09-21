@@ -131,7 +131,13 @@ def format_weak_areas(areas: list[WeakArea]) -> str:
             "Not enough review/exam history yet to tell what this student is actually "
             "struggling with -- no flashcard reviews or completed practice exams to "
             "analyze. Don't guess at weak areas; suggest they review some flashcards "
-            "or take a practice exam first so there's real data to look at."
+            "or take a practice exam first so there's real data to look at. This works "
+            "for a brand-new account with nothing uploaded too, no upload required: "
+            "generate_flashcards, generate_practice_exam, and generate_study_plan all "
+            "accept a bare `topic` (e.g. topic='the Krebs cycle') instead of a "
+            "document, so don't tell them to upload a document first -- just ask what "
+            "they want to study and generate flashcards or a practice exam on that "
+            "topic directly."
         )
 
     lines = ["Based on real review/exam performance, here's what the student is actually struggling with:"]

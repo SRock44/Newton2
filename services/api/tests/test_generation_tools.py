@@ -306,3 +306,291 @@ async def test_run_tool_threads_user_id_through_to_generate_flashcards(free_user
         "generate_flashcards", {"document_filename": "biology"}, session_id="unused", user_id=str(user.id)
     )
     assert "biology-notes.txt" in result
+
+
+# ---------------------------------------------------------------------------
+# Bare-topic path -- no uploaded document required.
+#
+# The self-directed-learner critique this fixes: FSRS/flashcards/practice-exam
+# generation was completely unreachable for a student with zero uploaded documents.
+# These tools now accept a bare `topic` string as an alternative to a resolved Document,
+# generating directly from the model's OWN knowledge in the exact same single provider
+# call already made today -- no deep_research chaining, no extra fetches, no added
+# latency or cost versus the document-grounded path (asserted explicitly below via
+# `len(fake.calls_seen) == 1`, same as the document-grounded tests above).
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def free_user_no_document(db_session):
+    """A brand-new account: zero uploaded documents, zero history -- exactly the
+    onboarding scenario the self-directed-learner critique found was a dead end."""
+    user = User(keycloak_sub=f"test-gen-tools-notopic-{uuid.uuid4()}", plan="free")
+    db_session.add(user)
+    await db_session.commit()
+
+    yield user
+
+    await db_session.execute(delete(Flashcard).where(Flashcard.user_id == user.id))
+    await db_session.execute(
+        delete(PracticeExamQuestion).where(
+            PracticeExamQuestion.exam_id.in_(select(PracticeExam.id).where(PracticeExam.user_id == user.id))
+        )
+    )
+    await db_session.execute(delete(PracticeExam).where(PracticeExam.user_id == user.id))
+    await db_session.execute(delete(StudyPlanItem).where(StudyPlanItem.user_id == user.id))
+    await db_session.execute(delete(User).where(User.id == user.id))
+    await db_session.commit()
+
+
+def _flashcards_topic_script():
+    return ScriptedToolCallingProvider(
+        [
+            [
+                '{"cards": ['
+                '{"front": "What is a matrix?", "back": "A rectangular array of numbers."}, '
+                '{"front": "What is a vector space?", '
+                '"back": "A set closed under addition and scalar multiplication."}'
+                "]}"
+            ]
+        ]
+    )
+
+
+def _exam_topic_script():
+    return ScriptedToolCallingProvider(
+        [
+            [
+                '{"questions": [{"question": "What is a vector?", '
+                '"choices": ["A scalar", "A magnitude and direction", "A matrix", "A scalar field"], '
+                '"correct_index": 1, "explanation": "A vector has both magnitude and direction."}]}'
+            ]
+        ]
+    )
+
+
+def _study_plan_topic_script():
+    return ScriptedToolCallingProvider(
+        [
+            [
+                '{"items": ['
+                '{"title": "Vectors and vector spaces", "due_date": null, '
+                '"due_date_text": "Step 1", "notes": "Foundations."}, '
+                '{"title": "Matrices and linear transformations", "due_date": null, '
+                '"due_date_text": "Step 2", "notes": "Builds on vectors."}'
+                "]}"
+            ]
+        ]
+    )
+
+
+async def test_generate_flashcards_from_bare_topic_with_no_document(
+    free_user_no_document, db_session, monkeypatch
+):
+    user = free_user_no_document
+    fake = _flashcards_topic_script()
+    monkeypatch.setattr(flashcards_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    result = await FlashcardGenerationTool().run(topic="linear algebra", user_id=str(user.id))
+
+    assert not result.startswith("Error:")
+    assert "2 flashcard(s)" in result
+    assert "linear algebra" in result
+    cards = (await db_session.execute(select(Flashcard).where(Flashcard.user_id == user.id))).scalars().all()
+    assert len(cards) == 2
+    assert all(c.document_id is None for c in cards)
+    # The whole point of the corrected design: exactly one provider call, same as the
+    # document-grounded path -- no deep_research chaining, no extra cost or latency.
+    assert len(fake.calls_seen) == 1
+
+
+async def test_generate_practice_exam_from_bare_topic_with_no_document(
+    free_user_no_document, db_session, monkeypatch
+):
+    user = free_user_no_document
+    fake = _exam_topic_script()
+    monkeypatch.setattr(practice_exams_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    result = await PracticeExamGenerationTool().run(topic="vectors", user_id=str(user.id))
+
+    assert not result.startswith("Error:")
+    assert "1-question practice exam" in result
+    exams = (
+        await db_session.execute(select(PracticeExam).where(PracticeExam.user_id == user.id))
+    ).scalars().all()
+    assert len(exams) == 1
+    assert exams[0].document_id is None
+    assert exams[0].title == "vectors"
+    assert len(fake.calls_seen) == 1
+
+
+async def test_generate_study_plan_from_bare_topic_produces_a_real_multi_item_curriculum(
+    free_user_no_document, db_session, monkeypatch
+):
+    """Regression test for the self-directed-learner critique's specific finding: the
+    original STUDY_PLAN_PROMPT is semantically a syllabus EXTRACTOR ("only include real,
+    gradable items... if the syllabus has no extractable schedule, return
+    {"items": []}"), so pointing it at a bare topic with nothing to extract from would
+    likely return an empty plan. generate_study_plan must use the genuinely different
+    STUDY_PLAN_TOPIC_PROMPT curriculum constructor instead, and produce a real, non-empty,
+    multi-item, well-sequenced plan -- not just relax the document gate onto the same
+    extraction prompt."""
+    user = free_user_no_document
+    fake = _study_plan_topic_script()
+    monkeypatch.setattr(study_planner, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    result = await StudyPlanGenerationTool().run(topic="linear algebra", user_id=str(user.id))
+
+    assert not result.startswith("Error:")
+    assert "2 study plan item(s)" in result
+    items = (
+        await db_session.execute(select(StudyPlanItem).where(StudyPlanItem.user_id == user.id))
+    ).scalars().all()
+    assert len(items) == 2
+    assert all(i.document_id is None for i in items)
+    assert all(i.due_date is None for i in items)
+    assert all(i.source == "topic_generated" for i in items)
+    # Proves the curriculum-construction prompt was actually sent, not the old
+    # syllabus-extraction prompt reused verbatim with the topic string stuffed in.
+    prompt = fake.calls_seen[0]["messages"][0].content
+    assert "linear algebra" in prompt
+    assert "curriculum" in prompt.lower()
+    assert "syllabus" not in prompt.lower()
+    assert len(fake.calls_seen) == 1
+
+
+async def test_generate_flashcards_bare_topic_error_message_mentions_topic_option(free_user_no_document):
+    user = free_user_no_document
+    result = await FlashcardGenerationTool().run(user_id=str(user.id))
+    assert result.startswith("Error:")
+    assert "topic" in result.lower()
+
+
+async def test_generate_practice_exam_bare_topic_error_message_mentions_topic_option(free_user_no_document):
+    user = free_user_no_document
+    result = await PracticeExamGenerationTool().run(user_id=str(user.id))
+    assert result.startswith("Error:")
+    assert "topic" in result.lower()
+
+
+async def test_generate_study_plan_bare_topic_error_message_mentions_topic_option(free_user_no_document):
+    user = free_user_no_document
+    result = await StudyPlanGenerationTool().run(user_id=str(user.id))
+    assert result.startswith("Error:")
+    assert "topic" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Document path is completely unchanged when a document exists and no topic is given --
+# same prompt, same single call, same persisted result as before `topic` existed. A
+# `topic` passed alongside a document that DOES resolve is ignored: the real document is
+# always preferred over general knowledge when one is actually found.
+# ---------------------------------------------------------------------------
+
+
+async def test_generate_flashcards_document_path_ignores_topic_when_document_is_found(
+    free_user_with_document, db_session, monkeypatch
+):
+    user, document = free_user_with_document
+    fake = _flashcards_script()
+    monkeypatch.setattr(flashcards_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+    monkeypatch.setattr(flashcards_service, "get_document_text", _fake_get_document_text)
+
+    result = await FlashcardGenerationTool().run(
+        document_filename="biology", topic="a topic that must be ignored", user_id=str(user.id)
+    )
+
+    assert "biology-notes.txt" in result
+    assert "a topic that must be ignored" not in result
+    prompt = fake.calls_seen[0]["messages"][0].content
+    assert "a topic that must be ignored" not in prompt
+    cards = (
+        await db_session.execute(select(Flashcard).where(Flashcard.document_id == document.id))
+    ).scalars().all()
+    assert len(cards) == 1
+    assert len(fake.calls_seen) == 1
+
+
+async def test_generate_practice_exam_document_path_ignores_topic_when_document_is_found(
+    free_user_with_document, db_session, monkeypatch
+):
+    user, document = free_user_with_document
+    fake = _exam_script()
+    monkeypatch.setattr(practice_exams_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+    monkeypatch.setattr(practice_exams_service, "get_document_text", _fake_get_document_text)
+
+    result = await PracticeExamGenerationTool().run(
+        document_filename="biology", topic="a topic that must be ignored", user_id=str(user.id)
+    )
+
+    assert "biology-notes.txt" in result
+    prompt = fake.calls_seen[0]["messages"][0].content
+    assert "a topic that must be ignored" not in prompt
+    exams = (
+        await db_session.execute(select(PracticeExam).where(PracticeExam.document_id == document.id))
+    ).scalars().all()
+    assert len(exams) == 1
+    assert len(fake.calls_seen) == 1
+
+
+async def test_generate_study_plan_document_path_unchanged_uses_extraction_prompt(
+    free_user_with_document, db_session, monkeypatch
+):
+    """Byte-for-byte behavioral proof that the document-grounded path is untouched: the
+    exact same STUDY_PLAN_PROMPT (syllabus extraction) is sent, not the new topic/
+    curriculum prompt, and the persisted rows keep source="syllabus_upload"."""
+    user, document = free_user_with_document
+    fake = _study_plan_script()
+    monkeypatch.setattr(study_planner, "get_provider", lambda **kwargs: (fake, "fake-model"))
+    monkeypatch.setattr(study_planner, "get_document_text", _fake_get_document_text)
+
+    result = await StudyPlanGenerationTool().run(document_filename="biology", user_id=str(user.id))
+
+    assert "1 study plan item(s)" in result
+    prompt = fake.calls_seen[0]["messages"][0].content
+    assert prompt == study_planner.STUDY_PLAN_PROMPT.format(
+        text=(await _fake_get_document_text(document))[: study_planner.MAX_SYLLABUS_CHARS]
+    )
+    items = (
+        await db_session.execute(select(StudyPlanItem).where(StudyPlanItem.document_id == document.id))
+    ).scalars().all()
+    assert items[0].source == "syllabus_upload"
+    assert len(fake.calls_seen) == 1
+
+
+# ---------------------------------------------------------------------------
+# End-to-end onboarding scenario: a brand-new account with zero documents hits
+# get_weak_areas' empty state, follows its own guidance (generate something from a bare
+# topic instead of an upload), and that now genuinely succeeds instead of erroring --
+# the exact chain the self-directed-learner critique found was broken.
+# ---------------------------------------------------------------------------
+
+
+async def test_onboarding_dead_end_is_fixed_end_to_end(free_user_no_document, db_session, monkeypatch):
+    from app.services.weak_areas import format_weak_areas, get_weak_areas
+    from app.tools.get_weak_areas import GetWeakAreasTool
+
+    user = free_user_no_document
+
+    # Step 1: brand-new account, zero documents, zero review history -- get_weak_areas
+    # must not error, and its empty-state guidance must no longer point the model at a
+    # dead end (uploading before anything is possible).
+    weak_areas_result = await GetWeakAreasTool().run(user_id=str(user.id))
+    assert not weak_areas_result.startswith("Error:")
+    areas = await get_weak_areas(db_session, user.id)
+    assert areas == []
+    assert format_weak_areas(areas) == weak_areas_result
+    assert "topic" in weak_areas_result.lower()
+
+    # Step 2: the model follows that guidance and calls generate_flashcards with a bare
+    # topic instead of erroring out or telling the student to upload something first --
+    # this must now genuinely succeed.
+    fake = _flashcards_topic_script()
+    monkeypatch.setattr(flashcards_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    result = await FlashcardGenerationTool().run(topic="linear algebra", user_id=str(user.id))
+
+    assert not result.startswith("Error:")
+    assert "2 flashcard(s)" in result
+    cards = (await db_session.execute(select(Flashcard).where(Flashcard.user_id == user.id))).scalars().all()
+    assert len(cards) == 2
