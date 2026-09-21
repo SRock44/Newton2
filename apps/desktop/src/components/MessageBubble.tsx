@@ -479,19 +479,34 @@ function MessageBubble({
         )}
         {message.activity && message.activity.length > 0 && (
           <div className="tool-activity" aria-label="Newton's tool activity">
-            {message.activity.map((entry, i) => (
-              <span
-                key={`${entry.tool}-${i}`}
-                className={`tool-activity-chip${entry.done ? " tool-activity-chip--done" : ""}`}
-                // A light stagger on entry so several tool calls in one reply read as a
-                // sequence rather than all popping in at once — same idea as the
-                // Sidebar's own session-list fade-up stagger.
-                style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}
-              >
-                <span className="tool-activity-icon" aria-hidden="true" />
-                {entry.label}
-              </span>
-            ))}
+            {message.activity.map((entry, i) => {
+              // Only a finished ("done") entry has a real outcome to show -- a
+              // still-running tool's `verified` is always undefined (see
+              // ToolActivityEntry's own docstring), so this can never flash a verified
+              // badge on a chip that's still spinning.
+              const isVerified = entry.done && entry.verified === true;
+              return (
+                <span
+                  key={`${entry.tool}-${i}`}
+                  className={`tool-activity-chip${entry.done ? " tool-activity-chip--done" : ""}${
+                    isVerified ? " tool-activity-chip--verified" : ""
+                  }`}
+                  // A light stagger on entry so several tool calls in one reply read as a
+                  // sequence rather than all popping in at once — same idea as the
+                  // Sidebar's own session-list fade-up stagger.
+                  style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}
+                  title={isVerified ? "Computed with real math/code, not guessed" : undefined}
+                >
+                  <span className="tool-activity-icon" aria-hidden="true" />
+                  {entry.label}
+                  {isVerified && (
+                    <span className="tool-activity-verified-badge" aria-label="Verified: computed, not guessed">
+                      Verified
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </div>
         )}
         {imageIds.length > 0 && sessionId && (

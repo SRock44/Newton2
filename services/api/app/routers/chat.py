@@ -571,13 +571,21 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID) -> None:
                                 full_response += event.text
                                 await websocket.send_json({"type": "chunk", "content": event.text})
                             elif isinstance(event, ToolActivity):
-                                await websocket.send_json(
-                                    {
-                                        "type": _PHASE_TO_FRAME_TYPE[event.phase],
-                                        "tool": event.tool,
-                                        "label": event.label,
-                                    }
-                                )
+                                tool_frame = {
+                                    "type": _PHASE_TO_FRAME_TYPE[event.phase],
+                                    "tool": event.tool,
+                                    "label": event.label,
+                                }
+                                if event.phase == "finished":
+                                    # Only the "finished" phase knows a real outcome --
+                                    # "started"/"progress" fire before the tool has
+                                    # actually run, so there's nothing honest to report
+                                    # yet (see ToolActivity.verified's own docstring).
+                                    # Omitted entirely rather than sent as false, so
+                                    # those frames' shape is unchanged from before this
+                                    # feature existed.
+                                    tool_frame["verified"] = event.verified
+                                await websocket.send_json(tool_frame)
                                 if event.phase == "finished":
                                     action = _TOOL_TO_SUGGESTED_ACTION.get(event.tool)
                                     if action is not None:

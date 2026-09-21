@@ -4,6 +4,14 @@ export interface ToolActivityEntry {
   tool: string;
   label: string;
   done: boolean;
+  /** True once this tool's real result came from actual computation (real SymPy,
+   * a real sandboxed code run, real chemistry math, ...) rather than an LLM judgment
+   * call -- see services/api/app/agents/tutor.py's _COMPUTATIONALLY_VERIFIED_TOOLS /
+   * _tool_result_verified and app/routers/chat.py's tool_end frame. Only ever set once
+   * `done` is true (a still-running tool has no outcome yet); undefined (not false) on
+   * every other tool and on a still-running entry, so "verified" unambiguously means
+   * "we affirmatively know this was computed", never "we don't know yet". */
+  verified?: boolean;
 }
 
 /** A deterministic "Open Flashcards"-style call to action the backend attaches right
