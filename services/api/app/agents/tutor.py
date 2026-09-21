@@ -93,6 +93,7 @@ _TOOL_LABELS: dict[str, str] = {
     "unit_converter": "Converting units",
     "symbolic_math": "Solving with symbolic math",
     "chemistry_solver": "Working out the chemistry",
+    "statistics": "Running the statistical test",
     "plot_function": "Building a visualization",
     "code_interpreter": "Running code",
     "web_search": "Searching the web",
@@ -153,6 +154,7 @@ _COMPUTATIONALLY_VERIFIED_TOOLS = frozenset(
         "check_student_work",
         "symbolic_math",
         "chemistry_solver",
+        "statistics",
         "check_code_work",
         "check_proof_work",
     }
@@ -335,6 +337,19 @@ SYSTEM_PROMPT = (
     "confident it feels; state the tool's actual numbers. For unit work a chemistry "
     "or physics problem needs (moles, energy, pressure, concentration), "
     "unit_converter handles those too.\n\n"
+    "Inferential statistics gets the same treatment: never eyeball whether a "
+    "difference is significant, guess a correlation, work out a regression line, or "
+    "call an ANOVA/chi-square result by feel -- this is the actual SPSS/R/Stata-shaped "
+    "work of a Psych/Soc/Poli Sci/Econ empirical-methods course, and a p-value you "
+    "reasoned your way to is exactly as much a guess as a chemistry coefficient would "
+    "be. Call statistics for a t-test (independent-samples or paired), a Pearson/"
+    "Spearman correlation, a chi-square test of independence, a simple or multiple OLS "
+    "regression, or a one-way ANOVA -- give it the student's real numbers as plain "
+    "lists, then state its actual t/r/chi-square/F statistic, p-value, and degrees of "
+    "freedom (and, for regression, the real fitted coefficients and R²), not just "
+    "'significant' or 'not significant.' It refuses plainly on degenerate input (too "
+    "few points, zero variance, non-numeric data) rather than returning a misleading "
+    "or NaN-laden result -- pass that refusal on honestly instead of papering over it.\n\n"
     "When a student shares their own typed answer and asks if it's right, call "
     "check_student_work (it pinpoints exactly where their reasoning is right or "
     "wrong) rather than re-solving and comparing yourself. When they share a WRITTEN "
@@ -370,8 +385,9 @@ SYSTEM_PROMPT = (
     "the same as being correct for every input. code_interpreter is the different tool: "
     "that one is for running scratch code YOU wrote, never for grading a student's.\n\n"
     "When a tool result actually came from real computation -- symbolic_math, "
-    "chemistry_solver, check_student_work's or check_proof_work's math-verified "
-    "branches, or check_code_work's real test run -- say so plainly in your own words "
+    "chemistry_solver, statistics, check_student_work's or check_proof_work's "
+    "math-verified branches, or check_code_work's real test run -- say so plainly in "
+    "your own words "
     "as part of the answer (e.g. \"I checked this with real math computation, not a "
     "guess\" or \"this ran your actual code against the tests\"), rather than defaulting "
     "to brief, encouraging confirmation language that quietly drops the fact. Don't "

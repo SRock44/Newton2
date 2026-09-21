@@ -19,6 +19,7 @@ from app.tools.grammar_check import GrammarCheckTool
 from app.tools.math_hint import GetMathHintTool
 from app.tools.practice_exam_generation import PracticeExamGenerationTool
 from app.tools.research_fetch import ResearchFetchTool
+from app.tools.statistics import StatisticsTool
 from app.tools.study_plan_generation import StudyPlanGenerationTool
 from app.tools.study_session import StudySessionTool
 from app.tools.symbolic_math import SymbolicMathTool
@@ -40,6 +41,7 @@ _TOOLS: dict[str, Tool] = {
         UnitConverterTool(),
         SymbolicMathTool(),
         ChemistrySolverTool(),
+        StatisticsTool(),
         VisualizerTool(),
         CodeInterpreterTool(),
         WebSearchTool(),
@@ -98,6 +100,11 @@ _ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
     (
         ("chemistry_solver",),
         "any real chemistry computation -- balancing an equation, stoichiometry, PV=nRT, pH",
+    ),
+    (
+        ("statistics",),
+        "real inferential statistics -- a t-test, correlation, chi-square test of independence, "
+        "regression, or one-way ANOVA on real data",
     ),
     (("plot_function",), "graphing a function/equation, incl. slider-enabled variants"),
     (("code_interpreter",), "running or testing your OWN scratch code"),
