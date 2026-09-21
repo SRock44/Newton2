@@ -7,7 +7,7 @@ pydantic==2.13.5
 # other. Deliberately NOT pytest-json-report (or any other plugin): the per-test JSON
 # comes from a small generated plugin in app/main.py, keeping this image's new
 # dependency surface to exactly one package.
-pytest==8.3.4
+pytest==9.1.1
 # numpy/scipy were tried here (for real numpy/scipy student coursework code under
 # code_interpreter/check_code_work) and reverted: even single-threaded BLAS
 # (OPENBLAS_NUM_THREADS=1 etc., see _run_limited's env dict below -- left in place,
