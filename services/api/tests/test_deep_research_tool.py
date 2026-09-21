@@ -343,10 +343,22 @@ async def test_run_writes_a_report_and_creates_a_real_document_with_grounding(
 
 
 async def test_run_reports_all_grounded_when_every_citation_is_supported(research_user, monkeypatch):
+    # Two real sources, both genuinely cited and supported -- MIN_SOURCES_REQUIRED=2, so
+    # a single-source fake_gather (the original version of this test) always hits the
+    # "couldn't find enough real material" refusal path before ever reaching the
+    # grounding-summary code this test is actually meant to exercise.
+    second_source_text = (
+        "Wind power capacity additions also grew substantially over the same period, "
+        "with offshore wind projects becoming increasingly cost-competitive."
+    )
     sources = [
         FetchedSource(
             key="s1", url="https://en.wikipedia.org/wiki/Solar_A", title="Solar Capacity Report",
             text=_GROUNDING_REAL_SOURCE_TEXT, truncated=False,
+        ),
+        FetchedSource(
+            key="s2", url="https://en.wikipedia.org/wiki/Wind_A", title="Wind Capacity Report",
+            text=second_source_text, truncated=False,
         ),
     ]
 
@@ -356,12 +368,14 @@ async def test_run_reports_all_grounded_when_every_citation_is_supported(researc
     monkeypatch.setattr(dr, "_gather_sources", fake_gather)
     prose = (
         "Solar capacity has grown rapidly, quadrupling in six years to reach about 1,600 "
-        "gigawatts, driven by cheaper panels and government policy \\cite{s1}."
+        "gigawatts, driven by cheaper panels and government policy \\cite{s1}. Wind "
+        "capacity additions also grew substantially, with offshore wind becoming "
+        "increasingly cost-competitive \\cite{s2}."
     )
     monkeypatch.setattr(dr, "get_provider", lambda **kwargs: (_FakeReportProvider(prose), "fake-model"))
 
-    result = await DeepResearchTool().run(topic="solar capacity growth", user_id=str(research_user.id))
-    assert "all 1 checkable citation(s) were verified" in result
+    result = await DeepResearchTool().run(topic="solar and wind capacity growth", user_id=str(research_user.id))
+    assert "all 2 checkable citation(s) were verified" in result
 
 
 # ---------------------------------------------------------------------------
