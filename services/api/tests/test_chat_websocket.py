@@ -490,3 +490,110 @@ async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishe
         await db_session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
         await db_session.execute(delete(Document).where(Document.id == document_id))
         await db_session.commit()
+
+
+@pytest.mark.live_smoke
+async def test_websocket_tool_end_carries_verified_true_for_a_real_computationally_checked_answer(
+    http_client, auth_headers, keycloak_token, db_session
+):
+    """Top finding from the product review this addresses: "verified, not vibes" was
+    invisible in the product -- a check_student_work result is real, SymPy-verified
+    ground truth, but nothing in the wire protocol said so, and the model's own reply
+    text paraphrased the fact away. Needs a real tool-calling-capable model (never the
+    keyless EchoProvider, which never calls tools at all), same constraint as the
+    suggested_action test above."""
+    session_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = session_resp.json()["session_id"]
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "user_message",
+                        "content": (
+                            "I solved x^2 - 5x + 6 = 0 and got x = 2 or x = 3. Can you "
+                            "check my work?"
+                        ),
+                    }
+                )
+            )
+            verified_frame: dict | None = None
+            full_response = ""
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=45)
+                frame = json.loads(raw)
+                if frame["type"] == "tool_end" and frame.get("tool") == "check_student_work":
+                    verified_frame = frame
+                if frame["type"] == "chunk":
+                    full_response += frame["content"]
+                if frame["type"] == "done":
+                    break
+
+        assert verified_frame is not None, "expected check_student_work to actually be called"
+        # The one field this whole feature exists to add: a real, server-computed
+        # boolean, present (not just truthy/absent) on the finished frame.
+        assert verified_frame["verified"] is True
+        # And the model's own reply text must not have paraphrased the verification
+        # away -- see SYSTEM_PROMPT's new instruction telling it to say so plainly.
+        # Deliberately loose: the model phrases this naturally in its own words (e.g.
+        # "I checked it with real symbolic computation, not just eyeballing it"), so
+        # this only requires SOME real acknowledgment of computation, not one exact
+        # phrase.
+        lowered = full_response.lower()
+        assert "comput" in lowered or "symbolic" in lowered, (
+            f"expected the reply to plainly mention computational verification, got: {full_response!r}"
+        )
+    finally:
+        session_uuid = uuid.UUID(session_id)
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.commit()
+
+
+@pytest.mark.live_smoke
+async def test_websocket_tool_end_has_no_verified_true_for_an_unverified_tool(
+    http_client, auth_headers, keycloak_token, db_session
+):
+    """web_search's result is real search text, but never a computational ground
+    truth -- its tool_end frame must never claim `verified: true`, and the chip stays
+    the plain, unstyled kind on the frontend (MessageBubble.tsx only special-cases
+    `verified === true`)."""
+    session_resp = await http_client.post("/chat/sessions", headers=auth_headers)
+    session_id = session_resp.json()["session_id"]
+    uri = f"{WS_BASE_URL}/chat/ws/{session_id}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            await _authenticate(ws, keycloak_token)
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "user_message",
+                        "content": (
+                            "You must call the web_search tool before answering -- do not "
+                            "answer from memory. Call web_search with the exact query "
+                            "'current weather in Reykjavik Iceland' and report what the "
+                            "top result says."
+                        ),
+                    }
+                )
+            )
+            search_frame: dict | None = None
+            while True:
+                raw = await asyncio.wait_for(ws.recv(), timeout=45)
+                frame = json.loads(raw)
+                if frame["type"] == "tool_end" and frame.get("tool") == "web_search":
+                    search_frame = frame
+                if frame["type"] == "done":
+                    break
+
+        assert search_frame is not None, "expected web_search to actually be called"
+        assert search_frame.get("verified") is not True
+    finally:
+        session_uuid = uuid.UUID(session_id)
+        await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
+        await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
+        await db_session.commit()

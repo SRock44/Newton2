@@ -941,6 +941,364 @@ def test_system_prompt_honestly_describes_the_free_vs_pro_generation_target():
         assert phrase not in lowered, f"system prompt must not imply a time-based limit ({phrase!r} found)"
 
 
+def test_system_prompt_tells_the_model_to_say_so_when_a_result_was_computationally_verified():
+    """Top finding from the product review this addresses: the tool result text says
+    'Verified via symbolic math...' but the model was only ever told to give brief,
+    encouraging confirmation, so it quietly paraphrased the verification away. The
+    prompt must now say plainly to state it, must not turn it into a robotic tagline
+    repeated on every single message, and must specifically NOT let check_proof_work's
+    partial verification get overclaimed as "the whole thing was verified"."""
+    prompt = tutor.SYSTEM_PROMPT
+    lowered = prompt.lower()
+
+    assert "computation" in lowered and "guess" in lowered
+    assert "check_proof_work" in prompt  # the partial-verification caveat names it explicitly
+    assert "every single message" in lowered or "every message" in lowered  # anti-robotic guidance present
+
+
+# ---------------------------------------------------------------------------
+# The `verified` signal (product review: "verified, not vibes" was invisible in the
+# product -- the tool result text said "Verified via symbolic math..." but nothing
+# server-side or in the UI told a student/parent/teacher when an answer was
+# computationally certain vs. an LLM judgment call). tutor._tool_result_verified is the
+# real, server-computed detector; these tests cover it directly (pure function, no
+# network/DB) and via a real run_tutor call executing the REAL tool (never mocked) so
+# the detector is proven against each tool's actual real output text, not a fabricated
+# stand-in for it.
+# ---------------------------------------------------------------------------
+
+
+def test_tool_result_verified_is_false_for_a_tool_outside_the_allow_list_no_matter_what_the_text_says():
+    # Even text that LOOKS like a verification marker must not count for a tool that
+    # was never put on the explicit allow-list -- the allow-list, not the text, is the
+    # actual gate.
+    assert tutor._tool_result_verified("web_search", "CORRECT. Verified via symbolic math: 4") is False
+    assert tutor._tool_result_verified("calculator", "42") is False
+    assert tutor._tool_result_verified("generate_flashcards", "Saved 10 cards.") is False
+    assert tutor._tool_result_verified("use_capability", "Loaded: symbolic_math.") is False
+
+
+def test_tool_result_verified_symbolic_math():
+    assert tutor._tool_result_verified("symbolic_math", "[-2, 2]") is True
+    assert tutor._tool_result_verified("symbolic_math", "Error: could not parse 'x+'") is False
+
+
+def test_tool_result_verified_chemistry_solver():
+    assert (
+        tutor._tool_result_verified(
+            "chemistry_solver",
+            "Balanced (by real linear algebra on the composition matrix -- SymPy "
+            "nullspace, not a guess): C3H8 + 5 O2 -> 3 CO2 + 4 H2O",
+        )
+        is True
+    )
+    assert tutor._tool_result_verified("chemistry_solver", "Error: empty chemical formula") is False
+
+
+def test_tool_result_verified_check_code_work():
+    assert (
+        tutor._tool_result_verified(
+            "check_code_work",
+            "REAL EXECUTION RESULT -- the student's own code was run, unmodified, "
+            "against the tests.\n\nALL 3 TEST(S) PASSED.",
+        )
+        is True
+    )
+    assert tutor._tool_result_verified("check_code_work", "Error: entrypoint 'x.py' is not one of the submitted files (main.py).") is False
+
+
+def test_tool_result_verified_check_student_work_only_for_the_real_math_verdict_branches():
+    # The two graded math branches and the ungraded "here's ground truth" branch all
+    # share the "via symbolic math" wording -- all three are real computation.
+    assert (
+        tutor._tool_result_verified(
+            "check_student_work",
+            "CORRECT. Verified via symbolic math: solve of 'x^2-4' = [-2, 2], which "
+            "matches the student's final answer ('2').",
+        )
+        is True
+    )
+    assert (
+        tutor._tool_result_verified(
+            "check_student_work",
+            "INCORRECT. Verified via symbolic math: solve of 'x^2-4' = [-2, 2], but "
+            "the student's final answer ('5') does not match.",
+        )
+        is True
+    )
+    assert (
+        tutor._tool_result_verified(
+            "check_student_work",
+            "Verified ground truth (via symbolic math, not guesswork): solve of "
+            "'x^2-4' = [-2, 2].\n\nCouldn't automatically pick out a final answer...",
+        )
+        is True
+    )
+    # The conceptual/written fallback is a model judgment call, never computed -- must
+    # not be marked verified just because the tool ran without erroring.
+    assert (
+        tutor._tool_result_verified(
+            "check_student_work",
+            "This is a conceptual/written problem, not one with a computed ground "
+            "truth to check against -- verify it with careful, honest reasoning "
+            "instead of trusting either the problem's phrasing or the student's "
+            "confidence.",
+        )
+        is False
+    )
+    assert tutor._tool_result_verified("check_student_work", "Error: problem must not be empty.") is False
+
+
+def test_tool_result_verified_check_proof_work_only_when_a_real_algebraic_claim_was_checked():
+    assert (
+        tutor._tool_result_verified(
+            "check_proof_work",
+            "PROOF CRITIQUE.\n\n1) COMPUTATIONALLY VERIFIED (real symbolic math -- "
+            "SymPy, not a guess):\n- VERIFIED CORRECT (real symbolic math): 'a' = 'a' "
+            "really does hold.\n\n2) STRUCTURAL / LOGICAL CRITIQUE...",
+        )
+        is True
+    )
+    # A wrong algebraic step was still REALLY checked by computation -- a computed "no"
+    # counts as verified too, not just a computed "yes".
+    assert (
+        tutor._tool_result_verified(
+            "check_proof_work",
+            "1) COMPUTATIONALLY VERIFIED (real symbolic math -- SymPy, not a guess):\n"
+            "- VERIFIED WRONG (real symbolic math): 'a' expands to a, but 'b' expands "
+            "to b -- these are NOT equal.",
+        )
+        is True
+    )
+    assert (
+        tutor._tool_result_verified(
+            "check_proof_work",
+            "1) COMPUTATIONALLY VERIFIED (real symbolic math -- SymPy, not a guess):\n"
+            "No algebraic/computational sub-steps could be extracted and checked in "
+            "this proof (or the proof contains none) -- nothing in this proof was "
+            "verified by symbolic computation; the entire critique below is "
+            "reasoning-based.\n\n2) STRUCTURAL / LOGICAL CRITIQUE...",
+        )
+        is False
+    )
+    assert tutor._tool_result_verified("check_proof_work", "Error: proof must not be empty.") is False
+
+
+async def test_run_tutor_marks_a_real_correct_symbolic_math_call_verified(monkeypatch):
+    """End-to-end through run_tutor with the REAL SymbolicMathTool (never mocked) --
+    proves the finished ToolActivity's `verified` flag is actually driven by the real
+    tool's real output, not a stand-in string."""
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="call_1", name="symbolic_math", arguments={"operation": "solve", "expression": "x^2-4", "variable": "x"})],
+            ["x = -2 or x = 2."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "solve x^2 - 4 = 0")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "symbolic_math"
+    assert finished.verified is True
+
+
+async def test_run_tutor_marks_a_real_erroring_symbolic_math_call_not_verified(monkeypatch):
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="call_1", name="symbolic_math", arguments={"operation": "solve", "expression": "not valid ((( math", "variable": "x"})],
+            ["Couldn't solve that."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "solve this")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "symbolic_math"
+    assert finished.verified is False
+
+
+async def test_run_tutor_marks_a_real_correct_check_student_work_call_verified(monkeypatch):
+    fake = ScriptedToolCallingProvider(
+        [
+            [
+                ToolCall(
+                    id="call_1",
+                    name="check_student_work",
+                    arguments={"problem": "Solve x^2 - 4 = 0", "student_work": "x = 2 or x = -2"},
+                )
+            ],
+            ["Correct!"],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "check my work")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "check_student_work"
+    assert finished.verified is True
+    tool_result_turns = [m for m in fake.calls_seen[1]["messages"] if m.role == "tool"]
+    assert "via symbolic math" in tool_result_turns[0].content.lower()
+
+
+async def test_run_tutor_marks_a_conceptual_check_student_work_call_not_verified(monkeypatch):
+    """The conceptual/written fallback branch is a model judgment call, not real
+    computation -- must not read as verified just because the tool itself didn't
+    error."""
+    fake = ScriptedToolCallingProvider(
+        [
+            [
+                ToolCall(
+                    id="call_1",
+                    name="check_student_work",
+                    arguments={
+                        "problem": "Explain why the sky is blue.",
+                        "student_work": "Because of Rayleigh scattering of sunlight.",
+                    },
+                )
+            ],
+            ["Let's look at that."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "check my answer")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "check_student_work"
+    assert finished.verified is False
+
+
+async def test_run_tutor_marks_a_real_correct_chemistry_solver_call_verified(monkeypatch):
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="call_1", name="chemistry_solver", arguments={"operation": "balance_equation", "equation": "H2 + O2 -> H2O"})],
+            ["Balanced!"],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "balance this")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "chemistry_solver"
+    assert finished.verified is True
+
+
+@pytest.mark.live_smoke
+async def test_run_tutor_marks_a_real_successful_check_code_work_run_verified(monkeypatch):
+    """Needs a real reachable sandbox-runner (services/sandbox-runner) -- excluded from
+    the hermetic suite for the same reason every other live_smoke test is."""
+    fake = ScriptedToolCallingProvider(
+        [
+            [
+                ToolCall(
+                    id="call_1",
+                    name="check_code_work",
+                    arguments={"files": {"main.py": "print('hi')"}, "entrypoint": "main.py"},
+                )
+            ],
+            ["Let's see what happened."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "run my code")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "check_code_work"
+    assert finished.verified is True
+
+
+async def test_run_tutor_marks_check_code_work_not_verified_on_a_real_bad_argument_error(monkeypatch):
+    """CheckCodeWorkTool.run validates `entrypoint` itself before ever touching the
+    sandbox -- naming an entrypoint that isn't one of the submitted files genuinely
+    errors regardless of whether a sandbox-runner is reachable in this environment, a
+    real (not fabricated) exercise of the "tool ran but produced an Error: ..." path
+    this feature must never mark verified."""
+    fake = ScriptedToolCallingProvider(
+        [
+            [
+                ToolCall(
+                    id="call_1",
+                    name="check_code_work",
+                    arguments={"files": {"main.py": "print('hi')"}, "entrypoint": "does_not_exist.py"},
+                )
+            ],
+            ["Let's see what happened."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "run my code")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "check_code_work"
+    assert finished.verified is False
+    tool_result_turns = [m for m in fake.calls_seen[1]["messages"] if m.role == "tool"]
+    assert tool_result_turns[0].content.startswith("Error:")
+
+
+async def test_run_tutor_marks_check_proof_work_verified_when_a_real_algebraic_claim_is_extracted(monkeypatch):
+    proof = (
+        "Base case: for n=1, the sum is 1 and n(n+1)/2 = 1(2)/2 = 1, so it holds.\n"
+        "Inductive step: assume it holds for n = k, so 1+2+...+k = k(k+1)/2.\n"
+        "Adding (k+1) to both sides gives k(k+1)/2 + (k+1) = k^2/2 + 3k/2 + 1.\n"
+        "k^2/2 + 3k/2 + 1 = (k+1)(k+2)/2.\n"
+        "Therefore, by induction, the formula holds for all positive integers n."
+    )
+    fake = ScriptedToolCallingProvider(
+        [
+            [
+                ToolCall(
+                    id="call_1",
+                    name="check_proof_work",
+                    arguments={"claim": "1+2+...+n = n(n+1)/2", "proof": proof},
+                )
+            ],
+            ["Looks right."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "check my proof")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "check_proof_work"
+    assert finished.verified is True
+
+
+async def test_run_tutor_marks_check_proof_work_not_verified_when_no_algebra_is_extractable(monkeypatch):
+    proof = (
+        "Assume the claim is false. Then by definition of even and odd numbers, "
+        "we reach a logical impossibility, which is a contradiction, so the "
+        "original claim must be true."
+    )
+    fake = ScriptedToolCallingProvider(
+        [
+            [ToolCall(id="call_1", name="check_proof_work", arguments={"claim": "n^2 is even implies n is even", "proof": proof})],
+            ["Here's the critique."],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "check my proof")]
+
+    finished = next(e for e in events if isinstance(e, ToolActivity) and e.phase == "finished")
+    assert finished.tool == "check_proof_work"
+    assert finished.verified is False
+
+
+def test_tool_activity_verified_defaults_false():
+    """A "started"/"progress" event fires before the tool has actually run -- there's no
+    real outcome to report yet, so verified must default False rather than needing every
+    call site to remember to pass it."""
+    assert tutor.ToolActivity(tool="symbolic_math", label="x", phase="started").verified is False
+    assert tutor.ToolActivity(tool="symbolic_math", label="x", phase="progress").verified is False
+
+
 # ---------------------------------------------------------------------------
 # On-demand tool loading (app/tools/registry.py's use_capability meta-tool,
 # app/agents/tutor.py's _load_capabilities) -- most real student requests are simple

@@ -2994,6 +2994,56 @@ body.is-resizing-panel * {
   }
 }
 
+/* A finished tool-activity chip whose result was real computation (SymPy, a real
+   sandboxed code run, real chemistry math, ...) rather than an LLM judgment call -- see
+   services/api/app/agents/tutor.py's _COMPUTATIONALLY_VERIFIED_TOOLS and MessageBubble.
+   tsx's isVerified. Product review finding: the "verified, not vibes" claim was
+   completely invisible in the UI -- every tool chip looked identical whether the result
+   was mathematically certain or just plausible-sounding. Reuses .tool-activity-chip's
+   exact chrome (never a new component), distinguished only by the same --color-success
+   accent .tool-activity-chip--done's own checkmark already uses (so it reads as "the
+   same family of done chip, plus a specific, stronger claim" rather than a foreign
+   style) and a short "Verified" badge -- never applied to a still-running chip, and
+   never to a tool outside the real, explicit backend allow-list (see that constant's
+   own docstring for exactly which tools and why, including the deliberately
+   conservative check_proof_work/check_student_work partial-verification handling). */
+.tool-activity-chip--verified {
+  border-color: var(--color-success);
+  background-color: var(--color-success-tint);
+}
+
+.tool-activity-chip--verified.tool-activity-chip--done {
+  /* .tool-activity-chip--done alone dims every finished chip to opacity 0.7 so it reads
+     as "past, no longer active" -- a verified chip earns a bit more visual weight than
+     an ordinary finished one, since the whole point is to stand out as a stronger
+     claim, not fade into the background the same as everything else that's just done. */
+  opacity: 0.92;
+}
+
+.tool-activity-chip--verified .tool-activity-icon {
+  border-color: var(--color-success);
+}
+
+.tool-activity-chip--verified.tool-activity-chip--done .tool-activity-icon {
+  background-color: var(--color-success);
+}
+
+.tool-activity-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-sans, sans-serif);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  margin-left: 2px;
+}
+
 /* The plan-narration chip (the model's own short "here's my plan" line, fired before
    any tool activity or real answer text — see App.tsx's plan_chunk handling) reuses
    .tool-activity-chip's exact chrome (pill shape, spinning-then-done icon, fade-in) so

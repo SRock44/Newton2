@@ -457,6 +457,79 @@ describe("MessageBubble", () => {
       expect(chips[1]).toContain("Doing the math");
     });
   });
+
+  // Product review finding: "verified, not vibes" was invisible in the product -- every
+  // tool chip rendered identically whether the underlying result was a real computation
+  // (SymPy, a real sandboxed test run, ...) or an LLM judgment call. The backend now
+  // sends a real, server-computed `verified` flag on a finished tool_end frame (see
+  // services/api/app/agents/tutor.py's _COMPUTATIONALLY_VERIFIED_TOOLS/
+  // _tool_result_verified and app/routers/chat.py), threaded onto ToolActivityEntry.
+  // These tests cover both the verified-chip path and the (must stay unchanged)
+  // non-verified path.
+  describe("verified tool-activity chip", () => {
+    it("gives a finished, computationally-verified tool call a distinct verified badge/class", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "Correct!",
+        streaming: false,
+        activity: [{ tool: "check_student_work", label: "Checking your work", done: true, verified: true }],
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Checking your work").closest(".tool-activity-chip");
+      expect(chip).toHaveClass("tool-activity-chip--verified");
+      expect(chip).toHaveClass("tool-activity-chip--done");
+      expect(screen.getByText("Verified")).toBeInTheDocument();
+    });
+
+    it("does not show a verified badge for a finished tool call the backend didn't mark verified", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "Here's what I found.",
+        streaming: false,
+        activity: [{ tool: "web_search", label: "Searching the web", done: true, verified: false }],
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Searching the web").closest(".tool-activity-chip");
+      expect(chip).not.toHaveClass("tool-activity-chip--verified");
+      expect(chip).toHaveClass("tool-activity-chip--done");
+      expect(screen.queryByText("Verified")).not.toBeInTheDocument();
+    });
+
+    it("does not show a verified badge when `verified` is simply absent (a tool outside the verified allow-list)", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "Here you go.",
+        streaming: false,
+        activity: [{ tool: "generate_flashcards", label: "Building your flashcards", done: true }],
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Building your flashcards").closest(".tool-activity-chip");
+      expect(chip).not.toHaveClass("tool-activity-chip--verified");
+      expect(screen.queryByText("Verified")).not.toBeInTheDocument();
+    });
+
+    it("never shows a verified badge on a still-running (not done) chip, even if verified were somehow set", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        activity: [{ tool: "check_student_work", label: "Checking your work", done: false, verified: true }],
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      const chip = screen.getByText("Checking your work").closest(".tool-activity-chip");
+      expect(chip).not.toHaveClass("tool-activity-chip--verified");
+      expect(chip).not.toHaveClass("tool-activity-chip--done");
+      expect(screen.queryByText("Verified")).not.toBeInTheDocument();
+    });
+  });
 });
 
 // Voice OUTPUT. POST /voice/synthesize (a real, Pro-gated Piper TTS service) had been

@@ -706,6 +706,9 @@ function App() {
           prompt_tokens?: number | null;
           completion_tokens?: number | null;
           id?: string;
+          /** Only ever present on a "tool_end" frame -- see services/api/app/routers/
+           * chat.py's tool_end frame shape / ToolActivityEntry's own docstring. */
+          verified?: boolean;
         };
         try {
           payload = JSON.parse(event.data);
@@ -799,7 +802,7 @@ function App() {
               i === markedIndex
                 ? payload.type === "tool_progress"
                   ? { ...entry, label }
-                  : { ...entry, done: true }
+                  : { ...entry, done: true, verified: payload.verified === true }
                 : entry
             );
             return [...prev.slice(0, -1), { ...last, activity: nextActivity }];

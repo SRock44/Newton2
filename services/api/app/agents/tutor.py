@@ -42,11 +42,19 @@ class TextChunk:
 @dataclass
 class ToolActivity:
     """The Tutor started or finished executing a tool call — surfaced to the UI so
-    "Newton is doing something" is visible, not silent."""
+    "Newton is doing something" is visible, not silent.
+
+    `verified`: only meaningful when phase="finished" (a "started"/"progress" event
+    fires before the tool has actually run, so there's no outcome to report yet — see
+    _tool_result_verified's own docstring for exactly what this does and doesn't mean).
+    Defaults False so every non-finished event, and every finished event for a tool
+    outside _COMPUTATIONALLY_VERIFIED_TOOLS, is unambiguously "not a verified-computation
+    claim" rather than an unset/null value the frontend would have to special-case."""
 
     tool: str
     label: str
     phase: Literal["started", "progress", "finished"]
+    verified: bool = False
 
 
 @dataclass
@@ -124,6 +132,85 @@ _ARTIFACT_PLANNING_LABELS: dict[str, str] = {
     "interactive": "Planning your interactive demo",
     "quiz": "Planning your quiz game",
 }
+
+
+# The product review this addresses (see ROADMAP.md): "verified, not vibes" is Newton's
+# core differentiator, but nothing in the product actually told a student, parent, or
+# teacher WHEN an answer was real computation vs. an LLM judgment call -- the tool
+# result said "Verified via symbolic math" and the model paraphrased that away. This is
+# the server-computed signal that fixes that: a real, explicit allow-list (never a
+# guess based on the tool's name alone -- a tool not listed here is never marked
+# verified, no matter what its result text says) of the tools whose result is grounded
+# in actual computation rather than model reasoning. Deliberately narrower than "every
+# tool that does real computation" (calculator/unit_converter are just as real, but
+# they're plain utility lookups, not a verdict on a STUDENT'S OWN claimed answer/proof/
+# code/chemistry -- the review's concern was specifically about a graded verdict
+# reading as certain when the underlying tool only reasoned about it). Threaded through
+# to the WS frame by chat.py at the "finished" phase only.
+_COMPUTATIONALLY_VERIFIED_TOOLS = frozenset(
+    {
+        "check_student_work",
+        "symbolic_math",
+        "chemistry_solver",
+        "check_code_work",
+        "check_proof_work",
+    }
+)
+
+# check_proof_work's own result text (see app/tools/check_proof_work.py's
+# _verify_algebraic_claims) literally writes this exact parenthetical onto every
+# algebraic sub-claim it actually ran through sympy -- "VERIFIED CORRECT (real symbolic
+# math)" or "VERIFIED WRONG (real symbolic math)". Both count as "verified" here: a
+# wrong equation was still REALLY checked by computation, which is exactly the
+# distinction this feature exists to surface (a computed "no" is not a guess either).
+_PROOF_ALGEBRA_VERIFIED_MARKER = "(real symbolic math)"
+
+# check_student_work's own result text (see app/tools/check_work.py's _math_verdict)
+# only reaches a real SymPy-grounded verdict for a math problem; for a conceptual/
+# written problem it explicitly falls back to "verify it with careful, honest
+# reasoning instead" -- a model judgment call, not a computation, and marking THAT
+# branch "verified" would be exactly the overclaiming this feature exists to prevent.
+# Every one of the tool's three real-math-verdict branches (an ungraded "here's ground
+# truth", a graded CORRECT, or a graded INCORRECT) shares this exact substring; the
+# conceptual-fallback branch never contains it.
+_STUDENT_WORK_VERIFIED_MARKER = "via symbolic math"
+
+
+def _tool_result_verified(tool_name: str, result: str) -> bool:
+    """Server-computed, honest "was this specific tool call's result actually grounded
+    in real computation" signal -- never trusted from the model, always derived here
+    from the tool's own real output. A str-returning `Tool.run()` (see app/tools/
+    registry.py's run_tool, which every tool call in run_tutor goes through and whose
+    return value is what's appended to the conversation as the tool's result) is the
+    one shared contract every tool in this codebase honors, so this reads the same
+    text the model itself is handed rather than adding a second, parallel return shape
+    that only this one feature would need to keep in sync.
+
+    Deliberately conservative in three ways:
+      1. Only tools in _COMPUTATIONALLY_VERIFIED_TOOLS are ever eligible at all.
+      2. Any result that reads as a tool-level error (run_tool's own "Error: bad
+         arguments..."/"Error running..." wrapping, or a tool's own "Error: ..." for
+         bad input) is never verified -- nothing was actually computed.
+      3. check_proof_work and check_student_work each have a real branch where the
+         tool did NOT reach a computed ground truth (proof: no extractable algebraic
+         sub-claim; student work: a conceptual/written problem) -- those branches
+         check a marker string the tool's own result text always carries on its
+         genuinely-computed branches (see the two markers above) rather than treating
+         "the tool ran without erroring" as good enough on its own. This is the one
+         deliberate, documented judgment call in this whole feature: Tool.run() only
+         returns a plain str, so rather than widening that shared interface just for
+         this, the already-existing, human-readable text the tool emits on its
+         genuinely-verified branches doubles as the structured signal. If either
+         tool's own wording ever changes, this marker needs to move with it."""
+    if tool_name not in _COMPUTATIONALLY_VERIFIED_TOOLS:
+        return False
+    if not isinstance(result, str) or result.startswith("Error"):
+        return False
+    if tool_name == "check_proof_work":
+        return _PROOF_ALGEBRA_VERIFIED_MARKER in result
+    if tool_name == "check_student_work":
+        return _STUDENT_WORK_VERIFIED_MARKER in result
+    return True
 
 
 def _label_for(tool_name: str, arguments: dict | None = None) -> str:
@@ -281,6 +368,17 @@ SYSTEM_PROMPT = (
     "honestly what that does and doesn't prove -- it passed THESE tests, which is not "
     "the same as being correct for every input. code_interpreter is the different tool: "
     "that one is for running scratch code YOU wrote, never for grading a student's.\n\n"
+    "When a tool result actually came from real computation -- symbolic_math, "
+    "chemistry_solver, check_student_work's or check_proof_work's math-verified "
+    "branches, or check_code_work's real test run -- say so plainly in your own words "
+    "as part of the answer (e.g. \"I checked this with real math computation, not a "
+    "guess\" or \"this ran your actual code against the tests\"), rather than defaulting "
+    "to brief, encouraging confirmation language that quietly drops the fact. Don't "
+    "make this a repeated tagline on every single message in a long conversation -- say "
+    "it naturally, once it's clear per answer, not as a bolted-on disclaimer every time. "
+    "For check_proof_work specifically, keep saying which part was verified and which "
+    "was your own structural judgment (see above) -- never claim the whole critique was "
+    "verified just because one algebraic line in it was.\n\n"
     "Generating flashcards, a practice exam, or a study plan aims for up to "
     f"{billing_service.FREE_GENERATION_TARGET} items per request on the free plan, or up to "
     f"{billing_service.PRO_GENERATION_TARGET} on Pro (never a time-based limit — a free-plan "
@@ -833,7 +931,8 @@ async def run_tutor(
                     session_id,
                     len(result) if isinstance(result, str) else None,
                 )
-                yield ToolActivity(tool=call.name, label=label, phase="finished")
+                verified = _tool_result_verified(call.name, result) if isinstance(result, str) else False
+                yield ToolActivity(tool=call.name, label=label, phase="finished", verified=verified)
                 turns.append(ChatTurn(role="tool", content=result, tool_call_id=call.id, name=call.name))
             # loop again: the model sees the tool results and either answers or calls again
 
