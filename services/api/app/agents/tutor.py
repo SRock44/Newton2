@@ -112,6 +112,7 @@ _TOOL_LABELS: dict[str, str] = {
     "get_weak_areas": "Finding what you're weak on",
     "get_math_hint": "Working out a hint",
     "write_research_paper": "Writing your paper",
+    "deep_research": "Researching the web",
     "use_capability": "Checking available tools",
 }
 
@@ -414,6 +415,18 @@ SYSTEM_PROMPT = (
     "results, or quotations that don't trace back to the student's own material or "
     "something actually researched -- if a claim isn't well-supported by what was "
     "found, say so rather than inventing support.\n\n"
+    "deep_research is a DIFFERENT tool from write_research_paper, for a different "
+    "request -- use deep_research when the student wants a synthesized, cited ANSWER "
+    "to an open question ('research X for me', 'what does the evidence say about X', "
+    "'look into X and tell me what you find'); use write_research_paper only when they "
+    "want a full FORMATTED ACADEMIC PAPER in a specific citation style for submission "
+    "(an assignment, a class paper). deep_research needs no plan/approval step and no "
+    "style choice -- call it directly with the question, it searches several real "
+    "sources itself and returns one cited markdown report (also saved to their "
+    "Documents), with no LaTeX, no bibliography, and no paper structure at all. Don't "
+    "reach for write_research_paper's plan-then-approve flow just because a question "
+    "needs real research -- that flow is for when the student explicitly wants a paper "
+    "written, not for an ordinary well-researched answer.\n\n"
     "Artifacts (create_artifact) build a real interactive mini web page -- a diagram, "
     "a chart, a slideshow, an interactive demo, or a quiz game -- by running an actual "
     "coding agent. They take a couple of minutes and cost far more than any other reply, so "
