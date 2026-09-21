@@ -235,8 +235,24 @@ def _run_limited(
         stderr=subprocess.PIPE,
         cwd=str(scratch_dir),
         # Minimal, explicit env — no leaking the sandbox-runner's own environment
-        # (secrets, service URLs, etc.) into user-controlled code.
-        env={"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(scratch_dir)},
+        # (secrets, service URLs, etc.) into user-controlled code. The *_NUM_THREADS=1
+        # vars are required, not cosmetic: numpy/scipy's BLAS backend (OpenBLAS by
+        # default) spins up one thread pool per CPU core, each reserving its own
+        # virtual-memory buffers, which alone can exceed the 256MB ADDRESS_SPACE_LIMIT_
+        # BYTES above before any real computation happens — confirmed via a real failure
+        # ("OpenBLAS error: Memory allocation still failed after 10 retries") before this
+        # fix. Forcing single-threaded BLAS keeps the address-space footprint predictable
+        # regardless of the host's core count, and costs nothing here anyway: a
+        # numpy/scipy call under this sandbox's own 5s CPU_TIME_LIMIT_S is never the kind
+        # of workload multi-threaded BLAS would meaningfully speed up.
+        env={
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "HOME": str(scratch_dir),
+            "OPENBLAS_NUM_THREADS": "1",
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1",
+        },
         preexec_fn=_limit_child,
         start_new_session=True,
         text=True,

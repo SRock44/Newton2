@@ -8,3 +8,15 @@ pydantic==2.13.5
 # comes from a small generated plugin in app/main.py, keeping this image's new
 # dependency surface to exactly one package.
 pytest==8.3.4
+# numpy/scipy were tried here (for real numpy/scipy student coursework code under
+# code_interpreter/check_code_work) and reverted: even single-threaded BLAS
+# (OPENBLAS_NUM_THREADS=1 etc., see _run_limited's env dict below -- left in place,
+# harmless, and correct practice if this is ever revisited) still exceeds this
+# container's 256MB ADDRESS_SPACE_LIMIT_BYTES / 300m mem_limit (infra/docker-compose.yml)
+# for basic linear algebra, confirmed by a real "OpenBLAS error: Memory allocation still
+# failed" from the actual /execute endpoint, not guessed. That memory ceiling is a
+# deliberate, documented security boundary for THIS container specifically (untrusted
+# student code; contrast artifact-runner's 1g for more-trusted AI-generated code) --
+# raising it meaningfully is a real, reviewed product decision, not made here. Real
+# numeric/statistical computation instead lives in the API service's own numeric_
+# methods/statistics tools, which run in-process and aren't under this tight sandbox.
