@@ -85,14 +85,60 @@ separate, later, explicitly-confirmed step, not an assumed next task.
       workflow YAML looks right").
 
 ## Phase 3 — Landing page content
-- [ ] Real feature sections grounded in what's actually built (verified computation
+- [x] Real feature sections grounded in what's actually built (verified computation
       tools, FSRS spaced repetition, sandboxed code-checking, paper compilation,
-      cross-document synthesis, etc.) — copy checked against the real codebase/
-      `ROADMAP.md`, not invented.
-- [ ] Per-major use-case sections grounded in the real critique-review findings
-      (2026-09-19 and 2026-09-21 reviews in `ROADMAP.md`).
-- [ ] Verification: real content review against source features, frontend tests for
-      the new sections, a real rendered screenshot check.
+      cross-document synthesis, etc.) — copy checked against the real codebase
+      (`services/api/app/tools/registry.py`'s real 26-tool list) and `ROADMAP.md`'s
+      Phases 28-32, not invented. `src/app/page.tsx` replaces the Phase-1 one-paragraph
+      scaffold with a full single-page site: a real header/nav (logo, Features/For
+      Students/Download links, Sign In/Sign Up), a two-column hero with a headline,
+      value-prop subhead, a primary "Download Newton" CTA, and a decorative mock
+      "Verified" result card; a "Verified, not vibes" section with three concrete
+      worked examples (a SymPy-factored polynomial, a linear-algebra-balanced chemistry
+      equation, and a research-paper citation-grounding check) each carrying a real
+      Verified/Grounding-checked badge; a 5-group feature grid (Verified Computation,
+      Real Memory & Progress Tracking, Real Document Understanding, Honest by Design,
+      Real Language Practice) covering symbolic math + linear algebra, chemistry,
+      numeric methods + statistics, code/proof checking, FSRS flashcards
+      (recognition + production), practice exams, the weak-areas engine, the semester
+      document library, cross-document synthesis + annotation, server-enforced Focus
+      Mode, the Verified badge, Conversation Practice, and production-mode flashcards;
+      and a real structured footer (Product/Account/Company columns), not just a
+      wordmark. The `--color-success`/`--color-success-tint` tokens were added to
+      `globals.css`, copied from `apps/desktop/src/App.css`'s own
+      `.tool-activity-chip--verified` values, so the landing page's Verified badge is
+      the same real color as the actual in-app badge, not an invented one. Font
+      pairing and core parchment/cobalt palette from Phase 1 left untouched.
+- [x] A concrete Notepad-in-class section (the product owner's specific ask): a
+      narrative scenario (taking live lecture notes, highlighting a confusing passage,
+      getting an inline explanation without leaving the notes) paired with a mock note
+      card showing the actual highlight-to-explain interaction, grounded in the real
+      Notepad/`annotate_selection` feature from Phase 29.
+- [x] Per-major use-case sections grounded in the real critique-review findings
+      (2026-09-19 and 2026-09-21 reviews in `ROADMAP.md`): six cards (Math, Computer
+      Science, Engineering & Natural Sciences, Social Sciences, Humanities, World
+      Languages — the most compelling 6 of the reviews' 9 angles, per the task's own
+      guidance) each citing a specific, real finding (e.g. CS's "checks your code,
+      never writes it" from the `check_code_work` finding; Humanities' MLA/Chicago +
+      citation-grounding from Phases 28/30; World Languages' Conversation Practice +
+      production flashcards from Phase 29), plus a callout strip covering bare-topic
+      generation for self-directed/test-prep students (Phase 32) without a full extra
+      card.
+- [x] Verification: real content review against source features (every claim traced
+      to a specific ROADMAP.md phase or registry.py tool, no invented capability);
+      `npx tsc --noEmit` clean; `npm run build` production build succeeds cleanly
+      (static prerender of `/`); the website's test suite extended from 3 to 19 tests
+      in `src/app/page.test.tsx`, covering the nav, hero CTA (and that it honestly
+      doesn't claim a real download destination yet), the worked-example badges, all
+      5 feature groups, the Focus Mode/Verified-badge honesty language, the Notepad
+      narrative and mock card, all 6 per-major cards, and the footer's structure — all
+      19 passing. Real Playwright-driven Chromium screenshots (temporary dev
+      dependency, installed with `npm install --no-save playwright`, removed
+      afterward along with the driver scripts) taken of the running dev server at
+      1440x900 (desktop) and 390x844 (mobile), full-page and targeted section crops,
+      visually reviewed: no overlapping text, no broken spacing, no unstyled elements;
+      the mobile layout collapses the nav links and stacks every section correctly
+      into a single column with the decorative cards reordered above their copy.
 
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
