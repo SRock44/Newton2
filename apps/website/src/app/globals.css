@@ -28,6 +28,19 @@
   --color-accent-tint: rgba(47, 77, 140, 0.12);
   --color-accent-tint-strong: rgba(47, 77, 140, 0.22);
 
+  /* Secondary accent — warm gold/amber. Same academic-parchment world as the cobalt
+     accent, used deliberately for specific moments (a highlight, a badge variant, the
+     plan-narration chip in the demo section) rather than painted everywhere. */
+  --color-accent-2: #b8842c;
+  --color-accent-2-hover: #9c6f22;
+  --color-accent-2-ink: #7a5a1c;
+  --color-accent-2-tint: rgba(184, 132, 44, 0.14);
+
+  /* Tertiary accent — deep rust/terracotta. Reserved for section dividers, small
+     decorative marks, and the odd bit of emphasis; never a primary CTA color. */
+  --color-accent-3: #a8471f;
+  --color-accent-3-tint: rgba(168, 71, 31, 0.14);
+
   /* Same "verified" green as apps/desktop's .tool-activity-chip--verified, so the
      landing page's Verified badge reads as the same real UI element, not a marketing
      invention. */
@@ -44,6 +57,19 @@
   --shadow-lg: 0 20px 48px rgba(36, 26, 12, 0.22);
 
   --focus-ring: 0 0 0 3px var(--color-accent-tint-strong);
+
+  /* A warm radial wash used behind the hero — cobalt and gold both present, faint. */
+  --gradient-hero: radial-gradient(
+      circle at 14% -10%,
+      rgba(47, 77, 140, 0.1),
+      transparent 46%
+    ),
+    radial-gradient(circle at 96% 18%, rgba(184, 132, 44, 0.14), transparent 42%);
+
+  /* A subtle dot-grid texture (pure CSS, no image asset) applied to alternating
+     section backgrounds for real depth instead of one flat fill everywhere. */
+  --texture-dots: radial-gradient(var(--color-border) 1px, transparent 1px);
+  --texture-dots-size: 22px 22px;
 
   --font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Avenir, Helvetica,
     Arial, sans-serif;
@@ -81,12 +107,23 @@
     --color-accent-tint: rgba(124, 157, 232, 0.18);
     --color-accent-tint-strong: rgba(124, 157, 232, 0.3);
 
+    --color-accent-2: #e0ab52;
+    --color-accent-2-hover: #eabd71;
+    --color-accent-2-ink: #f0cb8a;
+    --color-accent-2-tint: rgba(224, 171, 82, 0.16);
+
+    --color-accent-3: #d97b4f;
+    --color-accent-3-tint: rgba(217, 123, 79, 0.16);
+
     --color-success: #74bf80;
     --color-success-tint: rgba(116, 191, 128, 0.16);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+
+    --gradient-hero: radial-gradient(circle at 14% -10%, rgba(124, 157, 232, 0.14), transparent 46%),
+      radial-gradient(circle at 96% 18%, rgba(224, 171, 82, 0.12), transparent 42%);
 
     color-scheme: dark;
   }
@@ -148,4 +185,19 @@ button:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
   border-radius: var(--radius-sm);
+}
+
+/* Belt-and-suspenders reduced-motion net: every purposeful animation in this codebase
+   already checks `prefers-reduced-motion` itself (see Reveal.module.css,
+   DemoTranscript.module.css, page.module.css), but this catches
+   anything that slips through rather than relying on that discipline alone. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

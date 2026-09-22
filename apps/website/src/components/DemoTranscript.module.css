@@ -1,0 +1,406 @@
+/* ---------------------------------------------------------------------
+ * The demo replay — styled to read as the same product as the real
+ * desktop chat UI (apps/desktop/src/App.css's .tool-activity-chip family,
+ * MessageBubble.tsx's transcript rows), not an invented mockup.
+ * ------------------------------------------------------------------- */
+
+.demo {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.scenarioTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.scenarioTab {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease, transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.scenarioTab:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.scenarioTabActive {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  box-shadow: var(--shadow-sm);
+}
+
+.scenarioTabActive:hover {
+  color: var(--color-accent-contrast);
+  transform: translateY(-1px);
+}
+
+.transcriptCard {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.transcriptHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--color-border-2);
+  background-color: var(--color-surface-2);
+}
+
+.transcriptHeaderDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: var(--color-border);
+}
+
+.transcriptHeaderLabel {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.transcriptBody {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 26px 26px 10px;
+  min-height: 260px;
+}
+
+.transcriptIdle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-faint);
+  font-style: italic;
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: demo-entry-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes demo-entry-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.entryUser {
+  align-items: flex-end;
+}
+
+.userMessage {
+  max-width: 85%;
+  background-color: var(--color-accent-tint);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.entryAssistant {
+  align-items: flex-start;
+}
+
+/* ---------- Tool activity chips (mirrors apps/desktop's .tool-activity-chip) ---------- */
+
+.toolActivity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-serif);
+  font-style: italic;
+  line-height: 1.4;
+  opacity: 0;
+  animation: demo-chip-in 0.3s ease-out both;
+  transition: opacity 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+}
+
+@keyframes demo-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.chipDone {
+  opacity: 0.75;
+}
+
+.chipIcon {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid var(--color-accent);
+  border-top-color: transparent;
+  animation: demo-chip-spin 0.7s linear infinite;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.chipDone .chipIcon {
+  animation: demo-chip-check-pop 0.3s ease-out both;
+  border: none;
+  background-color: var(--color-success);
+  position: relative;
+}
+
+.chipDone .chipIcon::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border-right: 2px solid var(--color-accent-contrast);
+  border-bottom: 2px solid var(--color-accent-contrast);
+  transform: rotate(45deg);
+}
+
+@keyframes demo-chip-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes demo-chip-check-pop {
+  from {
+    transform: scale(0.4);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.chipVerified {
+  border-color: var(--color-success);
+  background-color: var(--color-success-tint);
+}
+
+.chipVerified.chipDone {
+  opacity: 0.95;
+}
+
+.chipVerified .chipIcon {
+  border-color: var(--color-success);
+}
+
+.chipVerified.chipDone .chipIcon {
+  background-color: var(--color-success);
+}
+
+.verifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+  margin-left: 2px;
+}
+
+/* The plan-narration chip: same chrome, the warm gold secondary accent instead of the
+   verified green or the plain neutral chip, so it never reads as a tool call. */
+.planChip {
+  border-color: var(--color-accent-2);
+  color: var(--color-accent-2-ink);
+  background-color: var(--color-accent-2-tint);
+}
+
+.planChip .chipIcon {
+  border-color: var(--color-accent-2);
+  border-top-color: transparent;
+}
+
+.planChip.chipDone .chipIcon {
+  background-color: var(--color-accent-2);
+}
+
+.chipRunning {
+  opacity: 1;
+}
+
+/* ---------- Streaming reply text ---------- */
+
+.replyText {
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  line-height: 1.65;
+  max-width: 62ch;
+}
+
+.replyParagraph {
+  margin: 0 0 12px;
+}
+
+.replyParagraph:last-child {
+  margin-bottom: 0;
+}
+
+.replyBulletList {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.replyCodeBlock {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border-2);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-x: auto;
+  color: var(--color-text);
+}
+
+.replyText code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background-color: var(--color-surface-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.streamCursor {
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--color-accent);
+  animation: demo-cursor-blink 0.9s step-end infinite;
+}
+
+@keyframes demo-cursor-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.transcriptFooter {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 26px 22px;
+}
+
+.replayButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.replayButton:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: rotate(-14deg) translateY(-1px);
+}
+
+.replayButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.transcriptDisclaimer {
+  font-size: 12px;
+  color: var(--color-text-faint);
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry,
+  .chip,
+  .chipIcon,
+  .streamCursor {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .transcriptBody {
+    padding: 20px 18px 6px;
+  }
+
+  .transcriptFooter {
+    padding: 14px 18px 18px;
+  }
+
+  .userMessage {
+    max-width: 100%;
+  }
+}

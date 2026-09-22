@@ -140,6 +140,44 @@ separate, later, explicitly-confirmed step, not an assumed next task.
       the mobile layout collapses the nav links and stacks every section correctly
       into a single column with the decorative cards reordered above their copy.
 
+## Phase 3.5 — Visual/motion overhaul (product owner review: "looks plain... vibe-coded")
+- [x] Expanded color system, still one cohesive world: kept the parchment/ivory +
+      cobalt-ink foundation from Phase 1 untouched, added a warm gold/amber secondary
+      accent (`--color-accent-2`) and a deep rust/terracotta tertiary accent
+      (`--color-accent-3`) to `globals.css` (light + dark variants), used deliberately
+      for specific moments (the demo section's plan-narration chip, the "Verified"
+      circle-scribble accent, the closing CTA's gradient wash) rather than painted
+      everywhere. Real depth added via a pure-CSS dot-grid texture (`--texture-dots`,
+      no image asset) on the demo and Notepad sections, a radial gradient wash behind
+      the hero, and a gradient behind the closing CTA — section backgrounds are no
+      longer one flat `--color-bg` repeated down the whole page.
+- [x] Real motion: `src/hooks/useInView.ts` (IntersectionObserver) + `src/components/
+      Reveal.tsx` drive scroll-triggered fade/slide reveals across every section, all
+      respecting `prefers-reduced-motion` (`src/hooks/useReducedMotion.ts`, plus a
+      global reduced-motion CSS override in `globals.css`). Real hover/focus
+      micro-interactions on buttons and cards (scale + shadow lift, not just a color
+      change). The hero's worked-example card floats gently and reveals its computed
+      result + Verified badge in a short animated sequence after mount rather than
+      sitting fully static (`src/components/HeroMockCard.tsx`).
+- [x] Real personality: hand-drawn-style inline SVG accents (a squiggle underline under
+      "checks its work" in the hero, a circle scribble around "Verified" in the
+      "Verified, not vibes" heading, a small arrow nudging toward the secondary CTA);
+      an asymmetric, editorial layout for the "Verified, not vibes" section (a wide
+      featured card + a narrower companion, then a full-width card offset below,
+      instead of three identical boxes) with real typographic scale contrast; a
+      tasteful easter egg (Newton's apple drops past the wordmark on hover/focus; a
+      console log for anyone who opens devtools). All existing Phase 3 copy/claims
+      left unchanged — this was a visual/motion pass, not a content rewrite.
+- [x] Verification: `npx tsc --noEmit` clean; `npm run build` production build succeeds
+      cleanly; the existing 19-test suite in `src/app/page.test.tsx` still passes
+      unmodified (the reveal/motion wrappers don't hide or alter any existing content
+      or accessible names); real Playwright-driven Chromium screenshots (temporary
+      dependency, `npm install --no-save playwright`, removed afterward) at 1440x900
+      and 390x844, full-page and section crops, in both light and dark
+      (`prefers-color-scheme`), visually reviewed: asymmetric layout, textures,
+      gradients, and hover states all render correctly; no overlapping text or broken
+      spacing at either viewport.
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).
@@ -149,17 +187,42 @@ separate, later, explicitly-confirmed step, not an assumed next task.
       Keycloak realm; real download links confirmed to resolve to real artifacts.
 
 ## Phase 5 — Interactive demo (hybrid: scripted default + real "Try it live")
-- [ ] Scripted walkthrough: real captured transcripts from genuine sessions against
-      the real backend (not fabricated), replayed through ported real UI components
-      from the desktop app (message bubbles, tool-activity chips) so it looks like the
-      product because it is the product's real output.
+- [x] Scripted walkthrough: real captured transcripts from genuine sessions against the
+      real backend (`apps/website/src/data/demo-transcripts.json` — 3 real scenarios,
+      the actual WebSocket wire frames: `user_message_saved`, `tool_start`/`tool_end`
+      with real `verified` flags, `plan_chunk`, real per-token `chunk` frames, `done`),
+      replayed client-side (`src/components/DemoTranscript.tsx`, pure fold logic in
+      `src/lib/demoTranscript.ts`). Not a port of the desktop app's components, but
+      styled to match `apps/desktop/src/App.css`'s real `.tool-activity-chip`/
+      `.tool-activity-chip--verified` chrome (spinner → checkmark-pop, pill shape,
+      italic serif label, green Verified badge) so it reads as the same product's real
+      output, not an invented mockup. Scenario tabs, autoplay-on-scroll-into-view
+      (IntersectionObserver, `prefers-reduced-motion`-aware — jumps straight to the
+      final state instead of animating), replay/restart, and a real progressive
+      streaming reveal of the actual captured reply text (pacing is synthesized for a
+      snappy feel; the CONTENT is always the exact real captured text, never altered).
+      Explicitly labeled in-page as a real captured transcript replayed client-side,
+      not a live chat — no network call to the real API happens anywhere in this path.
 - [ ] "Try it live": a new, narrow guest-session backend — short-lived unauthenticated
       tokens, strict per-IP rate limits, a curated cheap-tool allowlist only (no
       Pro-gated tools), pre-seeded example documents instead of a real upload path,
-      bot mitigation on the endpoint.
-- [ ] Verification: real transcripts confirmed byte-accurate against what the backend
-      actually returned when captured; a real abuse/rate-limit test against the guest
-      endpoint; real tests for both the scripted and live paths.
+      bot mitigation on the endpoint. Not started — no guest-auth/rate-limiting
+      infrastructure exists yet; this is a separate, later, bigger task.
+- [x] Verification (scripted path only): `npx tsc --noEmit` clean; `npm run build`
+      succeeds; real tests in `src/lib/demoTranscript.test.ts` (frame-fold correctness
+      against the real fixture — repeated same-tool calls matched independently, a
+      chip stays "running" until its real `tool_end` arrives, the accumulated reply
+      text is byte-identical to the real chunks joined in order, verified flags never
+      defaulted) and `src/components/DemoTranscript.test.tsx` (scenario tab switching,
+      a "Verified" badge rendered for exactly the real `verified: true` tool calls in
+      every one of the 3 scenarios, and — via real fake-timer-driven playback, not just
+      the reduced-motion instant path — the reply genuinely streams progressively
+      before completing with the exact real captured text); real Playwright screenshots
+      of the demo section both mid-animation (partial tool activity/reply visible) and
+      after the reply has fully revealed, at both viewports, confirmed visually.
+- [ ] Verification (live path): a real abuse/rate-limit test against the guest
+      endpoint; real tests for the live path. Not applicable yet — the live path itself
+      isn't built.
 
 ## Phase 6 — Deferred
 - Full web-based chat client against the real API for signed-in users, with an honest

@@ -1,0 +1,1251 @@
+[
+  {
+    "id": "math-catches-mistake",
+    "label": "Catches a real mistake",
+    "user_message": "Can you check my work? I'm factoring x^2 + 5x + 6 and I got (x + 1)(x + 6). Is that right?",
+    "frames": [
+      {
+        "type": "user_message_saved",
+        "id": "4bb7145d-2171-4918-8687-b21d768d3527"
+      },
+      {
+        "type": "tool_start",
+        "tool": "symbolic_math",
+        "label": "Solving with symbolic math"
+      },
+      {
+        "type": "tool_end",
+        "tool": "symbolic_math",
+        "label": "Solving with symbolic math",
+        "verified": true
+      },
+      {
+        "type": "tool_start",
+        "tool": "symbolic_math",
+        "label": "Solving with symbolic math"
+      },
+      {
+        "type": "tool_end",
+        "tool": "symbolic_math",
+        "label": "Solving with symbolic math",
+        "verified": true
+      },
+      {
+        "type": "tool_start",
+        "tool": "check_student_work",
+        "label": "Checking your work"
+      },
+      {
+        "type": "tool_end",
+        "tool": "check_student_work",
+        "label": "Checking your work",
+        "verified": true
+      },
+      {
+        "type": "chunk",
+        "content": "I"
+      },
+      {
+        "type": "chunk",
+        "content": " checked"
+      },
+      {
+        "type": "chunk",
+        "content": " your"
+      },
+      {
+        "type": "chunk",
+        "content": " work"
+      },
+      {
+        "type": "chunk",
+        "content": " with"
+      },
+      {
+        "type": "chunk",
+        "content": " real"
+      },
+      {
+        "type": "chunk",
+        "content": " symbolic"
+      },
+      {
+        "type": "chunk",
+        "content": " math"
+      },
+      {
+        "type": "chunk",
+        "content": ","
+      },
+      {
+        "type": "chunk",
+        "content": " and"
+      },
+      {
+        "type": "chunk",
+        "content": " it"
+      },
+      {
+        "type": "chunk",
+        "content": "'s"
+      },
+      {
+        "type": "chunk",
+        "content": " not"
+      },
+      {
+        "type": "chunk",
+        "content": " right"
+      },
+      {
+        "type": "chunk",
+        "content": " yet"
+      },
+      {
+        "type": "chunk",
+        "content": " —"
+      },
+      {
+        "type": "chunk",
+        "content": " let"
+      },
+      {
+        "type": "chunk",
+        "content": " me"
+      },
+      {
+        "type": "chunk",
+        "content": " point"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " exactly"
+      },
+      {
+        "type": "chunk",
+        "content": " where"
+      },
+      {
+        "type": "chunk",
+        "content": ".\n\n"
+      },
+      {
+        "type": "chunk",
+        "content": "Your"
+      },
+      {
+        "type": "chunk",
+        "content": " answer"
+      },
+      {
+        "type": "chunk",
+        "content": ","
+      },
+      {
+        "type": "chunk",
+        "content": " **("
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "1"
+      },
+      {
+        "type": "chunk",
+        "content": ")("
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": "),"
+      },
+      {
+        "type": "chunk",
+        "content": " expands"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " x"
+      },
+      {
+        "type": "chunk",
+        "content": "²"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "7"
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": "**,"
+      },
+      {
+        "type": "chunk",
+        "content": " not"
+      },
+      {
+        "type": "chunk",
+        "content": " x"
+      },
+      {
+        "type": "chunk",
+        "content": "²"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "5"
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": "."
+      },
+      {
+        "type": "chunk",
+        "content": " The"
+      },
+      {
+        "type": "chunk",
+        "content": " problem"
+      },
+      {
+        "type": "chunk",
+        "content": " is"
+      },
+      {
+        "type": "chunk",
+        "content": " the"
+      },
+      {
+        "type": "chunk",
+        "content": " middle"
+      },
+      {
+        "type": "chunk",
+        "content": " term"
+      },
+      {
+        "type": "chunk",
+        "content": ":"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "1"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": " ="
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "7"
+      },
+      {
+        "type": "chunk",
+        "content": ","
+      },
+      {
+        "type": "chunk",
+        "content": " but"
+      },
+      {
+        "type": "chunk",
+        "content": " you"
+      },
+      {
+        "type": "chunk",
+        "content": " need"
+      },
+      {
+        "type": "chunk",
+        "content": " it"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " sum"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "5"
+      },
+      {
+        "type": "chunk",
+        "content": ".\n\n"
+      },
+      {
+        "type": "chunk",
+        "content": "Here"
+      },
+      {
+        "type": "chunk",
+        "content": "'s"
+      },
+      {
+        "type": "chunk",
+        "content": " the"
+      },
+      {
+        "type": "chunk",
+        "content": " thinking"
+      },
+      {
+        "type": "chunk",
+        "content": " that"
+      },
+      {
+        "type": "chunk",
+        "content": "'s"
+      },
+      {
+        "type": "chunk",
+        "content": " missing"
+      },
+      {
+        "type": "chunk",
+        "content": ":"
+      },
+      {
+        "type": "chunk",
+        "content": " when"
+      },
+      {
+        "type": "chunk",
+        "content": " you"
+      },
+      {
+        "type": "chunk",
+        "content": " factor"
+      },
+      {
+        "type": "chunk",
+        "content": " x"
+      },
+      {
+        "type": "chunk",
+        "content": "²"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "5"
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": ","
+      },
+      {
+        "type": "chunk",
+        "content": " you"
+      },
+      {
+        "type": "chunk",
+        "content": "'re"
+      },
+      {
+        "type": "chunk",
+        "content": " looking"
+      },
+      {
+        "type": "chunk",
+        "content": " for"
+      },
+      {
+        "type": "chunk",
+        "content": " **"
+      },
+      {
+        "type": "chunk",
+        "content": "two"
+      },
+      {
+        "type": "chunk",
+        "content": " numbers"
+      },
+      {
+        "type": "chunk",
+        "content": " that"
+      },
+      {
+        "type": "chunk",
+        "content": " multiply"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": " AND"
+      },
+      {
+        "type": "chunk",
+        "content": " add"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "5"
+      },
+      {
+        "type": "chunk",
+        "content": "**."
+      },
+      {
+        "type": "chunk",
+        "content": " You"
+      },
+      {
+        "type": "chunk",
+        "content": " found"
+      },
+      {
+        "type": "chunk",
+        "content": " a"
+      },
+      {
+        "type": "chunk",
+        "content": " pair"
+      },
+      {
+        "type": "chunk",
+        "content": " that"
+      },
+      {
+        "type": "chunk",
+        "content": " multipl"
+      },
+      {
+        "type": "chunk",
+        "content": "ies"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": " correctly"
+      },
+      {
+        "type": "chunk",
+        "content": " ("
+      },
+      {
+        "type": "chunk",
+        "content": "1"
+      },
+      {
+        "type": "chunk",
+        "content": " and"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": "),"
+      },
+      {
+        "type": "chunk",
+        "content": " but"
+      },
+      {
+        "type": "chunk",
+        "content": " the"
+      },
+      {
+        "type": "chunk",
+        "content": " sum"
+      },
+      {
+        "type": "chunk",
+        "content": " gives"
+      },
+      {
+        "type": "chunk",
+        "content": " the"
+      },
+      {
+        "type": "chunk",
+        "content": " wrong"
+      },
+      {
+        "type": "chunk",
+        "content": " middle"
+      },
+      {
+        "type": "chunk",
+        "content": " term"
+      },
+      {
+        "type": "chunk",
+        "content": ".\n\n"
+      },
+      {
+        "type": "chunk",
+        "content": "Try"
+      },
+      {
+        "type": "chunk",
+        "content": " this"
+      },
+      {
+        "type": "chunk",
+        "content": ":"
+      },
+      {
+        "type": "chunk",
+        "content": " can"
+      },
+      {
+        "type": "chunk",
+        "content": " you"
+      },
+      {
+        "type": "chunk",
+        "content": " find"
+      },
+      {
+        "type": "chunk",
+        "content": " a"
+      },
+      {
+        "type": "chunk",
+        "content": " *"
+      },
+      {
+        "type": "chunk",
+        "content": "different"
+      },
+      {
+        "type": "chunk",
+        "content": "*"
+      },
+      {
+        "type": "chunk",
+        "content": " pair"
+      },
+      {
+        "type": "chunk",
+        "content": " of"
+      },
+      {
+        "type": "chunk",
+        "content": " numbers"
+      },
+      {
+        "type": "chunk",
+        "content": " that"
+      },
+      {
+        "type": "chunk",
+        "content": " multiply"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "6"
+      },
+      {
+        "type": "chunk",
+        "content": " but"
+      },
+      {
+        "type": "chunk",
+        "content": " add"
+      },
+      {
+        "type": "chunk",
+        "content": " up"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "5"
+      },
+      {
+        "type": "chunk",
+        "content": " instead"
+      },
+      {
+        "type": "chunk",
+        "content": " of"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "7"
+      },
+      {
+        "type": "chunk",
+        "content": "?"
+      },
+      {
+        "type": "chunk",
+        "content": " Once"
+      },
+      {
+        "type": "chunk",
+        "content": " you"
+      },
+      {
+        "type": "chunk",
+        "content": " have"
+      },
+      {
+        "type": "chunk",
+        "content": " that"
+      },
+      {
+        "type": "chunk",
+        "content": " pair"
+      },
+      {
+        "type": "chunk",
+        "content": ","
+      },
+      {
+        "type": "chunk",
+        "content": " plug"
+      },
+      {
+        "type": "chunk",
+        "content": " them"
+      },
+      {
+        "type": "chunk",
+        "content": " in"
+      },
+      {
+        "type": "chunk",
+        "content": " as"
+      },
+      {
+        "type": "chunk",
+        "content": " ("
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " _"
+      },
+      {
+        "type": "chunk",
+        "content": ")("
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " _"
+      },
+      {
+        "type": "chunk",
+        "content": ")"
+      },
+      {
+        "type": "chunk",
+        "content": " and"
+      },
+      {
+        "type": "chunk",
+        "content": " check"
+      },
+      {
+        "type": "chunk",
+        "content": " by"
+      },
+      {
+        "type": "chunk",
+        "content": " expanding"
+      },
+      {
+        "type": "chunk",
+        "content": " —"
+      },
+      {
+        "type": "chunk",
+        "content": " the"
+      },
+      {
+        "type": "chunk",
+        "content": " real"
+      },
+      {
+        "type": "chunk",
+        "content": " computation"
+      },
+      {
+        "type": "chunk",
+        "content": " confirms"
+      },
+      {
+        "type": "chunk",
+        "content": " the"
+      },
+      {
+        "type": "chunk",
+        "content": " correct"
+      },
+      {
+        "type": "chunk",
+        "content": " factorization"
+      },
+      {
+        "type": "chunk",
+        "content": " is"
+      },
+      {
+        "type": "chunk",
+        "content": " ("
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "2"
+      },
+      {
+        "type": "chunk",
+        "content": ")("
+      },
+      {
+        "type": "chunk",
+        "content": "x"
+      },
+      {
+        "type": "chunk",
+        "content": " +"
+      },
+      {
+        "type": "chunk",
+        "content": " "
+      },
+      {
+        "type": "chunk",
+        "content": "3"
+      },
+      {
+        "type": "chunk",
+        "content": "),"
+      },
+      {
+        "type": "chunk",
+        "content": " but"
+      },
+      {
+        "type": "chunk",
+        "content": " I"
+      },
+      {
+        "type": "chunk",
+        "content": " want"
+      },
+      {
+        "type": "chunk",
+        "content": " to"
+      },
+      {
+        "type": "chunk",
+        "content": " see"
+      },
+      {
+        "type": "chunk",
+        "content": " you"
+      },
+      {
+        "type": "chunk",
+        "content": " get"
+      },
+      {
+        "type": "chunk",
+        "content": " there"
+      },
+      {
+        "type": "chunk",
+        "content": "."
+      },
+      {
+        "type": "chunk",
+        "content": " What"
+      },
+      {
+        "type": "chunk",
+        "content": " pair"
+      },
+      {
+        "type": "chunk",
+        "content": " do"
+      },
+      {
+        "type": "chunk",
+        "content": " you"
+      },
+      {
+        "type": "chunk",
+        "content": " think"
+      },
+      {
+        "type": "chunk",
+        "content": " works"
+      },
+      {
+        "type": "chunk",
+        "content": "?"
+      },
+      {
+        "type": "done",
+        "prompt_tokens": 23177,
+        "completion_tokens": 1276,
+        "conversation_practice": false,
+        "target_language": null
+      }
+    ]
+  },
+  {
+    "id": "chemistry-balance",
+    "label": "Balances a real equation",
+    "user_message": "What are the correct balanced coefficients for C3H8 + O2 -> CO2 + H2O? I don't want to work through it myself right now, just compute and verify it for me.",
+    "frames": [
+      {
+        "type": "user_message_saved",
+        "id": "a39a73a7-5485-4a95-848f-560cc5d33738"
+      },
+      {
+        "type": "tool_start",
+        "tool": "chemistry_solver",
+        "label": "Working out the chemistry"
+      },
+      {
+        "type": "tool_end",
+        "tool": "chemistry_solver",
+        "label": "Working out the chemistry",
+        "verified": true
+      },
+      {
+        "type": "chunk",
+        "content": "\n\nI checked this with the chemistry solv"
+      },
+      {
+        "type": "chunk",
+        "content": "er, which balances the equation by real "
+      },
+      {
+        "type": "chunk",
+        "content": "linear algebra on the composition matrix"
+      },
+      {
+        "type": "chunk",
+        "content": " — not a guess.\n\nThe balanced equation i"
+      },
+      {
+        "type": "chunk",
+        "content": "s:\n\n**C₃H₈ + 5 O₂ → 3 CO₂ + 4 H₂O**\n\nSo "
+      },
+      {
+        "type": "chunk",
+        "content": "the coefficients are **1, 5, 3, 4**.\n\nQu"
+      },
+      {
+        "type": "chunk",
+        "content": "ick verification of atom counts:\n- **Car"
+      },
+      {
+        "type": "chunk",
+        "content": "bon:** 3 on the left (from C₃H₈) = 3 on "
+      },
+      {
+        "type": "chunk",
+        "content": "the right (from 3 CO₂) ✓\n- **Hydrogen:**"
+      },
+      {
+        "type": "chunk",
+        "content": " 8 on the left = 8 on the right (from 4 "
+      },
+      {
+        "type": "chunk",
+        "content": "H₂O) ✓\n- **Oxygen:** 10 on the left (5 ×"
+      },
+      {
+        "type": "chunk",
+        "content": " 2) = 10 on the right (3 × 2 + 4 × 1) ✓\n"
+      },
+      {
+        "type": "chunk",
+        "content": "\nEverything balances. Let me know if you"
+      },
+      {
+        "type": "chunk",
+        "content": " want to walk through *why* those coeffi"
+      },
+      {
+        "type": "chunk",
+        "content": "cients fall out (e.g., starting with C a"
+      },
+      {
+        "type": "chunk",
+        "content": "nd H first, then clearing the O₂ fractio"
+      },
+      {
+        "type": "chunk",
+        "content": "n) — happy to go through it step by step"
+      },
+      {
+        "type": "chunk",
+        "content": " whenever you're ready."
+      },
+      {
+        "type": "done",
+        "prompt_tokens": 23253,
+        "completion_tokens": 421,
+        "conversation_practice": false,
+        "target_language": null
+      }
+    ]
+  },
+  {
+    "id": "code-check-fails",
+    "label": "Runs your code for real",
+    "user_message": "Here's my Python function, can you check if it works?\n\n```python\ndef is_palindrome(s):\n    return s == s[:-1]\n```\n\nTest file:\n```python\nfrom solution import is_palindrome\n\ndef test_simple_palindrome():\n    assert is_palindrome('racecar') is True\n\ndef test_not_palindrome():\n    assert is_palindrome('hello') is False\n\ndef test_single_char():\n    assert is_palindrome('a') is True\n```",
+    "frames": [
+      {
+        "type": "user_message_saved",
+        "id": "eb0cdbe7-e3ab-46ef-8957-179566a4bfb4"
+      },
+      {
+        "type": "plan_chunk",
+        "content": "Explain the incorrect slice logic and recommend using s[::-1] for reversal."
+      },
+      {
+        "type": "tool_start",
+        "tool": "check_code_work",
+        "label": "Running your code against tests"
+      },
+      {
+        "type": "tool_end",
+        "tool": "check_code_work",
+        "label": "Running your code against tests",
+        "verified": true
+      },
+      {
+        "type": "chunk",
+        "content": "I'll run your actual code against the te"
+      },
+      {
+        "type": "chunk",
+        "content": "sts to see what really happens.\n\nI ran y"
+      },
+      {
+        "type": "chunk",
+        "content": "our code exactly as written against thos"
+      },
+      {
+        "type": "chunk",
+        "content": "e three tests — the real execution resul"
+      },
+      {
+        "type": "chunk",
+        "content": "t, not a guess.\n\n**Result: 2 failed, 1 p"
+      },
+      {
+        "type": "chunk",
+        "content": "assed.**\n\n- ✅ `test_not_palindrome` pass"
+      },
+      {
+        "type": "chunk",
+        "content": "ed — but for the wrong reason (see below"
+      },
+      {
+        "type": "chunk",
+        "content": ").\n- ❌ `test_simple_palindrome`: `'racec"
+      },
+      {
+        "type": "chunk",
+        "content": "ar'` returned `False`, so `assert False "
+      },
+      {
+        "type": "chunk",
+        "content": "is True` failed.\n- ❌ `test_single_char`:"
+      },
+      {
+        "type": "chunk",
+        "content": " `'a'` returned `False`, same failure.\n\n"
+      },
+      {
+        "type": "chunk",
+        "content": "The traceback's key line:\n\n```\nE   Asser"
+      },
+      {
+        "type": "chunk",
+        "content": "tionError: assert False is True\nE    +  "
+      },
+      {
+        "type": "chunk",
+        "content": "where False = is_palindrome('racecar')\n`"
+      },
+      {
+        "type": "chunk",
+        "content": "``\n\nHere's the thing to notice: `'hello'"
+      },
+      {
+        "type": "chunk",
+        "content": "` correctly returned `False`, so that te"
+      },
+      {
+        "type": "chunk",
+        "content": "st passed — but `'racecar'` and `'a'` fa"
+      },
+      {
+        "type": "chunk",
+        "content": "iled. So your function isn't detecting p"
+      },
+      {
+        "type": "chunk",
+        "content": "alindromes at all; it's just *sometimes*"
+      },
+      {
+        "type": "chunk",
+        "content": " coincidentally returning the right answ"
+      },
+      {
+        "type": "chunk",
+        "content": "er.\n\nBefore fixing anything, can you tel"
+      },
+      {
+        "type": "chunk",
+        "content": "l me what `s[:-1]` actually produces? Fo"
+      },
+      {
+        "type": "chunk",
+        "content": "r example, what do you think `'racecar'["
+      },
+      {
+        "type": "chunk",
+        "content": ":-1]` evaluates to — and what does the r"
+      },
+      {
+        "type": "chunk",
+        "content": "everse of `'racecar'` actually look like"
+      },
+      {
+        "type": "chunk",
+        "content": "? That's the mismatch at the heart of it"
+      },
+      {
+        "type": "chunk",
+        "content": "."
+      },
+      {
+        "type": "done",
+        "prompt_tokens": 24436,
+        "completion_tokens": 817,
+        "conversation_practice": false,
+        "target_language": null
+      }
+    ]
+  }
+]

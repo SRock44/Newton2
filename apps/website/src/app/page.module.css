@@ -8,6 +8,73 @@
   min-height: 100vh;
 }
 
+/* ---------------------------------------------------------------------
+ * Section background variety — real depth instead of one flat fill
+ * repeated down the whole page. Each variant is deliberate, not
+ * decorative noise: a dot-grid texture for sections about real
+ * computed/structured output, a warm gradient wash for the two big
+ * emotional beats (hero, closing CTA).
+ * ------------------------------------------------------------------- */
+
+.sectionTextured {
+  position: relative;
+  background-color: var(--color-surface-2);
+}
+
+.sectionTextured::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--texture-dots);
+  background-size: var(--texture-dots-size);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.sectionTextured > * {
+  position: relative;
+}
+
+.sectionWarm {
+  position: relative;
+  background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-accent-3-tint) 130%);
+}
+
+/* ---------------------------------------------------------------------
+ * Hand-drawn-style accent marks — small, tasteful "lab notebook" quirks
+ * rather than a toy aesthetic. Pure inline SVG, no image assets.
+ * ------------------------------------------------------------------- */
+
+.squiggleWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.squiggle {
+  position: absolute;
+  left: -2%;
+  bottom: -0.22em;
+  width: 104%;
+  height: 0.3em;
+  color: var(--color-accent-2);
+  pointer-events: none;
+}
+
+.circleWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.circleAccent {
+  position: absolute;
+  left: -8%;
+  top: -18%;
+  width: 116%;
+  height: 140%;
+  color: var(--color-accent-3);
+  pointer-events: none;
+}
+
 .skipLink {
   position: absolute;
   left: -9999px;
@@ -55,6 +122,52 @@
   color: var(--color-text);
   text-decoration: none;
   white-space: nowrap;
+}
+
+/* A small, tasteful nod to the name — Newton's apple — dropping past the wordmark on
+ * hover/focus. Purely decorative (aria-hidden in the markup), and reduced-motion turns
+ * it into a plain fade rather than a fall. */
+.wordmarkWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.wordmarkApple {
+  position: absolute;
+  top: -2px;
+  right: -14px;
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
+.wordmarkWrap:hover .wordmarkApple,
+.wordmarkWrap:focus-within .wordmarkApple {
+  animation: wordmark-apple-fall 0.7s cubic-bezier(0.55, 0, 0.2, 1) both;
+}
+
+@keyframes wordmark-apple-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(16px) rotate(50deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmarkWrap:hover .wordmarkApple,
+  .wordmarkWrap:focus-within .wordmarkApple {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .nav {
@@ -130,18 +243,19 @@
   font-weight: var(--font-weight-semibold);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.2s ease;
 }
 
 .btnPrimary:hover {
   background-color: var(--color-accent-hover);
   box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.03);
 }
 
 .btnPrimary:active {
   background-color: var(--color-accent-active);
-  transform: translateY(0);
+  transform: translateY(0) scale(0.99);
 }
 
 .btnSecondary {
@@ -156,13 +270,14 @@
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
-  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
 .btnSecondary:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background-color: var(--color-surface);
+  transform: translateY(-2px);
 }
 
 /* ---------------------------------------------------------------------
@@ -193,7 +308,25 @@
  * Hero
  * ------------------------------------------------------------------- */
 
+.heroShell {
+  position: relative;
+  background-image: var(--gradient-hero);
+}
+
+.heroShell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--texture-dots);
+  background-size: var(--texture-dots-size);
+  opacity: 0.35;
+  -webkit-mask-image: linear-gradient(180deg, black, transparent 85%);
+  mask-image: linear-gradient(180deg, black, transparent 85%);
+  pointer-events: none;
+}
+
 .hero {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   align-items: center;
@@ -219,10 +352,10 @@
 }
 
 .title {
-  font-size: 52px;
-  line-height: 1.08;
+  font-size: 58px;
+  line-height: 1.05;
   color: var(--color-text);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   margin: 0 0 22px;
 }
 
@@ -235,11 +368,28 @@
 }
 
 .heroActions {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.cornerArrow {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 100%;
+  width: 46px;
+  height: 34px;
+  color: var(--color-accent-2);
+  pointer-events: none;
+}
+
+@media (max-width: 960px) {
+  .cornerArrow {
+    display: none;
+  }
 }
 
 .heroNote {
@@ -264,6 +414,24 @@
   flex-direction: column;
   gap: 10px;
   transform: rotate(1.5deg);
+  animation: mock-card-float 6s ease-in-out infinite;
+  min-height: 190px;
+}
+
+@keyframes mock-card-float {
+  0%,
+  100% {
+    transform: rotate(1.5deg) translateY(0);
+  }
+  50% {
+    transform: rotate(1.5deg) translateY(-9px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mockCard {
+    animation: none;
+  }
 }
 
 .mockCardLabel {
@@ -279,6 +447,7 @@
   font-size: var(--font-size-lg);
   color: var(--color-text);
   margin: 0;
+  min-height: 1.3em;
 }
 
 .mockCardResult {
@@ -286,6 +455,35 @@
   font-size: var(--font-size-xl);
   color: var(--color-accent);
   margin: 4px 0 10px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+  min-height: 1.2em;
+}
+
+.mockCardResultVisible {
+  opacity: 1;
+  transform: none;
+}
+
+.mockCardBadgeReveal {
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.mockCardBadgeRevealVisible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mockCardResult,
+  .mockCardBadgeReveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -303,6 +501,30 @@
   max-width: 680px;
   margin: 0 auto 56px;
   text-align: center;
+}
+
+/* An editorial, asymmetric variant of the section head — left-aligned, a bigger and
+ * more confident serif moment, paired with an offset intro paragraph instead of the
+ * centered eyebrow/title/subtitle stack every other section uses. Used once
+ * ("Verified, not vibes") so it reads as a deliberate editorial beat, not the default. */
+.sectionHeadEditorial {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 40px;
+  align-items: end;
+  max-width: none;
+  margin: 0 0 56px;
+  text-align: left;
+}
+
+.sectionHeadEditorialTitle {
+  font-size: 44px;
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+
+.sectionHeadEditorialSubtitle {
+  padding-bottom: 4px;
 }
 
 .sectionTitle {
@@ -333,7 +555,7 @@
 
 .exampleGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 24px;
 }
 
@@ -346,12 +568,30 @@
   border-radius: var(--radius-lg);
   padding: 28px 26px;
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
 }
 
 .exampleCard:hover {
   box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  transform: translateY(-4px) scale(1.015);
+  border-color: var(--color-accent);
+}
+
+/* Asymmetric, editorial arrangement rather than three identical boxes: a wide featured
+ * card, a narrower companion beside it, then a full-width card offset below. Applied to
+ * the Reveal wrapper (the actual grid item — see page.tsx) via its className prop,
+ * rather than an nth-child selector, since each card is wrapped in a Reveal <div>. */
+.exampleSlotWide {
+  grid-column: span 4;
+}
+
+.exampleSlotNarrow {
+  grid-column: span 2;
+}
+
+.exampleSlotFull {
+  grid-column: span 6;
+  margin-top: 8px;
 }
 
 .exampleEyebrow {
@@ -409,7 +649,9 @@
   border-top: 1px solid var(--color-border-2);
 }
 
-.featureGroup:first-child {
+/* .featureGroup is wrapped in a Reveal <div> (see page.tsx), so ":first-child" on the
+ * group itself would never match — target the first Reveal wrapper's child instead. */
+.featureGroups > *:first-child > .featureGroup {
   padding-top: 0;
   border-top: none;
 }
@@ -499,6 +741,12 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: 26px 26px 22px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.notepadCard:hover {
+  transform: rotate(-0.6deg) translateY(-3px);
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--color-accent-tint);
 }
 
 .notepadCardTitle {
@@ -568,12 +816,13 @@
   border-radius: var(--radius-md);
   padding: 24px 24px;
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-left-color 0.25s ease;
 }
 
 .studentCard:hover {
   box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.015);
+  border-left-color: var(--color-accent-2);
 }
 
 .studentMajor {
@@ -621,6 +870,12 @@
  * Closing CTA
  * ------------------------------------------------------------------- */
 
+.closingShell {
+  position: relative;
+  background: radial-gradient(circle at 50% 0%, var(--color-accent-tint) 0%, transparent 60%),
+    linear-gradient(180deg, var(--color-bg), var(--color-accent-2-tint) 160%);
+}
+
 .closingSection {
   display: flex;
   flex-direction: column;
@@ -634,7 +889,9 @@
 }
 
 .closingTitle {
-  font-size: var(--font-size-xl);
+  font-size: 42px;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
   color: var(--color-text);
 }
 
@@ -750,6 +1007,22 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .exampleSlotWide,
+  .exampleSlotNarrow,
+  .exampleSlotFull {
+    grid-column: span 1;
+    margin-top: 0;
+  }
+
+  .sectionHeadEditorial {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .sectionHeadEditorialTitle {
+    font-size: 36px;
+  }
+
   .featureGroup {
     grid-template-columns: 1fr;
     gap: 20px;
@@ -810,6 +1083,10 @@
 
   .exampleGrid {
     grid-template-columns: 1fr;
+  }
+
+  .sectionHeadEditorialTitle {
+    font-size: 30px;
   }
 
   .featureItemGrid {
