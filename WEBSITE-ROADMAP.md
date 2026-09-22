@@ -557,6 +557,37 @@ This phase replaces them with real screenshots of the real, unmodified app compo
   the sidebar, tool-activity chips, and reply text are all legible, not shrunk into a
   corner; a 390×844 mobile pass confirms the horizontal rail and frame still scale down
   without overflow.
+- **Phase 3.10.2 — it still read as a flat picture, and Notepad had a real letterboxing
+  bug.** Product owner, verbatim: "THIS 'LIVE DEMO' IS JUST A FUCKING PICTURE... THE
+  NOTEPAD LOOKS SO BAD, IT HAS SO MUCH BLANK SPACE AROUND IT. IT DOESN'T LOOK LIKE A
+  DESKTOP." Three concrete causes, all fixed:
+  - **No "desktop" context.** Every scene's screenshot/iframe filled the frame edge to
+    edge, so it read as a cropped image rather than a machine someone is using. Added a
+    `Desktop` wrapper (`AppWalkthrough.tsx`) — a dark cobalt wallpaper-toned backdrop
+    (`.desktopSurface`) with a thin taskbar sliver at the bottom — that every scene now
+    renders inside; the screenshot/iframe is now "a window" with its own shadow and
+    rounded corners floating on that backdrop, not the whole frame.
+  - **Notepad's letterboxing**, root cause: `notepad.png` is a small companion-window
+    crop (640×230, a very different aspect ratio than the two full-app-window
+    screenshots) shown alone inside the same tall frame — mostly empty space by
+    construction. Fixed by compositing it as a real floating window over a dimmed/
+    blurred reuse of the Study Mode screenshot as backdrop — matching how the real app
+    actually behaves (Notepad is an always-on-top companion window over the main
+    window, never alone on a blank desktop). Fixes the blank-space complaint and the
+    "doesn't look like a desktop, a user using the app" complaint in the same change.
+  - **"Just a picture."** No literal screen recording exists (the WebView2 launch issue
+    from earlier this session), so a CSS-only `Cursor` component now travels to the one
+    real UI element each step's caption references and "clicks" it (a fake cursor
+    animating in via `@keyframes`, ending in a click-ring pulse), replacing the earlier
+    static pulsing-dot callout — a captured interaction, not a photo, without needing an
+    actual recording. Respects `prefers-reduced-motion` (cursor renders already at rest,
+    no travel).
+  - Re-verified: `tsc`/57 tests/build all clean; the real artifact re-dragged via
+    Playwright (still `-0.707`/`0.707` at 135°, confirming the CSS changes didn't affect
+    its own real interactivity); real screenshots taken of all 3 scenes at 1440px and of
+    the Notepad/first scene at 390×844 mobile, confirming the desktop backdrop, taskbar,
+    and floating-window composite all render correctly and without overflow at both
+    sizes.
 
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already

@@ -47,55 +47,105 @@ const SCENES: SceneConfig[] = [
   },
 ];
 
-function CalloutRing({ left, top }: { left: string; top: string }) {
+/** A traveling cursor arrow + click-pulse, animated in on scene mount — Supademo's own
+ * signature move, and the direct fix for "it's just a picture": a static screenshot
+ * that a cursor visibly moves across and clicks on reads as a captured interaction, not
+ * a photo. CSS-only (no JS animation loop): the destination is passed as CSS custom
+ * properties the `@keyframes` in AppWalkthrough.module.css interpolate toward. Reduced
+ * motion: the cursor renders already at rest on the target, mid-click, no travel. */
+function Cursor({ left, top }: { left: string; top: string }) {
   return (
-    <span className={styles.callout} style={{ left, top }} aria-hidden="true">
-      <span className={styles.calloutPulse} />
-      <span className={styles.calloutDot} />
+    <span
+      className={styles.cursor}
+      style={{ "--dest-left": left, "--dest-top": top } as React.CSSProperties}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 24 24" className={styles.cursorArrow} fill="none">
+        <path
+          d="M4 2 L4 19 L8.5 15.2 L11.3 21.5 L14 20.3 L11.2 14 L17 14 Z"
+          fill="#1a1a1a"
+          stroke="#fff"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className={styles.cursorClickRing} />
     </span>
+  );
+}
+
+/** The "desktop" the app window sits on — a wallpaper-toned backdrop behind the
+ * screenshot/iframe, with a thin taskbar sliver at the bottom. Product owner: "MAKE IT
+ * LOOK LIKE A DESKTOP, a user using the app" — a screenshot filling the frame edge to
+ * edge reads as a cropped picture; a window with visible desktop around it reads as a
+ * real machine. */
+function Desktop({ children }: { children: React.ReactNode }) {
+  return (
+    <div className={styles.desktop}>
+      <div className={styles.desktopSurface}>{children}</div>
+      <div className={styles.taskbar} aria-hidden="true">
+        <span className={styles.taskbarDot} />
+        <span className={styles.taskbarDot} />
+        <span className={styles.taskbarDot} />
+        <span className={styles.taskbarSpacer} />
+        <span className={styles.taskbarClock} />
+      </div>
+    </div>
   );
 }
 
 function SceneStudyMode() {
   return (
-    <div className={styles.frameInner}>
+    <Desktop>
       {/* eslint-disable-next-line @next/next/no-img-element -- real static screenshot asset, not an optimizable remote/content image */}
       <img
         src="/demo/screens/study-mode.png"
         alt="Newton's desktop app: a factoring question, real symbolic-math tool activity, and a guiding question pointing out the middle term is wrong."
-        className={styles.frameImage}
+        className={styles.windowImage}
       />
-      <CalloutRing {...SCENES[0].callout} />
-    </div>
+      <Cursor {...SCENES[0].callout} />
+    </Desktop>
   );
 }
 
 function SceneNotepad() {
   return (
-    <div className={styles.frameInner}>
+    <Desktop>
+      {/* The main app window, dimmed into the background — real usage: the Notepad is
+          an always-on-top companion window that floats OVER the main window, never
+          alone on a blank desktop. Reusing the real study-mode capture as that backdrop
+          (blurred/dimmed) instead of empty space fixes both "so much blank space" and
+          "doesn't look like a desktop, a user using the app" in one move. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/demo/screens/study-mode.png"
+        alt=""
+        aria-hidden="true"
+        className={styles.notepadBackdrop}
+      />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/demo/screens/notepad.png"
-        alt="Newton Notepad: a highlighted phrase in a lecture note with Explain, Define, and Summarize buttons above it."
-        className={styles.frameImage}
+        alt="Newton Notepad, floating over the main chat window: a highlighted phrase in a lecture note with Explain, Define, and Summarize buttons above it."
+        className={styles.notepadWindow}
       />
-      <CalloutRing {...SCENES[1].callout} />
-    </div>
+      <Cursor {...SCENES[1].callout} />
+    </Desktop>
   );
 }
 
 function SceneArtifact() {
   return (
-    <div className={styles.frameInner}>
+    <Desktop>
       <iframe
         src="/demo/unit-circle-artifact.html"
         sandbox="allow-scripts"
         title="Live artifact: the unit circle, built by Newton — drag the point"
-        className={styles.frameIframe}
+        className={styles.windowIframe}
         loading="lazy"
       />
-      <CalloutRing {...SCENES[2].callout} />
-    </div>
+      <Cursor {...SCENES[2].callout} />
+    </Desktop>
   );
 }
 
