@@ -42,6 +42,36 @@ Material:
 {text}
 """
 
+# Used INSTEAD of EXAM_PROMPT when the student has no uploaded document and gave a bare
+# topic instead (see generate_practice_exam below) -- same reasoning as
+# flashcards.FLASHCARD_TOPIC_PROMPT: writing exam questions "about" a topic from the
+# model's own knowledge is a naturally topic-flexible task already, so this stays a
+# small, honest rewording of EXAM_PROMPT rather than a different kind of task. Same
+# stated tradeoff too: not grounded in a fetched source, just the model's own knowledge
+# of the topic -- acceptable because that's what a bare chatbot would do anyway, and
+# Newton's value-add (adaptive difficulty tracked over real completed exams, scored and
+# saved) is unaffected by where the question topics came from.
+EXAM_TOPIC_PROMPT = """You are writing a {difficulty}-difficulty multiple-choice practice exam to \
+test a student on a topic from scratch, using your own knowledge -- the student has not uploaded \
+any document, so there is nothing to extract from; write the exam directly, with exactly \
+{num_questions} questions covering the core of the topic. Reply with ONLY a JSON object, no prose, \
+in this exact shape:
+{{
+  "questions": [
+    {{
+      "question": "the question text",
+      "choices": ["choice A", "choice B", "choice C", "choice D"],
+      "correct_index": 0,
+      "explanation": "one or two sentences on why the correct choice is right"
+    }}
+  ]
+}}
+Always exactly 4 choices per question, choices in a random order (don't always put the \
+answer first), correct_index is the 0-based index of the right one. {difficulty_hint}
+
+Topic: {topic}
+"""
+
 _DIFFICULTY_HINTS = {
     "easy": "Keep questions to direct recall of clearly-stated facts and definitions.",
     "medium": "Mix direct recall with questions that require applying a concept, not just naming it.",
@@ -101,25 +131,46 @@ async def _next_difficulty(db: AsyncSession, user_id: uuid.UUID) -> str:
 async def generate_practice_exam(
     db: AsyncSession,
     user_id: uuid.UUID,
-    document: Document,
+    document: Document | None,
     num_questions: int = DEFAULT_NUM_QUESTIONS,
     byok_anthropic_key: str | None = None,
+    topic: str | None = None,
 ) -> PracticeExam:
     """Adaptive: difficulty is picked from the user's recent completed-exam scores
     before generating (see _next_difficulty), not fixed. Persists the exam and its
     questions (caller commits); an exam with zero valid questions in the model's
     response is still created (so the caller can see generation genuinely produced
-    nothing, rather than silently vanishing), just with an empty questions list."""
-    text = await get_document_text(document)
-    difficulty = await _next_difficulty(db, user_id)
+    nothing, rather than silently vanishing), just with an empty questions list.
 
-    provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
-    prompt = EXAM_PROMPT.format(
-        difficulty=difficulty,
-        num_questions=num_questions,
-        difficulty_hint=_DIFFICULTY_HINTS[difficulty],
-        text=text[:MAX_MATERIAL_CHARS],
-    )
+    `document` is None exactly on the bare-topic path (see `topic`) -- callers pass
+    exactly one, never both, never neither (a ValueError if so -- a programming error,
+    not a user-facing one). Passing `document` behaves completely unchanged from before
+    `topic` existed. `topic` generates the exam directly from the model's own knowledge
+    of the named topic, in this same single provider call (see EXAM_TOPIC_PROMPT) --
+    exam.document_id is left None (nullable for exactly this) and exam.title becomes the
+    topic string itself."""
+    if document is None and not topic:
+        raise ValueError("generate_practice_exam needs either a document or a topic.")
+
+    if document is not None:
+        text = await get_document_text(document)
+        difficulty = await _next_difficulty(db, user_id)
+        provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
+        prompt = EXAM_PROMPT.format(
+            difficulty=difficulty,
+            num_questions=num_questions,
+            difficulty_hint=_DIFFICULTY_HINTS[difficulty],
+            text=text[:MAX_MATERIAL_CHARS],
+        )
+    else:
+        difficulty = await _next_difficulty(db, user_id)
+        provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
+        prompt = EXAM_TOPIC_PROMPT.format(
+            difficulty=difficulty,
+            num_questions=num_questions,
+            difficulty_hint=_DIFFICULTY_HINTS[difficulty],
+            topic=topic,
+        )
 
     raw = ""
     async for event in provider.stream_chat([ChatTurn(role="user", content=prompt)], model):
@@ -128,8 +179,8 @@ async def generate_practice_exam(
 
     exam = PracticeExam(
         user_id=user_id,
-        document_id=document.id,
-        title=document.filename,
+        document_id=document.id if document is not None else None,
+        title=document.filename if document is not None else str(topic)[:500],
         difficulty=difficulty,
     )
     db.add(exam)

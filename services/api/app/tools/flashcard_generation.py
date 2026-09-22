@@ -11,16 +11,20 @@ from app.tools.document_resolution import resolve_document
 
 class FlashcardGenerationTool(Tool):
     """Actually creates real flashcard rows from one of the student's uploaded
-    documents, so a chat request like "make me some flashcards on this" produces real,
-    reviewable cards in the Flashcards panel instead of the model just writing
-    flashcard-shaped text into its reply (which has no way to end up in the app's real
-    FSRS-scheduled deck). Free for every user — see StudySessionTool for the Pro-gated
-    "do all three at once" composite version of this same underlying generation call."""
+    documents -- or, with no document, from a bare `topic` generated directly from the
+    model's own knowledge in this same single provider call (see
+    app.services.flashcards.FLASHCARD_TOPIC_PROMPT) -- so a chat request like "make me
+    some flashcards on this" or "teach me X from scratch" produces real, reviewable
+    cards in the Flashcards panel instead of the model just writing flashcard-shaped
+    text into its reply (which has no way to end up in the app's real FSRS-scheduled
+    deck). Free for every user — see StudySessionTool for the Pro-gated "do all three at
+    once" composite version of this same underlying generation call (document-only)."""
 
     name = "generate_flashcards"
     description = (
         "Generates a real, saved set of spaced-repetition flashcards from an uploaded "
-        "document. Call when asked for flashcards, a deck, or something to self-quiz "
+        "document, or from a bare topic (see `topic`) when the student has nothing "
+        "uploaded. Call when asked for flashcards, a deck, or something to self-quiz "
         "with -- never just write flashcard-style text in your reply, since that "
         "isn't saved anywhere for later review."
     )
@@ -46,6 +50,19 @@ class FlashcardGenerationTool(Tool):
                     "false. Don't set it just because the student seems keen."
                 ),
             },
+            "topic": {
+                "type": "string",
+                "description": (
+                    "A bare topic to generate flashcards about from your own knowledge "
+                    "(e.g. 'the Krebs cycle', 'Spanish subjunctive mood') -- use this "
+                    "INSTEAD of document_filename when the student has no uploaded "
+                    "document yet but still wants flashcards on something. Generation "
+                    "is just as fast either way; the only difference is the cards "
+                    "aren't grounded in a specific uploaded source. Ignored if an "
+                    "uploaded document is found, since a real document is always "
+                    "preferred when one exists."
+                ),
+            },
         },
     }
 
@@ -53,6 +70,7 @@ class FlashcardGenerationTool(Tool):
         self,
         document_filename: str | None = None,
         include_production: bool = False,
+        topic: str | None = None,
         user_id: str | None = None,
     ) -> str:
         if not user_id:
@@ -64,8 +82,13 @@ class FlashcardGenerationTool(Tool):
             if document is None:
                 if document_filename:
                     return f"Error: no uploaded document matching '{document_filename}' found."
-                return "Error: no uploaded documents to generate flashcards from yet."
-            filename = document.filename
+                if not topic:
+                    return (
+                        "Error: no uploaded documents to generate flashcards from yet -- "
+                        "pass a topic (e.g. topic='the Krebs cycle') to generate flashcards "
+                        "directly, no upload required."
+                    )
+            label = document.filename if document is not None else topic
             user = await db.get(User, uid)
             target_count = billing_service.generation_target_count(user)
 
@@ -76,6 +99,7 @@ class FlashcardGenerationTool(Tool):
                     document,
                     target_count=target_count,
                     include_production_cards=bool(include_production),
+                    topic=None if document is not None else topic,
                 )
                 await db.commit()
             except Exception as exc:
@@ -88,6 +112,6 @@ class FlashcardGenerationTool(Tool):
             else ""
         )
         return (
-            f"Generated {len(cards)} flashcard(s) from '{filename}' — check the "
+            f"Generated {len(cards)} flashcard(s) from '{label}' — check the "
             f"Flashcards panel to review them.{suffix}"
         )

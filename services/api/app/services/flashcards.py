@@ -35,6 +35,36 @@ Material:
 {text}
 """
 
+# Used INSTEAD of FLASHCARD_PROMPT when the student has no uploaded document and gave a
+# bare topic instead (see generate_flashcards below). Unlike the study-plan case, this
+# needed no separate extraction-vs-construction rewrite: FLASHCARD_PROMPT already asks
+# for cards "from course material" handed to it, which is naturally just as satisfied by
+# the model's own knowledge of a named topic as by an extracted document -- the only real
+# change is telling it plainly that there is no material to extract from, so it generates
+# outright rather than trying to find nonexistent "material" to quote. Honest tradeoff,
+# stated plainly rather than hidden: cards made this way aren't grounded in a real
+# fetched source the way a document-derived deck is -- they're only as good as the
+# model's own training-time knowledge of the topic. That's an acceptable tradeoff here:
+# it's exactly how a bare chatbot would answer "quiz me on X" anyway, and Newton's real
+# value-add is what happens after generation (real FSRS scheduling, weak-area tracking
+# over time), not source-grounding of the card topics themselves.
+FLASHCARD_TOPIC_PROMPT = """You are creating flashcards to teach a student a topic from scratch, \
+using your own knowledge -- the student has not uploaded any document, so there is nothing to \
+extract from; generate the cards directly from what you know about the topic. Reply with ONLY a \
+JSON object, no prose, in this exact shape:
+{{
+  "cards": [
+    {{"front": "a clear, specific question or prompt", "back": "the concise correct answer"}}
+  ]
+}}
+Focus on genuinely testable facts, definitions, and concepts a student learning this topic should \
+actively recall -- not vague or overly broad prompts. Aim for around {target_count} good cards that \
+give solid coverage of the topic's core ideas, spanning its key sub-areas rather than one narrow \
+corner of it.
+
+Topic: {topic}
+"""
+
 # --------------------------------------------------------------------------------------
 # Direction -- recognition vs. production.
 # --------------------------------------------------------------------------------------
@@ -234,10 +264,11 @@ def _apply_card_to_row(row: Flashcard, card: fsrs.Card) -> None:
 async def generate_flashcards(
     db: AsyncSession,
     user_id: uuid.UUID,
-    document: Document,
+    document: Document | None,
     byok_anthropic_key: str | None = None,
     target_count: int = 5,
     include_production_cards: bool = False,
+    topic: str | None = None,
 ) -> list[Flashcard]:
     """Reads a document, asks the provider to extract flashcard-worthy Q&A pairs, and
     persists them as new Flashcard rows (caller commits) -- each starts at FSRS's own
@@ -256,16 +287,34 @@ async def generate_flashcards(
     beats a heuristic that is quietly wrong a third of the time. The generation prompt is
     untouched -- the sibling is derived locally by swapping front/back, so enabling this
     costs no extra tokens and can't introduce a second, differently-worded version of the
-    same fact."""
-    text = await get_document_text(document)
+    same fact.
 
-    provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
-    prompt = FLASHCARD_PROMPT.format(text=text[:MAX_MATERIAL_CHARS], target_count=target_count)
+    `document` is None exactly when this is the bare-topic path (see `topic`) -- callers
+    pass exactly one of the two, never both, never neither; a caller passing neither is a
+    programming error, not a user-facing one, hence the plain ValueError. When `document`
+    IS given, behavior is completely unchanged from before `topic` existed: same prompt,
+    same single provider call, same persisted rows. `topic` is a bare string (e.g. "the
+    Krebs cycle") used INSTEAD of a document when the student has nothing uploaded --
+    generated directly from the model's own knowledge in this SAME single provider call
+    (see FLASHCARD_TOPIC_PROMPT), not a second call and not a research/fetch chain. The
+    resulting cards have document_id=None (nullable on Flashcard for exactly this)."""
+    if document is None and not topic:
+        raise ValueError("generate_flashcards needs either a document or a topic.")
+
+    if document is not None:
+        text = await get_document_text(document)
+        provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
+        prompt = FLASHCARD_PROMPT.format(text=text[:MAX_MATERIAL_CHARS], target_count=target_count)
+    else:
+        provider, model = get_provider(byok_anthropic_key=byok_anthropic_key)
+        prompt = FLASHCARD_TOPIC_PROMPT.format(topic=topic, target_count=target_count)
 
     raw = ""
     async for event in provider.stream_chat([ChatTurn(role="user", content=prompt)], model):
         if isinstance(event, TextDelta):
             raw += event.text
+
+    document_id = document.id if document is not None else None
 
     rows: list[Flashcard] = []
     for item in parse_flashcards(raw):
@@ -273,7 +322,7 @@ async def generate_flashcards(
         back = str(item["back"])[:2000]
         row = Flashcard(
             user_id=user_id,
-            document_id=document.id,
+            document_id=document_id,
             front=front,
             back=back,
             direction=DIRECTION_RECOGNITION,
@@ -289,7 +338,7 @@ async def generate_flashcards(
             # grade_production_answer only ever has to compare against `back`.
             production = Flashcard(
                 user_id=user_id,
-                document_id=document.id,
+                document_id=document_id,
                 front=back,
                 back=front,
                 direction=DIRECTION_PRODUCTION,
