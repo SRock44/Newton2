@@ -455,6 +455,83 @@ click-to-jump step controls) instead of a token-by-token chat replay.
   since the artifact embedded here already is the real, live, interactive thing itself,
   not a recording of it.
 
+## Phase 3.10 — Replace recreated visuals with real app screenshots; sitewide page transitions
+Product owner, verbatim: "it needs that SUPADEMO feel! My problem is that this 'demo'
+LOOKS NOTHING LIKE OUR APP. IT DOES NOT SHOW HOW USERS WILL USE OUR APP." Phase 3.9's
+Scene 1/2 visuals (`GradedPaper.tsx`, a hand-rebuilt `notepadCard`) were **recreations**
+of the app's look, not the app itself — the actual gap the product owner was pointing at.
+This phase replaces them with real screenshots of the real, unmodified app components.
+- [x] **A real marketing-screenshot harness, `apps/desktop/src/marketing-harness.tsx` +
+      `marketing-harness.html`.** A dev-only Vite entry (not referenced by `index.html`/
+      `main.tsx` — zero effect on the shipped Tauri bundle) that mounts the actual,
+      unmodified `TitleBar`, `Sidebar`, `ChatPane`, `MessageBubble`, `MessageContent`,
+      `Composer`, and `ArtifactBlock` components — the exact same code that ships in the
+      desktop app — fed real captured backend content directly as props/a `messages`
+      array instead of a live WS connection. `window.fetch` is stubbed only for the
+      handful of REST calls those components make on mount (billing status, the
+      artifact's raw HTML bytes); no chat content, tool-activity label, or artifact is
+      invented — see the file's own header comment for exactly what's real vs.
+      necessarily-stubbed account plumbing. Kept in the repo (not deleted like a one-off
+      verification script) since it's a genuinely reusable tool for any future marketing
+      screenshot need, and it ships nothing to the real app.
+- [x] **Scene 1 (Study Mode) — real screenshot**, `public/demo/screens/study-mode.png`,
+      of the real `Sidebar` + `TitleBar` + `ChatPane` + `MessageBubble` rendering the real
+      "math-catches-mistake" transcript recovered verbatim from git history (commit
+      `0f73477`'s `demo-transcripts.json`, chunk-by-chunk reconstructed) — including the
+      real tool-activity chips (`symbolic_math` ×2, `check_student_work`, all
+      `verified: true`), which `GradedPaper.tsx` never showed at all.
+- [x] **Scene 2 (Notepad) — real screenshot**, `public/demo/screens/notepad.png`. The one
+      piece of this phase that is NOT the literal stateful `NotepadWindow` component (it
+      gets its auth via a `notepad-auth` Tauri event this harness has no bridge for) —
+      reproduced markup using that component's own real CSS classnames
+      (`notepad-window__*`) so the pixels match, with the real hysteresis note content
+      and the real Explain/Define/Summarize selection toolbar. Documented as the one
+      "real classnames, reproduced markup" exception in the harness's own header comment
+      rather than left unstated.
+- [x] **Scene 3 (Artifact) — real screenshot of the real `ArtifactBlock` component**,
+      `public/demo/screens/artifact.png`, PLUS the live embedded artifact is unchanged
+      from Phase 3.9 (still the actual interactive iframe, not a picture of it) — this
+      phase adds the real chat surface it actually renders inside (the "Interactive /
+      Draggable Unit Circle Explorer" header, Expand/Download buttons, sandboxing
+      footnote) around it, captured mid-render with the real artifact already live inside
+      the real `<iframe sandbox="allow-scripts">`.
+- [x] **Layout rebuilt as an actual Supademo-style player**: a left step rail (numbered,
+      title + one-line caption, active step's caption/progress bar the only one shown —
+      product owner: "LESS TEXT, LESS THINGS TO CLICK") next to a fixed-height "device
+      frame" holding the current scene (`AppWalkthrough.module.css`'s `.stage`/`.rail`/
+      `.deviceFrame`), replacing the old top-only progress-segment bar. A silent pulsing
+      callout ring (no label) points at the one real UI element each step's caption
+      references — the tool-activity chips, the selection toolbar, the draggable point —
+      instead of more copy. Auto-advance/pause-on-hover/manual nav/reduced-motion
+      handling carried over unchanged from Phase 3.9 (same hooks, new durations
+      6500/6000ms).
+- [x] **`GradedPaper.tsx`/`.module.css` deleted** (fully dead once Scene 1 became a real
+      screenshot) along with the `@fontsource/caveat` dependency and the `--font-hand`
+      token, which existed solely for `GradedPaper`'s handwritten annotation styling and
+      had no other caller.
+- [x] **Sitewide page transitions**, `src/app/template.tsx` + `template.module.css`.
+      Product owner: "the different pages are not transitioning into eachother cleanly."
+      Uses Next's own `template.js` file convention (remounts on every top-level
+      navigation, unlike `layout.tsx` which persists) to replay a small CSS fade/
+      slide-up on every route change — `/`, `/faq`, `/about`, `/changelog`, `/roadmap` —
+      with zero motion library and zero client-side router event plumbing, respecting
+      `prefers-reduced-motion`.
+- [x] **Verification, all real.** `npx tsc --noEmit` clean; `npm run build` clean, all 6
+      routes prerendered; **57/57 tests passing** (`AppWalkthrough.test.tsx` and
+      `page.test.tsx` rewritten for the real-screenshot scenes — asserting on real `<img
+      src>`/`alt` attributes, not recreated-visual text content — rather than left with
+      dead assertions). Real Playwright verification against a real `next start` server:
+      zero console/page errors; a real incremental-scroll full-page screenshot
+      (`scrollHeight` 3,569px → 3,551px); each of the 3 scenes individually screenshotted
+      in its default state; the real embedded artifact actually dragged via
+      `frame.locator("input[type=range]").fill("135")` with the live `#roCos`/`#roSin`
+      readouts confirmed at the mathematically exact `-0.707`/`0.707` — proving Scene 3
+      is still genuinely interactive, not a screenshot, after this pass; a mobile
+      (390×844) pass confirming the rail collapses to a horizontal tab row; all 4 content
+      pages confirmed still serving 200; the real rendered HTML inspected directly to
+      confirm `template.tsx`'s wrapper class is actually present (`template-module__*`),
+      not just assumed from the file existing.
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).

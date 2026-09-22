@@ -119,21 +119,17 @@ describe("Home", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows the real graded-paper worked example as the first scene by default", () => {
+    it("shows a real screenshot of the app's Study Mode scene by default", () => {
       render(<Home />);
-      expect(screen.getByText("Factor x² + 5x + 6")).toBeInTheDocument();
-      expect(screen.getByText("(x + 1)(x + 6)")).toBeInTheDocument();
-      expect(screen.getByText("(x + 2)(x + 3)")).toBeInTheDocument();
+      expect(
+        screen.getByAltText(/factoring question, real symbolic-math tool activity/i)
+      ).toHaveAttribute("src", "/demo/screens/study-mode.png");
     });
 
-    it("lets a visitor jump straight to the artifact scene via the step controls", () => {
+    it("lets a visitor jump straight to the artifact scene via the step tabs", () => {
       render(<Home />);
-      fireEvent.click(screen.getByRole("tab", { name: /step 3: artifact generation/i }));
+      fireEvent.click(screen.getByRole("tab", { name: /step 3: newton builds the visual/i }));
 
-      expect(
-        screen.getByText(/build me an interactive artifact that teaches the unit circle/i)
-      ).toBeInTheDocument();
-      expect(screen.getByText("Building your interactive demo")).toBeInTheDocument();
       const frame = screen.getByTitle(/live artifact: the unit circle/i);
       expect(frame).toHaveAttribute("src", "/demo/unit-circle-artifact.html");
       expect(frame).toHaveAttribute("sandbox", "allow-scripts");

@@ -1,41 +1,113 @@
 /* ---------------------------------------------------------------------
- * The Supademo/Arcade-style stepped walkthrough — a bordered "player"
- * stage (progress segments, one scene, prev/next) standing in for a
- * literal screen recording. See AppWalkthrough.tsx's own header comment
- * for the full rationale and what each scene is.
+ * Supademo-style stepped walkthrough: a left-hand step rail next to a
+ * "device frame" holding a REAL screenshot of the real app (or, for the
+ * artifact step, the real live artifact itself). See AppWalkthrough.tsx's
+ * header comment for where the screenshots come from.
  * ------------------------------------------------------------------- */
 
 .stage {
-  position: relative;
-  max-width: 1040px;
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 28px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 20px 20px 24px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  align-items: start;
 }
 
-/* ---------- Progress segments (also the step indicator) ---------- */
+/* ---------- Step rail ---------- */
 
-.progressRow {
+.rail {
   display: flex;
-  gap: 8px;
-  margin-bottom: 22px;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.progressSegment {
-  flex: 1;
-  height: 4px;
-  padding: 0;
+.railItem,
+.railItemActive {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
   border: none;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.railItem:hover {
+  background-color: var(--color-surface-2);
+}
+
+.railItemActive {
+  background-color: var(--color-accent-tint);
+  border-left-color: var(--color-accent);
+}
+
+.railIndex {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-2);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.railItemActive .railIndex {
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast, #fff);
+}
+
+.railText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.railTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.railCaption {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.railItem .railCaption {
+  display: none;
+}
+
+.railItemActive .railCaption {
+  display: block;
+}
+
+.railProgressTrack {
+  display: none;
+}
+
+.railItemActive .railProgressTrack {
+  display: block;
+  margin-top: 8px;
+  width: 100%;
+  height: 3px;
   border-radius: var(--radius-full);
   background-color: var(--color-border-2);
   overflow: hidden;
-  cursor: pointer;
 }
 
-.progressFill {
+.railProgressFill {
   display: block;
   height: 100%;
   background-color: var(--color-accent);
@@ -44,207 +116,115 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .progressFill {
+  .railProgressFill {
     transition: none;
   }
 }
 
-/* ---------- Scene panel ---------- */
+/* ---------- Device frame ---------- */
 
-@keyframes walkthrough-scene-in {
+@keyframes walkthrough-frame-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: scale(1);
   }
 }
 
-.scenePanel {
-  min-height: 420px;
+.frameCol {
   display: flex;
-  align-items: center;
-  animation: walkthrough-scene-in 0.4s ease both;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.deviceFrame {
+  position: relative;
+  height: 480px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface-2);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: walkthrough-frame-in 0.35s ease both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scenePanel {
+  .deviceFrame {
     animation: none;
   }
 }
 
-.sceneGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: 40px;
-  align-items: center;
+.frameInner {
+  position: relative;
   width: 100%;
-  padding: 8px 12px;
-}
-
-.sceneVisual {
+  height: 100%;
   display: flex;
+  align-items: center;
   justify-content: center;
 }
 
-.sceneCopy {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.frameImage {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
-.sceneKicker {
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-accent);
-  margin: 0;
-}
-
-.sceneCaption {
-  font-size: var(--font-size-base);
-  color: var(--color-text-muted);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.quoteBubble {
-  margin: 0;
-  padding: 14px 16px;
-  background-color: var(--color-accent-tint);
-  border-left: 3px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-base);
-  font-style: italic;
-  color: var(--color-text);
-  line-height: 1.5;
-}
-
-/* ---------- Scene 2: Notepad card (adapted from the old Notepad section) ---------- */
-
-.notepadCard {
-  width: 100%;
-  max-width: 420px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: 26px 26px 22px;
-}
-
-.notepadCardTitle {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text);
-  margin: 0 0 14px;
-}
-
-.notepadCardBody {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  line-height: 1.7;
-  margin: 0 0 18px;
-}
-
-.notepadHighlight {
-  background-color: var(--color-accent-tint-strong);
-  color: var(--color-text);
-  border-radius: 3px;
-  padding: 0 3px;
-  box-decoration-break: clone;
-}
-
-.notepadPopover {
-  background-color: var(--color-accent-tint);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-}
-
-.notepadPopoverLabel {
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-accent);
-  margin: 0 0 6px;
-}
-
-.notepadPopoverBody {
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-  line-height: 1.6;
-  margin: 0;
-}
-
-/* ---------- Scene 3: Artifact generation ---------- */
-
-.sceneArtifact {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 8px 12px;
-  text-align: center;
-}
-
-.artifactIntro {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.promptBubble {
-  margin: 0;
-  padding: 10px 18px;
-  max-width: 460px;
-  background-color: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-base);
-  font-style: italic;
-  color: var(--color-text);
-}
-
-.buildingChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 14px;
-  background-color: var(--color-success-tint);
-  color: var(--color-success);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.buildingCheck {
-  width: 12px;
-  height: 11px;
-  flex-shrink: 0;
-}
-
-.artifactFrameWrap {
-  width: 100%;
-  max-width: 560px;
-  background-color: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-}
-
-.artifactFrame {
+.frameIframe {
   display: block;
   width: 100%;
-  height: 660px;
+  height: 100%;
   border: none;
+  background-color: #fff;
+}
+
+/* A silent pulsing ring pointing at the one real UI element each step's
+ * caption is talking about — product owner: "LESS TEXT, LESS THINGS TO
+ * CLICK, MORE VISUALS." No label, no click target. */
+.callout {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.calloutDot {
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+
+.calloutPulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  opacity: 0.35;
+  animation: walkthrough-callout-pulse 1.8s ease-out infinite;
+}
+
+@keyframes walkthrough-callout-pulse {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calloutPulse {
+    animation: none;
+    opacity: 0.2;
+  }
 }
 
 /* ---------- Controls ---------- */
@@ -253,12 +233,11 @@
   display: flex;
   justify-content: center;
   gap: 12px;
-  margin-top: 18px;
 }
 
 .navButton {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -285,22 +264,41 @@
 /* ---------- Responsive ---------- */
 
 @media (max-width: 860px) {
-  .sceneGrid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
+  .stage {
+    grid-template-columns: 1fr;
   }
 
-  .scenePanel {
-    min-height: 0;
+  .rail {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+
+  .railItem,
+  .railItemActive {
+    flex: 1 0 auto;
+    min-width: 180px;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+  }
+
+  .railItemActive {
+    border-bottom-color: var(--color-accent);
+  }
+
+  .deviceFrame {
+    height: 400px;
   }
 }
 
 @media (max-width: 640px) {
-  .stage {
-    padding: 16px 14px 20px;
+  .deviceFrame {
+    height: 320px;
   }
 
-  .artifactFrame {
-    height: 600px;
+  .railItem .railCaption,
+  .railItemActive .railCaption {
+    display: none;
   }
 }

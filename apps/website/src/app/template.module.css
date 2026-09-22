@@ -1,0 +1,25 @@
+/* Sitewide page-enter transition. app/template.tsx remounts on every top-level
+ * navigation (Next.js's own template.js contract — unique key per segment), which is
+ * what makes a plain CSS mount animation replay on every route change with no motion
+ * library and no client-side router event plumbing. Product owner: "the different
+ * pages are not transitioning into eachother cleanly." */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page {
+  animation: page-enter 0.28s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page {
+    animation: none;
+  }
+}
