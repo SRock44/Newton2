@@ -1247,5 +1247,201 @@
         "target_language": null
       }
     ]
+  },
+  {
+    "id": "document-reference",
+    "label": "Cites your own uploaded notes",
+    "document_filename": "Physics 201 - Lecture 14.txt",
+    "document_text_excerpt": "Physics 201 -- Lecture 14: Electromagnetism and Hysteresis\n\nToday we covered magnetic hysteresis in ferromagnetic materials. The key idea: the\nmagnetization of a ferromagnet depends not just on the current applied field, but on\nthe material's magnetic HISTORY -- this path dependence is what \"hysteresis\" means.\n\nWhen you plot magnetization M against applied field H, you get a hysteresis loop, not\na",
+    "user_message": "Based on my uploaded lecture notes, why do transformer cores use soft iron instead of steel? Explain using the hysteresis loop.",
+    "frames": [
+      {
+        "type": "user_message_saved",
+        "id": "091cde36-9628-45b1-8750-c007436bebe8"
+      },
+      {
+        "type": "plan_chunk",
+        "content": "Soft iron has a narrow hysteresis loop, meaning low coercivity and low remanence, so it magnetizes/demagnetizes easily and wastes little energy per cycle. Steel has a wide loop, causing larger hysteresis loss and residual magnetism—bad for efficient transformer operation."
+      },
+      {
+        "type": "chunk",
+        "content": "Great question — and good timing, becaus"
+      },
+      {
+        "type": "chunk",
+        "content": "e your lecture notes flag this exact poi"
+      },
+      {
+        "type": "chunk",
+        "content": "nt as an exam item. The material you nee"
+      },
+      {
+        "type": "chunk",
+        "content": "d is all in the notes; let me guide you "
+      },
+      {
+        "type": "chunk",
+        "content": "to it rather than just handing you the f"
+      },
+      {
+        "type": "chunk",
+        "content": "inished answer.\n\nHere are the pieces, in"
+      },
+      {
+        "type": "chunk",
+        "content": " order. See if you can connect them:\n\n1."
+      },
+      {
+        "type": "chunk",
+        "content": " **What does the *area* inside a hystere"
+      },
+      {
+        "type": "chunk",
+        "content": "sis loop represent?** Your notes say it "
+      },
+      {
+        "type": "chunk",
+        "content": "directly — the area enclosed by the loop"
+      },
+      {
+        "type": "chunk",
+        "content": " equals the energy dissipated as ____ pe"
+      },
+      {
+        "type": "chunk",
+        "content": "r cycle (per unit volume). What's the bl"
+      },
+      {
+        "type": "chunk",
+        "content": "ank?\n\n2. **What's happening to the trans"
+      },
+      {
+        "type": "chunk",
+        "content": "former core over time?** A transformer r"
+      },
+      {
+        "type": "chunk",
+        "content": "uns on alternating current, so the core "
+      },
+      {
+        "type": "chunk",
+        "content": "is driven around the loop forward and ba"
+      },
+      {
+        "type": "chunk",
+        "content": "ckward many times every second (60 times"
+      },
+      {
+        "type": "chunk",
+        "content": "/sec in the US). If each cycle wastes en"
+      },
+      {
+        "type": "chunk",
+        "content": "ergy, what does that mean for the core o"
+      },
+      {
+        "type": "chunk",
+        "content": "ver a second? Over a day?\n\n3. **Now comp"
+      },
+      {
+        "type": "chunk",
+        "content": "are materials on the loop.** Your notes "
+      },
+      {
+        "type": "chunk",
+        "content": "contrast \"soft\" and \"hard\" magnetic mate"
+      },
+      {
+        "type": "chunk",
+        "content": "rials:\n   - Soft materials → **small loo"
+      },
+      {
+        "type": "chunk",
+        "content": "p area, low coercivity** H_c\n   - Hard m"
+      },
+      {
+        "type": "chunk",
+        "content": "aterials → **large loop area, high coerc"
+      },
+      {
+        "type": "chunk",
+        "content": "ivity** H_c (that's what makes a good pe"
+      },
+      {
+        "type": "chunk",
+        "content": "rmanent magnet — it resists being demagn"
+      },
+      {
+        "type": "chunk",
+        "content": "etized)\n\n4. **Where does steel fall?** S"
+      },
+      {
+        "type": "chunk",
+        "content": "teel is a \"harder\" magnetic material — w"
+      },
+      {
+        "type": "chunk",
+        "content": "ider loop, larger H_c. Soft iron has a n"
+      },
+      {
+        "type": "chunk",
+        "content": "arrow, skinny loop with a tiny H_c.\n\nSo "
+      },
+      {
+        "type": "chunk",
+        "content": "here's the question for you to answer in"
+      },
+      {
+        "type": "chunk",
+        "content": " your own words: **why would a narrow, l"
+      },
+      {
+        "type": "chunk",
+        "content": "ow-H_c loop (soft iron) be the right cho"
+      },
+      {
+        "type": "chunk",
+        "content": "ice for a transformer core, and what wou"
+      },
+      {
+        "type": "chunk",
+        "content": "ld happen if you built the core from ste"
+      },
+      {
+        "type": "chunk",
+        "content": "el instead?**\n\nTry to write that explana"
+      },
+      {
+        "type": "chunk",
+        "content": "tion out — include the words *area*, *he"
+      },
+      {
+        "type": "chunk",
+        "content": "at*, and *H_c* — and I'll check it again"
+      },
+      {
+        "type": "chunk",
+        "content": "st the reasoning in your notes. (Bonus e"
+      },
+      {
+        "type": "chunk",
+        "content": "xam-prep question while you're at it: on"
+      },
+      {
+        "type": "chunk",
+        "content": " a real loop plot, which point is H_c, a"
+      },
+      {
+        "type": "chunk",
+        "content": "nd which is M_r?)"
+      },
+      {
+        "type": "done",
+        "prompt_tokens": 6414,
+        "completion_tokens": 1787,
+        "conversation_practice": false,
+        "target_language": null
+      }
+    ]
   }
 ]
