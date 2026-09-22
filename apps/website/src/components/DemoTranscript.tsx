@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import demoTranscriptsData from "@/data/demo-transcripts.json";
 import { useInView } from "@/hooks/useInView";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -9,9 +9,19 @@ import { renderReplyMarkdown } from "@/lib/renderReplyMarkdown";
 import styles from "./DemoTranscript.module.css";
 
 // Real captured WebSocket wire frames from the actual Newton backend (see
-// apps/website/src/data/demo-transcripts.json) — three real chat turns, replayed
+// apps/website/src/data/demo-transcripts.json) — four real chat turns, replayed
 // client-side. No network call to the real API happens here; this is the "scripted"
 // half of WEBSITE-ROADMAP.md's Phase 5, not a live chat client.
+//
+// This component is deliberately built as a recreation of the real desktop app's
+// window chrome (a title bar with traffic lights, a Documents-section-plus-session-list
+// sidebar modeled on apps/desktop/src/components/Sidebar.tsx, a chat pane modeled on
+// MessageBubble.tsx) rather than a floating snippet card — the product owner's explicit
+// ask was for something that "shows the chat, the app, etc; not just a snippet." The
+// document-reference scenario (a genuine document — "Physics 201 - Lecture 14.txt" —
+// really uploaded during capture, a genuine question only that document could answer)
+// leads by default, since it best demonstrates persistent memory + real document
+// grounding rather than only computation.
 const scenarios = demoTranscriptsData as DemoScenario[];
 
 function VerifiedBadge() {
@@ -57,7 +67,8 @@ export default function DemoTranscript() {
     }
   }
 
-  // Autoplay the first scenario the first time the section scrolls into view.
+  // Autoplay the first (document-grounded) scenario the first time the section scrolls
+  // into view.
   useEffect(() => {
     if (!inView || hasAutoplayed) return;
     setHasAutoplayed(true);
@@ -110,108 +121,179 @@ export default function DemoTranscript() {
   );
 
   const canReplay = count > 0;
+  const documentScenario = scenarios.find((s) => s.document_filename);
 
   return (
     <div ref={sectionRef} className={styles.demo}>
-      <div className={styles.scenarioTabs} role="tablist" aria-label="Demo scenario">
-        {scenarios.map((scenario) => (
-          <button
-            key={scenario.id}
-            type="button"
-            role="tab"
-            id={`demo-tab-${scenario.id}`}
-            aria-selected={scenario.id === activeId}
-            aria-controls={`demo-panel-${scenario.id}`}
-            className={`${styles.scenarioTab} ${scenario.id === activeId ? styles.scenarioTabActive : ""}`}
-            onClick={() => playScenario(scenario.id)}
-          >
-            {scenario.label}
-          </button>
-        ))}
-      </div>
-
-      <div
-        className={styles.transcriptCard}
-        role="tabpanel"
-        id={`demo-panel-${activeScenario.id}`}
-        aria-labelledby={`demo-tab-${activeScenario.id}`}
-      >
-        <div className={styles.transcriptHeader}>
-          <span className={styles.transcriptHeaderDot} aria-hidden="true" />
-          <span className={styles.transcriptHeaderDot} aria-hidden="true" />
-          <span className={styles.transcriptHeaderDot} aria-hidden="true" />
-          <span className={styles.transcriptHeaderLabel}>Newton — real captured session</span>
+      {/* Real window chrome — a custom title bar (mirrors apps/desktop's TitleBar.tsx
+          macOS variant: traffic lights, centered wordmark) so this reads as a
+          screenshot of the actual app, not an abstract card. */}
+      <div className={styles.appWindow}>
+        <div className={styles.titlebar}>
+          <div className={styles.trafficLights} aria-hidden="true">
+            <span className={`${styles.dot} ${styles.dotClose}`} />
+            <span className={`${styles.dot} ${styles.dotMin}`} />
+            <span className={`${styles.dot} ${styles.dotZoom}`} />
+          </div>
+          <div className={styles.titlebarTitle}>Newton</div>
+          <div className={styles.titlebarSpacer} aria-hidden="true" />
         </div>
 
-        <div className={styles.transcriptBody}>
-          {state.showUserMessage && (
-            <div className={`${styles.entry} ${styles.entryUser}`}>
-              <p className={styles.userMessage}>{activeScenario.user_message}</p>
+        <div className={styles.appBody}>
+          {/* A slim, simplified recreation of the real sidebar (apps/desktop/src/
+              components/Sidebar.tsx): a brand mark, a Documents section with the one
+              real file uploaded during capture, and the session list — which doubles
+              as this demo's scenario switcher. */}
+          <aside className={styles.sidebar} aria-label="Newton sidebar (demo recreation)">
+            <div className={styles.sidebarBrand}>
+              <span className={styles.sidebarBrandMark} aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none">
+                  <ellipse
+                    cx="12"
+                    cy="12"
+                    rx="9.2"
+                    ry="4.6"
+                    transform="rotate(-20 12 12)"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  />
+                  <circle cx="12" cy="12" r="2.4" fill="currentColor" />
+                  <circle cx="19.3" cy="7.7" r="1.4" fill="currentColor" />
+                </svg>
+              </span>
+              <span className={styles.sidebarBrandName}>Newton</span>
             </div>
-          )}
 
-          {(state.planText !== null || state.toolChips.length > 0 || state.replyText.length > 0) && (
-            <div className={`${styles.entry} ${styles.entryAssistant}`}>
-              {state.planText !== null && (
-                <div className={styles.toolActivity} aria-label="Newton's plan">
-                  <span
-                    className={`${styles.chip} ${styles.planChip} ${state.planDone ? styles.chipDone : styles.chipRunning}`}
-                  >
-                    <span className={styles.chipIcon} aria-hidden="true" />
-                    <span>{state.planText}</span>
+            {documentScenario && (
+              <div className={styles.sidebarSection}>
+                <p className={styles.sidebarSectionLabel}>Documents</p>
+                <button
+                  type="button"
+                  className={`${styles.docItem} ${
+                    activeId === documentScenario.id ? styles.docItemActive : ""
+                  }`}
+                  onClick={() => playScenario(documentScenario.id)}
+                  title={`Open ${documentScenario.document_filename}`}
+                >
+                  <span className={styles.docItemIcon} aria-hidden="true">
+                    📄
                   </span>
+                  <span className={styles.docItemName}>{documentScenario.document_filename}</span>
+                </button>
+              </div>
+            )}
+
+            <div className={styles.sidebarSection}>
+              <p className={styles.sidebarSectionLabel}>Chats</p>
+              <div className={styles.sessionList} role="tablist" aria-label="Demo scenario">
+                {scenarios.map((scenario) => (
+                  <button
+                    key={scenario.id}
+                    type="button"
+                    role="tab"
+                    id={`demo-tab-${scenario.id}`}
+                    aria-selected={scenario.id === activeId}
+                    aria-controls={`demo-panel-${scenario.id}`}
+                    className={`${styles.sessionItem} ${
+                      scenario.id === activeId ? styles.sessionItemActive : ""
+                    }`}
+                    onClick={() => playScenario(scenario.id)}
+                  >
+                    {scenario.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </aside>
+
+          <div
+            className={styles.chatPane}
+            role="tabpanel"
+            id={`demo-panel-${activeScenario.id}`}
+            aria-labelledby={`demo-tab-${activeScenario.id}`}
+          >
+            <div className={styles.chatScroll}>
+              {state.showUserMessage && (
+                <div className={`${styles.entry} ${styles.entryUser}`}>
+                  {activeScenario.document_filename && (
+                    <div className={styles.attachedDoc}>
+                      <span aria-hidden="true">📄</span>
+                      <span>{activeScenario.document_filename}</span>
+                    </div>
+                  )}
+                  <p className={styles.userMessage}>{activeScenario.user_message}</p>
                 </div>
               )}
 
-              {state.toolChips.length > 0 && (
-                <div className={styles.toolActivity} aria-label="Newton's tool activity">
-                  {state.toolChips.map((chip, i) => (
-                    <span
-                      key={chip.key}
-                      className={`${styles.chip} ${chip.running ? styles.chipRunning : styles.chipDone} ${
-                        chip.verified ? styles.chipVerified : ""
-                      }`}
-                      style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}
-                      title={chip.verified ? "Computed with real math/code, not guessed" : undefined}
-                    >
-                      <span className={styles.chipIcon} aria-hidden="true" />
-                      {chip.label}
-                      {chip.verified && <VerifiedBadge />}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {(state.planText !== null || state.toolChips.length > 0 || state.replyText.length > 0) && (
+                <div className={`${styles.entry} ${styles.entryAssistant}`}>
+                  {state.planText !== null && (
+                    <div className={styles.toolActivity} aria-label="Newton's plan">
+                      <span
+                        className={`${styles.chip} ${styles.planChip} ${
+                          state.planDone ? styles.chipDone : styles.chipRunning
+                        }`}
+                      >
+                        <span className={styles.chipIcon} aria-hidden="true" />
+                        <span>{state.planText}</span>
+                      </span>
+                    </div>
+                  )}
 
-              {state.replyText.length > 0 && (
-                <div className={styles.replyText} aria-live="polite">
-                  {replyNodes}
-                  {!state.isDone && (
-                    <span className={styles.streamCursor} aria-hidden="true">
-                      ▍
-                    </span>
+                  {state.toolChips.length > 0 && (
+                    <div className={styles.toolActivity} aria-label="Newton's tool activity">
+                      {state.toolChips.map((chip, i) => (
+                        <span
+                          key={chip.key}
+                          className={`${styles.chip} ${chip.running ? styles.chipRunning : styles.chipDone} ${
+                            chip.verified ? styles.chipVerified : ""
+                          }`}
+                          style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}
+                          title={chip.verified ? "Computed with real math/code, not guessed" : undefined}
+                        >
+                          <span className={styles.chipIcon} aria-hidden="true" />
+                          {chip.label}
+                          {chip.verified && <VerifiedBadge />}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {state.replyText.length > 0 && (
+                    <div className={styles.replyText} aria-live="polite">
+                      {replyNodes}
+                      {!state.isDone && (
+                        <span className={styles.streamCursor} aria-hidden="true">
+                          ▍
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
+
+              {!state.showUserMessage && (
+                <p className={styles.transcriptIdle}>
+                  Scroll down, or pick a chat in the sidebar, to watch a real reply.
+                </p>
+              )}
             </div>
-          )}
 
-          {!state.showUserMessage && (
-            <p className={styles.transcriptIdle}>Scroll down, or pick a scenario above, to watch a real reply.</p>
-          )}
-        </div>
-
-        <div className={styles.transcriptFooter}>
-          <button
-            type="button"
-            className={styles.replayButton}
-            onClick={() => playScenario(activeScenario.id)}
-            disabled={!canReplay && playing}
-          >
-            <span aria-hidden="true">↺</span> Replay
-          </button>
-          <p className={styles.transcriptDisclaimer}>
-            A real transcript captured from Newton&apos;s actual backend, replayed here — not a live chat.
-          </p>
+            <div className={styles.chatFooter}>
+              <button
+                type="button"
+                className={styles.replayButton}
+                onClick={() => playScenario(activeScenario.id)}
+                disabled={!canReplay && playing}
+              >
+                <span aria-hidden="true">↺</span> Replay
+              </button>
+              <p className={styles.transcriptDisclaimer}>
+                A real transcript captured from Newton&apos;s actual backend, replayed here — not a
+                live chat.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

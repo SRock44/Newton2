@@ -47,6 +47,12 @@
   --color-success: #3d7d49;
   --color-success-tint: rgba(61, 125, 73, 0.13);
 
+  /* Real red-pen red — distinct from the rust/terracotta tertiary accent, which reads
+     as a warm decorative color, not a grading mark. Used only by the graded-paper
+     visual's strikethrough/correction annotation (src/components/GradedPaper.tsx). */
+  --color-red-pen: #c22a1e;
+  --color-red-pen-tint: rgba(194, 42, 30, 0.1);
+
   --radius-sm: 6px;
   --radius-md: 9px;
   --radius-lg: 14px;
@@ -74,6 +80,10 @@
   --font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Avenir, Helvetica,
     Arial, sans-serif;
   --font-serif: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  /* Real handwriting-style ink, self-hosted (@fontsource/caveat) — deliberately scoped
+     to the graded-paper visual's red-pen annotation only (see GradedPaper.module.css),
+     not used anywhere else on the page. */
+  --font-hand: "Caveat", "Segoe Script", cursive;
 
   --font-size-sm: 14px;
   --font-size-base: 16px;
@@ -117,6 +127,9 @@
 
     --color-success: #74bf80;
     --color-success-tint: rgba(116, 191, 128, 0.16);
+
+    --color-red-pen: #e2695c;
+    --color-red-pen-tint: rgba(226, 105, 92, 0.14);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);

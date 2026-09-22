@@ -11,12 +11,19 @@ function findScenario(id: string): DemoScenario {
 }
 
 describe("demo-transcripts.json (real captured data)", () => {
-  it("has exactly the three real scenarios this component is built around", () => {
+  it("has exactly the four real scenarios this component is built around, document-reference leading", () => {
     expect(scenarios.map((s) => s.id)).toEqual([
+      "document-reference",
       "math-catches-mistake",
       "chemistry-balance",
       "code-check-fails",
     ]);
+  });
+
+  it("the leading document-reference scenario carries a real uploaded filename and no tool calls (memory/grounding, not computation)", () => {
+    const scenario = findScenario("document-reference");
+    expect(scenario.document_filename).toBe("Physics 201 - Lecture 14.txt");
+    expect(scenario.frames.some((f) => f.type === "tool_start")).toBe(false);
   });
 });
 

@@ -9,6 +9,14 @@ import "@fontsource/public-sans/600.css";
 import "@fontsource/public-sans/700.css";
 import "@fontsource-variable/fraunces/full.css";
 import "@fontsource-variable/fraunces/full-italic.css";
+// A third, deliberately narrow-use face: real handwriting-style ink for the "graded
+// paper" visual's red-pen annotation and corrected answer (src/components/
+// GradedPaper.tsx) — the one place on the page something needs to look actually
+// hand-marked rather than typeset. Self-hosted via @fontsource, same convention as the
+// two faces above (never next/font/google, never a live Google Fonts request).
+import "@fontsource/caveat/500.css";
+import "@fontsource/caveat/600.css";
+import "@fontsource/caveat/700.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

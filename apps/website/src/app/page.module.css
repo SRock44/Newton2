@@ -281,31 +281,10 @@
 }
 
 /* ---------------------------------------------------------------------
- * Verified badge (mirrors apps/desktop's .tool-activity-chip--verified)
- * ------------------------------------------------------------------- */
-
-.verifiedBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px 5px 8px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--color-success);
-  background-color: var(--color-success-tint);
-  color: var(--color-success);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  width: fit-content;
-}
-
-.verifiedIcon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-/* ---------------------------------------------------------------------
- * Hero
+ * Hero + the real app demo (DemoTranscript) directly beneath it, both
+ * inside the same shell/background so there's no scroll or section seam
+ * between them — the product owner's explicit ask was for the demo to be
+ * "on the LANDING page once you go to the website," not scrolled-to.
  * ------------------------------------------------------------------- */
 
 .heroShell {
@@ -320,20 +299,20 @@
   background-image: var(--texture-dots);
   background-size: var(--texture-dots-size);
   opacity: 0.35;
-  -webkit-mask-image: linear-gradient(180deg, black, transparent 85%);
-  mask-image: linear-gradient(180deg, black, transparent 85%);
+  -webkit-mask-image: linear-gradient(180deg, black, transparent 60%);
+  mask-image: linear-gradient(180deg, black, transparent 60%);
   pointer-events: none;
 }
 
 .hero {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 56px;
-  max-width: 1160px;
+  text-align: center;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 88px 32px 96px;
+  padding: 76px 32px 48px;
 }
 
 .eyebrow {
@@ -345,26 +324,20 @@
   margin: 0 0 14px;
 }
 
-.heroCopy {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
 .title {
-  font-size: 58px;
-  line-height: 1.05;
+  font-size: 54px;
+  line-height: 1.06;
   color: var(--color-text);
   letter-spacing: -0.015em;
-  margin: 0 0 22px;
+  margin: 0 0 20px;
 }
 
 .subtitle {
   font-size: var(--font-size-md);
   color: var(--color-text-muted);
   line-height: 1.65;
-  max-width: 52ch;
-  margin: 0 0 32px;
+  max-width: 56ch;
+  margin: 0 0 30px;
 }
 
 .heroActions {
@@ -372,8 +345,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .cornerArrow {
@@ -397,93 +371,41 @@
   color: var(--color-text-faint);
 }
 
-.heroVisual {
-  display: flex;
-  justify-content: center;
+/* ---------- The real app demo, immediately below the hero copy ---------- */
+
+.heroDemo {
+  position: relative;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 12px 32px 96px;
 }
 
-.mockCard {
-  width: 100%;
-  max-width: 340px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: 28px 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  transform: rotate(1.5deg);
-  animation: mock-card-float 6s ease-in-out infinite;
-  min-height: 190px;
+.heroDemoHead {
+  max-width: 640px;
+  margin: 0 auto 32px;
+  text-align: center;
 }
 
-@keyframes mock-card-float {
-  0%,
-  100% {
-    transform: rotate(1.5deg) translateY(0);
-  }
-  50% {
-    transform: rotate(1.5deg) translateY(-9px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mockCard {
-    animation: none;
-  }
-}
-
-.mockCardLabel {
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.08em;
-  color: var(--color-text-faint);
-  margin: 0;
-}
-
-.mockCardPrompt {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-lg);
+.heroDemoTitle {
+  font-size: var(--font-size-2xl);
   color: var(--color-text);
-  margin: 0;
-  min-height: 1.3em;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
 }
 
-.mockCardResult {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-xl);
-  color: var(--color-accent);
-  margin: 4px 0 10px;
-  opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 0.45s ease, transform 0.45s ease;
-  min-height: 1.2em;
+.heroDemoSubtitle {
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  line-height: 1.6;
 }
 
-.mockCardResultVisible {
-  opacity: 1;
-  transform: none;
-}
-
-.mockCardBadgeReveal {
-  opacity: 0;
-  transform: translateY(6px) scale(0.96);
-  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.mockCardBadgeRevealVisible {
-  opacity: 1;
-  transform: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mockCardResult,
-  .mockCardBadgeReveal {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
+.heroDemoSubtitle code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border-2);
+  border-radius: 4px;
+  padding: 1px 6px;
 }
 
 /* ---------------------------------------------------------------------
@@ -550,85 +472,58 @@
 }
 
 /* ---------------------------------------------------------------------
- * "Verified, not vibes" example cards
+ * "The same standard, everywhere else" strip — a compact inline list, not
+ * a third repetition of an icon/heading/paragraph card (the GradedPaper
+ * visual above it is the section's one dominant visual element).
  * ------------------------------------------------------------------- */
 
-.exampleGrid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 24px;
+.alsoVerifiedStrip {
+  max-width: 780px;
+  margin: 64px auto 0;
+  text-align: center;
 }
 
-.exampleCard {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 28px 26px;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
-}
-
-.exampleCard:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-4px) scale(1.015);
-  border-color: var(--color-accent);
-}
-
-/* Asymmetric, editorial arrangement rather than three identical boxes: a wide featured
- * card, a narrower companion beside it, then a full-width card offset below. Applied to
- * the Reveal wrapper (the actual grid item — see page.tsx) via its className prop,
- * rather than an nth-child selector, since each card is wrapped in a Reveal <div>. */
-.exampleSlotWide {
-  grid-column: span 4;
-}
-
-.exampleSlotNarrow {
-  grid-column: span 2;
-}
-
-.exampleSlotFull {
-  grid-column: span 6;
-  margin-top: 8px;
-}
-
-.exampleEyebrow {
+.alsoVerifiedLabel {
   font-size: 12px;
   font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--color-text-faint);
+  margin: 0 0 16px;
+}
+
+.alsoVerifiedList {
+  list-style: none;
   margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 32px;
 }
 
-.examplePrompt {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-md);
-  color: var(--color-text);
-  margin: 0;
-}
-
-.exampleArrow {
-  color: var(--color-text-faint);
-  font-size: var(--font-size-md);
-  line-height: 1;
-}
-
-.exampleResult {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-lg);
-  color: var(--color-accent);
-  margin: 0;
-}
-
-.exampleDetail {
+.alsoVerifiedList li {
+  position: relative;
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   line-height: 1.55;
-  margin: 0 0 6px;
-  flex: 1;
+  max-width: 30ch;
+  text-align: left;
+}
+
+.alsoVerifiedList li + li::before {
+  content: "";
+  position: absolute;
+  left: -17px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background-color: var(--color-border);
+}
+
+.alsoVerifiedList strong {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ---------------------------------------------------------------------
@@ -988,30 +883,11 @@
 
 @media (max-width: 960px) {
   .hero {
-    grid-template-columns: 1fr;
-    padding: 64px 28px 72px;
-    gap: 48px;
-    text-align: left;
+    padding: 56px 28px 40px;
   }
 
-  .heroVisual {
-    order: -1;
-  }
-
-  .mockCard {
-    max-width: 380px;
-    transform: none;
-  }
-
-  .exampleGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .exampleSlotWide,
-  .exampleSlotNarrow,
-  .exampleSlotFull {
-    grid-column: span 1;
-    margin-top: 0;
+  .heroDemo {
+    padding: 8px 20px 72px;
   }
 
   .sectionHeadEditorial {
@@ -1062,11 +938,15 @@
 
 @media (max-width: 640px) {
   .title {
-    font-size: 36px;
+    font-size: 34px;
   }
 
   .subtitle {
     font-size: var(--font-size-base);
+  }
+
+  .heroDemoTitle {
+    font-size: var(--font-size-xl);
   }
 
   .section {
@@ -1081,8 +961,8 @@
     margin-bottom: 40px;
   }
 
-  .exampleGrid {
-    grid-template-columns: 1fr;
+  .alsoVerifiedList li + li::before {
+    display: none;
   }
 
   .sectionHeadEditorialTitle {
