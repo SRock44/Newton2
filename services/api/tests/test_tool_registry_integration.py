@@ -32,6 +32,7 @@ def test_all_expected_tools_are_registered():
         "symbolic_math",
         "chemistry_solver",
         "statistics",
+        "numeric_methods",
         "plot_function",
         "code_interpreter",
         "web_search",

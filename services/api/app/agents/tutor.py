@@ -94,6 +94,7 @@ _TOOL_LABELS: dict[str, str] = {
     "symbolic_math": "Solving with symbolic math",
     "chemistry_solver": "Working out the chemistry",
     "statistics": "Running the statistical test",
+    "numeric_methods": "Solving numerically",
     "plot_function": "Building a visualization",
     "code_interpreter": "Running code",
     "web_search": "Searching the web",
@@ -155,6 +156,7 @@ _COMPUTATIONALLY_VERIFIED_TOOLS = frozenset(
         "symbolic_math",
         "chemistry_solver",
         "statistics",
+        "numeric_methods",
         "check_code_work",
         "check_proof_work",
     }
@@ -350,6 +352,25 @@ SYSTEM_PROMPT = (
     "'significant' or 'not significant.' It refuses plainly on degenerate input (too "
     "few points, zero variance, non-numeric data) rather than returning a misleading "
     "or NaN-laden result -- pass that refusal on honestly instead of papering over it.\n\n"
+    "symbolic_math's linear algebra is exact/symbolic -- the right tool for a clean "
+    "textbook matrix where the point is a closed-form answer. It is the WRONG tool "
+    "for the matrices real engineering coursework (statics, circuits, structural "
+    "analysis) actually produces: measured or decimal coefficients, often "
+    "ill-conditioned, where a numeric method -- and an honest condition number -- is "
+    "what's actually being asked for. For that, call numeric_methods instead: "
+    "solve_linear_system (numpy.linalg.solve, with the real condition number and an "
+    "honest ill-conditioning warning when it's large), eigenvalues_numeric "
+    "(numpy.linalg.eig for a general, possibly non-symmetric matrix), root_find "
+    "(scipy.optimize.brentq/fsolve for a real-valued function of one variable), "
+    "integrate_ode (scipy.integrate.solve_ivp for a first-order ODE or system, given "
+    "its right-hand side, initial conditions, and time span), and curve_fit "
+    "(scipy.optimize.curve_fit, with a real R^2). Reach for numeric_methods when the "
+    "problem is ill-conditioned, has real/decimal coefficients, or genuinely has no "
+    "closed form (an ODE, a nonlinear root, a fit to data) -- reach for symbolic_math "
+    "when the answer is clean and exact. Present numeric_methods results the same "
+    "honest way: state the tool's actual numbers, and if it reports an ill-"
+    "conditioning warning or a failure to converge, say so plainly rather than "
+    "smoothing it over.\n\n"
     "When a student shares their own typed answer and asks if it's right, call "
     "check_student_work (it pinpoints exactly where their reasoning is right or "
     "wrong) rather than re-solving and comparing yourself. When they share a WRITTEN "
@@ -385,9 +406,9 @@ SYSTEM_PROMPT = (
     "the same as being correct for every input. code_interpreter is the different tool: "
     "that one is for running scratch code YOU wrote, never for grading a student's.\n\n"
     "When a tool result actually came from real computation -- symbolic_math, "
-    "chemistry_solver, statistics, check_student_work's or check_proof_work's "
-    "math-verified branches, or check_code_work's real test run -- say so plainly in "
-    "your own words "
+    "chemistry_solver, statistics, numeric_methods, check_student_work's or "
+    "check_proof_work's math-verified branches, or check_code_work's real test run -- "
+    "say so plainly in your own words "
     "as part of the answer (e.g. \"I checked this with real math computation, not a "
     "guess\" or \"this ran your actual code against the tests\"), rather than defaulting "
     "to brief, encouraging confirmation language that quietly drops the fact. Don't "

@@ -17,6 +17,7 @@ from app.tools.flashcard_generation import FlashcardGenerationTool
 from app.tools.get_weak_areas import GetWeakAreasTool
 from app.tools.grammar_check import GrammarCheckTool
 from app.tools.math_hint import GetMathHintTool
+from app.tools.numeric_methods import NumericMethodsTool
 from app.tools.practice_exam_generation import PracticeExamGenerationTool
 from app.tools.research_fetch import ResearchFetchTool
 from app.tools.statistics import StatisticsTool
@@ -42,6 +43,7 @@ _TOOLS: dict[str, Tool] = {
         SymbolicMathTool(),
         ChemistrySolverTool(),
         StatisticsTool(),
+        NumericMethodsTool(),
         VisualizerTool(),
         CodeInterpreterTool(),
         WebSearchTool(),
@@ -105,6 +107,12 @@ _ON_DEMAND_GROUPS: tuple[tuple[tuple[str, ...], str], ...] = (
         ("statistics",),
         "real inferential statistics -- a t-test, correlation, chi-square test of independence, "
         "regression, or one-way ANOVA on real data",
+    ),
+    (
+        ("numeric_methods",),
+        "real NUMERIC computation for ill-conditioned/non-closed-form problems -- "
+        "numeric linear-system solving with a real condition number, numeric "
+        "eigenvalues/eigenvectors, root-finding, ODE integration, or curve fitting",
     ),
     (("plot_function",), "graphing a function/equation, incl. slider-enabled variants"),
     (("code_interpreter",), "running or testing your OWN scratch code"),
