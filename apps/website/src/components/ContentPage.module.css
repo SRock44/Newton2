@@ -1,0 +1,75 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main {
+  flex: 1;
+}
+
+.skipLink {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.skipLink:focus {
+  left: 12px;
+  top: 12px;
+}
+
+/* ---------------------------------------------------------------------
+ * Intro hero — a smaller, single-column relative of the landing page's own hero:
+ * eyebrow / serif title / muted subtitle, over the same radial cobalt+gold wash.
+ * ------------------------------------------------------------------- */
+
+.hero {
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 72px 32px 48px;
+  background-image: var(--gradient-hero);
+}
+
+.eyebrow {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin: 0 0 14px;
+}
+
+.title {
+  font-size: 44px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  margin: 0 0 18px;
+}
+
+.subtitle {
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+  line-height: 1.65;
+  max-width: 60ch;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: 48px 20px 32px;
+  }
+
+  .title {
+    font-size: 32px;
+  }
+}

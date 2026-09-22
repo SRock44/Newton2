@@ -178,6 +178,71 @@ separate, later, explicitly-confirmed step, not an assumed next task.
       gradients, and hover states all render correctly; no overlapping text or broken
       spacing at either viewport.
 
+## Phase 3.6 — FAQ/About/Changelog/Roadmap pages + a real Pro section
+- [x] A real Pro section added to the homepage (`#pro`, between "Built for every
+      student" and the closing CTA): a two-column Free-vs-Pro comparison. Every listed
+      Pro feature (full research paper writing, AI-generated artifacts, Deep Research,
+      composite study sessions, voice/Conversation Practice, frontier-model access,
+      higher generation limits) confirmed gated behind the real backend's
+      `billing_service.is_pro()`, reused by `write_research_paper.py`,
+      `create_artifact.py`, `deep_research.py`, `study_session.py`, and
+      `app/routers/voice.py`. Deliberately no dollar figure anywhere — the real Pro
+      price lives in Stripe config, not this codebase, and isn't something the site can
+      honestly state; the section says so explicitly instead of guessing. "Upgrade to
+      Pro" links to `#` for the same Phase-4 reason every other sign-up/billing CTA on
+      this page does.
+- [x] Four new standalone routes — `/faq`, `/about`, `/changelog`, `/roadmap` — each a
+      real Next.js page (`src/app/{faq,about,changelog,roadmap}/page.tsx`), not a modal
+      or an anchor on the homepage. FAQ answers 9 real questions grounded in the actual
+      codebase, explicitly declining to invent a free-tier number or link a privacy
+      policy that doesn't exist yet (`PRIVACY_POLICY.md` at the repo root is an
+      engineer-authored draft, not published). About states Newton's real mission via
+      four concrete mechanisms (computed-vs-reasoned answers, server-enforced Focus
+      Mode, check-don't-write code/proof checking, FSRS + weak-areas memory) with no
+      invented team, founding year, or company history. Changelog lists real shipped
+      capability in plain language, newest first, sourced from `ROADMAP.md`'s actual
+      history — no internal phase numbers. Roadmap lists 8 items pulled directly from
+      `ROADMAP.md`'s own real deferred/planned/not-scheduled items (the live "Try it
+      live" demo, a web chat client, OS notification review reminders, academic-search
+      integration, a Conversation Practice session report, a weekly digest,
+      collaborative study rooms, a bundled offline mode), every one framed honestly as
+      "Planned" with no delivery date.
+- [x] Shared chrome instead of four copies: `src/lib/siteNav.ts` holds one real source
+      of truth for the nav/footer link data (used by both `page.tsx` and every new
+      route), so the five real routes and the two in-page anchors never drift between
+      the homepage and the standalone pages. `src/components/SiteChrome.tsx`
+      (`SiteHeader`/`SiteFooter`) and `src/components/ContentPage.tsx`
+      (`ContentPage`/`ContentHero`) factor out the header/footer/page-shell chrome for
+      the four new routes only — `page.tsx` deliberately keeps its own inline
+      header/footer untouched, so this pass never touches the hero/demo/"Verified, not
+      vibes" region. The homepage's own header/footer were updated in place to read
+      from `siteNav.ts` too (previously inline, incomplete `NAV_LINKS`/`FOOTER_COLUMNS`
+      arrays that stubbed About/Contact to `#` even though About is now real), so both
+      surfaces now render from the identical data.
+- [x] Verification: `npx tsc --noEmit` clean; `npm run build` production build succeeds,
+      all 6 routes (`/`, `/about`, `/changelog`, `/faq`, `/roadmap`, `/_not-found`)
+      statically prerendered; 4 new test files
+      (`src/app/{faq,about,changelog,roadmap}/page.test.tsx`) plus
+      `src/components/SiteChrome.test.tsx` and new assertions in `src/app/page.test.tsx`
+      covering the Pro section and the nav/footer's real-route links — 55 of the
+      website's 58 tests passing (the 3 failing are pre-existing, unrelated to this
+      phase: a `document-reference` demo-transcript scenario added by a prior commit
+      without updating `demoTranscript.test.ts`/`DemoTranscript.test.tsx`'s expected
+      scenario count — reproduced identically against a clean `main` checkout, so not a
+      regression introduced here; tracked separately). Real Playwright-driven Chromium
+      screenshots (temporary dev dependency, `npm install --no-save playwright`,
+      removed afterward along with the driver script) of all 5 routes at 1440x900 and
+      390x844, visually reviewed: no overlapping text, no broken spacing, the FAQ
+      accordion, About's principle list, Changelog's timeline, and Roadmap's card grid
+      all collapse cleanly to a single column on mobile, consistent with the rest of the
+      site's responsive convention. Real Playwright-driven interaction checks (not just
+      static screenshots): the header's "Pro" nav link clicked and confirmed to scroll
+      `#pro` into view; every footer link (FAQ, About, Changelog, Roadmap) clicked and
+      confirmed to navigate to its real route via `page.waitForURL`; nav/footer hrefs
+      captured and confirmed to point at real internal routes rather than `#` stubs,
+      except the genuinely-unbuilt destinations (Sign In/Up, Download, Contact) which
+      stay honestly stubbed.
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).
