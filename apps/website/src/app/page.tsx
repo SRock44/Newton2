@@ -1,10 +1,22 @@
+"use client";
+
+import { useEffect } from "react";
 import styles from "./page.module.css";
+import Reveal from "@/components/Reveal";
+import HeroMockCard from "@/components/HeroMockCard";
+import DemoTranscript from "@/components/DemoTranscript";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
 // built (see ROADMAP.md's Phases 28-32 and services/api/app/tools/registry.py) — no
-// invented features, no "coming soon" sections. Phase 4 (sign-up/download) and Phase 5
-// (interactive demo) are separate, later phases; nav/CTA links that point at those
-// unbuilt destinations use "#" deliberately rather than a route that doesn't exist yet.
+// invented features, no "coming soon" sections. Phase 4 (sign-up/download) is a
+// separate, later phase; nav/CTA links that point at its unbuilt destination use "#"
+// deliberately rather than a route that doesn't exist yet.
+//
+// Phase 3.5 (this pass): a visual/motion overhaul — a wider but still cohesive color
+// story, real scroll-triggered and hover motion (all respecting prefers-reduced-motion),
+// and some real personality — plus Phase 5's "scripted" interactive demo (see
+// DemoTranscript.tsx), replaying REAL captured transcripts client-side. No new capability
+// claims, no live backend calls; see WEBSITE-ROADMAP.md.
 
 const NAV_LINKS = [
   { href: "#verified", label: "Features" },
@@ -204,7 +216,68 @@ const FOOTER_COLUMNS = [
   },
 ];
 
+/** A hand-drawn-style wavy underline, dropped beneath a key phrase. Purely decorative. */
+function Squiggle() {
+  return (
+    <svg className={styles.squiggle} viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden="true">
+      <path
+        d="M1 8 Q 12 1, 24 8 T 49 8 T 74 8 T 99 8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** A hand-drawn-style circle scribble, drawn around a key phrase. Purely decorative. */
+function CircleScribble() {
+  return (
+    <svg className={styles.circleAccent} viewBox="0 0 120 60" fill="none" aria-hidden="true">
+      <path
+        d="M10 30 C10 10, 40 3, 60 4 C90 5, 112 15, 110 32 C108 50, 78 57, 55 56 C25 55, 8 48, 10 30 Z"
+        stroke="currentColor"
+        strokeWidth="3"
+      />
+    </svg>
+  );
+}
+
+/** A small hand-drawn-style arrow, nudging toward the secondary CTA. Purely decorative. */
+function CornerArrow({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 46 34" fill="none" aria-hidden="true">
+      <path
+        d="M2 3 C 16 4, 32 8, 40 22"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M29 20 L40 22 L36 11"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 export default function Home() {
+  // A small, tasteful easter egg for anyone curious enough to open the console — not
+  // required by anything, doesn't affect the honest-claims surface of the page itself.
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log(
+      "%cVerified, not vibes.%c You found the source. Newton's apple is in the header — try hovering the wordmark.",
+      "font-family: serif; font-size: 14px; font-weight: 600; color: #2f4d8c;",
+      "font-family: sans-serif; font-size: 12px; color: inherit;"
+    );
+  }, []);
+
   return (
     <div className={styles.page}>
       <a className={styles.skipLink} href="#main">
@@ -213,9 +286,14 @@ export default function Home() {
 
       <header className={styles.header}>
         <div className={styles.headerInner}>
-          <a href="#" className={styles.wordmark}>
-            Newton
-          </a>
+          <span className={styles.wordmarkWrap}>
+            <a href="#" className={styles.wordmark}>
+              Newton
+            </a>
+            <span className={styles.wordmarkApple} aria-hidden="true">
+              🍎
+            </span>
+          </span>
 
           <nav className={styles.nav} aria-label="Primary">
             {NAV_LINKS.map((link) => (
@@ -240,80 +318,91 @@ export default function Home() {
         {/* ---------------------------------------------------------------- */}
         {/* Hero                                                             */}
         {/* ---------------------------------------------------------------- */}
-        <section className={styles.hero}>
-          <div className={styles.heroCopy}>
-            <p className={styles.eyebrow}>Verified, not vibes</p>
-            <h1 className={styles.title}>
-              An AI tutor that checks its work — with real computation.
-            </h1>
-            <p className={styles.subtitle}>
-              Newton is a native desktop study companion that solves problems with actual
-              tools — symbolic math, real chemistry, statistics, and your own code — instead
-              of an LLM guessing what sounds right. It remembers your whole semester, so
-              review time goes exactly where you&apos;re actually weak.
-            </p>
-            <div className={styles.heroActions}>
-              <a href="#" className={styles.btnPrimary}>
-                Download Newton
-              </a>
-              <a href="#verified" className={styles.btnSecondary}>
-                See how it works
-              </a>
+        <div className={styles.heroShell}>
+          <section className={styles.hero}>
+            <div className={styles.heroCopy}>
+              <p className={styles.eyebrow}>Verified, not vibes</p>
+              <h1 className={styles.title}>
+                An AI tutor that{" "}
+                <span className={styles.squiggleWrap}>
+                  checks its work
+                  <Squiggle />
+                </span>{" "}
+                — with real computation.
+              </h1>
+              <p className={styles.subtitle}>
+                Newton is a native desktop study companion that solves problems with actual
+                tools — symbolic math, real chemistry, statistics, and your own code — instead
+                of an LLM guessing what sounds right. It remembers your whole semester, so
+                review time goes exactly where you&apos;re actually weak.
+              </p>
+              <div className={styles.heroActions}>
+                <a href="#" className={styles.btnPrimary}>
+                  Download Newton
+                </a>
+                <a href="#verified" className={styles.btnSecondary}>
+                  See how it works
+                </a>
+                <CornerArrow className={styles.cornerArrow} />
+              </div>
+              <p className={styles.heroNote}>Windows, macOS, and Linux. Free to start.</p>
             </div>
-            <p className={styles.heroNote}>Windows, macOS, and Linux. Free to start.</p>
-          </div>
 
-          <div className={styles.heroVisual} aria-hidden="true">
-            <div className={styles.mockCard}>
-              <p className={styles.mockCardLabel}>NEWTON</p>
-              <p className={styles.mockCardPrompt}>Factor x² + 5x + 6</p>
-              <p className={styles.mockCardResult}>= (x + 2)(x + 3)</p>
-              <span className={styles.verifiedBadge}>
-                <svg viewBox="0 0 16 16" className={styles.verifiedIcon} focusable="false">
-                  <path
-                    fill="currentColor"
-                    d="M6.5 11.5 3 8l1.06-1.06L6.5 9.38l5.44-5.44L13 5l-6.5 6.5Z"
-                  />
-                </svg>
-                Verified — real symbolic computation
-              </span>
+            <div className={styles.heroVisual} aria-hidden="true">
+              <HeroMockCard />
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         {/* ---------------------------------------------------------------- */}
         {/* Verified, not vibes                                              */}
         {/* ---------------------------------------------------------------- */}
         <section id="verified" className={styles.section}>
-          <div className={styles.sectionHead}>
-            <p className={styles.eyebrow}>How it works</p>
-            <h2 className={styles.sectionTitle}>Verified, not vibes.</h2>
-            <p className={styles.sectionSubtitle}>
+          <Reveal className={styles.sectionHeadEditorial}>
+            <div>
+              <p className={styles.eyebrow}>How it works</p>
+              <h2 className={styles.sectionHeadEditorialTitle}>
+                <span className={styles.circleWrap}>
+                  Verified
+                  <CircleScribble />
+                </span>
+                , not vibes.
+              </h2>
+            </div>
+            <p className={`${styles.sectionSubtitle} ${styles.sectionHeadEditorialSubtitle}`}>
               Most AI tutors tell you an answer sounds right. Newton computes it — and
               tells you, plainly, when it did.
             </p>
-          </div>
+          </Reveal>
 
           <div className={styles.exampleGrid}>
-            {HOW_IT_WORKS.map((example) => (
-              <div key={example.eyebrow} className={styles.exampleCard}>
-                <p className={styles.exampleEyebrow}>{example.eyebrow}</p>
-                <p className={styles.examplePrompt}>{example.prompt}</p>
-                <div className={styles.exampleArrow} aria-hidden="true">
-                  &darr;
+            {HOW_IT_WORKS.map((example, i) => (
+              <Reveal
+                key={example.eyebrow}
+                delayMs={i * 90}
+                className={
+                  i === 0 ? styles.exampleSlotWide : i === 1 ? styles.exampleSlotNarrow : styles.exampleSlotFull
+                }
+              >
+                <div className={styles.exampleCard}>
+                  <p className={styles.exampleEyebrow}>{example.eyebrow}</p>
+                  <p className={styles.examplePrompt}>{example.prompt}</p>
+                  <div className={styles.exampleArrow} aria-hidden="true">
+                    &darr;
+                  </div>
+                  <p className={styles.exampleResult}>{example.result}</p>
+                  <p className={styles.exampleDetail}>{example.detail}</p>
+                  <span className={styles.verifiedBadge}>
+                    <svg viewBox="0 0 16 16" className={styles.verifiedIcon} focusable="false">
+                      <path
+                        fill="currentColor"
+                        d="M6.5 11.5 3 8l1.06-1.06L6.5 9.38l5.44-5.44L13 5l-6.5 6.5Z"
+                      />
+                    </svg>
+                    {example.badge}
+                  </span>
                 </div>
-                <p className={styles.exampleResult}>{example.result}</p>
-                <p className={styles.exampleDetail}>{example.detail}</p>
-                <span className={styles.verifiedBadge}>
-                  <svg viewBox="0 0 16 16" className={styles.verifiedIcon} focusable="false">
-                    <path
-                      fill="currentColor"
-                      d="M6.5 11.5 3 8l1.06-1.06L6.5 9.38l5.44-5.44L13 5l-6.5 6.5Z"
-                    />
-                  </svg>
-                  {example.badge}
-                </span>
-              </div>
+              </Reveal>
             ))}
           </div>
 
@@ -325,32 +414,54 @@ export default function Home() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
+        {/* Interactive demo (Phase 5, scripted half): real captured          */}
+        {/* transcripts, replayed client-side — no live backend call.        */}
+        {/* ---------------------------------------------------------------- */}
+        <section id="demo" className={`${styles.section} ${styles.sectionTextured}`}>
+          <Reveal className={styles.sectionHead}>
+            <p className={styles.eyebrow}>Real sessions, replayed</p>
+            <h2 className={styles.sectionTitle}>Watch Newton verify something, for real.</h2>
+            <p className={styles.sectionSubtitle}>
+              These are real transcripts captured from Newton&apos;s actual backend — the
+              same tool calls, the same verified flags, the same streamed reply text, just
+              replayed here instead of over a live connection.
+            </p>
+          </Reveal>
+
+          <Reveal>
+            <DemoTranscript />
+          </Reveal>
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
         {/* Feature grid                                                     */}
         {/* ---------------------------------------------------------------- */}
-        <section className={styles.section} aria-labelledby="features-heading">
-          <div className={styles.sectionHead}>
+        <section className={`${styles.section} ${styles.sectionWarm}`} aria-labelledby="features-heading">
+          <Reveal className={styles.sectionHead}>
             <p className={styles.eyebrow}>Everything, actually built</p>
             <h2 id="features-heading" className={styles.sectionTitle}>
               Real capability, organized honestly.
             </h2>
-          </div>
+          </Reveal>
 
           <div className={styles.featureGroups}>
-            {FEATURE_GROUPS.map((group) => (
-              <div key={group.name} className={styles.featureGroup}>
-                <div className={styles.featureGroupHead}>
-                  <h3 className={styles.featureGroupName}>{group.name}</h3>
-                  <p className={styles.featureGroupBlurb}>{group.blurb}</p>
+            {FEATURE_GROUPS.map((group, i) => (
+              <Reveal key={group.name} delayMs={Math.min(i, 3) * 70}>
+                <div className={styles.featureGroup}>
+                  <div className={styles.featureGroupHead}>
+                    <h3 className={styles.featureGroupName}>{group.name}</h3>
+                    <p className={styles.featureGroupBlurb}>{group.blurb}</p>
+                  </div>
+                  <div className={styles.featureItemGrid}>
+                    {group.items.map((item) => (
+                      <div key={item.title} className={styles.featureItem}>
+                        <h4 className={styles.featureItemTitle}>{item.title}</h4>
+                        <p className={styles.featureItemDescription}>{item.description}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className={styles.featureItemGrid}>
-                  {group.items.map((item) => (
-                    <div key={item.title} className={styles.featureItem}>
-                      <h4 className={styles.featureItemTitle}>{item.title}</h4>
-                      <p className={styles.featureItemDescription}>{item.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </section>
@@ -358,8 +469,8 @@ export default function Home() {
         {/* ---------------------------------------------------------------- */}
         {/* Notepad in class                                                 */}
         {/* ---------------------------------------------------------------- */}
-        <section className={styles.notepadSection} aria-labelledby="notepad-heading">
-          <div className={styles.notepadCopy}>
+        <section className={`${styles.notepadSection} ${styles.sectionTextured}`} aria-labelledby="notepad-heading">
+          <Reveal className={styles.notepadCopy}>
             <p className={styles.eyebrow}>The Notepad</p>
             <h2 id="notepad-heading" className={styles.sectionTitle}>
               Take live lecture notes. Never lose the thread.
@@ -378,10 +489,10 @@ export default function Home() {
               hysteresis&rdquo; actually finds it, three weeks later, the night before the
               exam.
             </p>
-          </div>
+          </Reveal>
 
-          <div className={styles.notepadVisual} aria-hidden="true">
-            <div className={styles.notepadCard}>
+          <Reveal className={styles.notepadVisual} delayMs={120}>
+            <div className={styles.notepadCard} aria-hidden="true">
               <p className={styles.notepadCardTitle}>Lecture 14 — Electromagnetism</p>
               <p className={styles.notepadCardBody}>
                 Hysteresis loops show how magnetization lags the applied field.{" "}
@@ -400,54 +511,58 @@ export default function Home() {
                 </p>
               </div>
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------------------------------------------------------------- */}
         {/* Built for every student                                         */}
         {/* ---------------------------------------------------------------- */}
         <section id="for-students" className={styles.section}>
-          <div className={styles.sectionHead}>
+          <Reveal className={styles.sectionHead}>
             <p className={styles.eyebrow}>For Students</p>
             <h2 className={styles.sectionTitle}>Built for every student.</h2>
             <p className={styles.sectionSubtitle}>
               Newton was reviewed major-by-major by skeptical-student critique passes
               before anything here was written. What it&apos;s actually good at, by major:
             </p>
-          </div>
+          </Reveal>
 
           <div className={styles.studentGrid}>
-            {STUDENT_CARDS.map((card) => (
-              <div key={card.major} className={styles.studentCard}>
-                <p className={styles.studentMajor}>{card.major}</p>
-                <h3 className={styles.studentHeadline}>{card.headline}</h3>
-                <p className={styles.studentDescription}>{card.description}</p>
-              </div>
+            {STUDENT_CARDS.map((card, i) => (
+              <Reveal key={card.major} delayMs={Math.min(i, 5) * 60}>
+                <div className={styles.studentCard}>
+                  <p className={styles.studentMajor}>{card.major}</p>
+                  <h3 className={styles.studentHeadline}>{card.headline}</h3>
+                  <p className={styles.studentDescription}>{card.description}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
 
-          <div className={styles.calloutStrip}>
+          <Reveal className={styles.calloutStrip}>
             <p>
               <strong>Starting from zero, or grinding for a test?</strong> Generate a full
               study plan, flashcards, and a practice exam from just a topic — SAT, GRE,
               MCAT, or anything else — no document required. The weak-areas engine takes it
               from there.
             </p>
-          </div>
+          </Reveal>
         </section>
 
         {/* ---------------------------------------------------------------- */}
         {/* Closing CTA                                                      */}
         {/* ---------------------------------------------------------------- */}
-        <section className={styles.closingSection}>
-          <h2 className={styles.closingTitle}>Study with something that checks its work.</h2>
-          <p className={styles.closingSubtitle}>
-            Free to start, on Windows, macOS, and Linux.
-          </p>
-          <a href="#" className={styles.btnPrimary}>
-            Download Newton
-          </a>
-        </section>
+        <div className={styles.closingShell}>
+          <Reveal className={styles.closingSection}>
+            <h2 className={styles.closingTitle}>Study with something that checks its work.</h2>
+            <p className={styles.closingSubtitle}>
+              Free to start, on Windows, macOS, and Linux.
+            </p>
+            <a href="#" className={styles.btnPrimary}>
+              Download Newton
+            </a>
+          </Reveal>
+        </div>
       </main>
 
       <footer className={styles.footer}>
