@@ -10,7 +10,7 @@ describe("SiteHeader", () => {
     expect(within(nav).getByRole("link", { name: "Pro" })).toHaveAttribute("href", "/#pro");
     expect(within(nav).getByRole("link", { name: "Features" })).toHaveAttribute(
       "href",
-      "/#verified"
+      "/#features"
     );
   });
 

@@ -329,6 +329,132 @@ not new design work; the product owner had already rejected four rounds of open-
   scrollHeight` at 1440x900) — a 41% reduction, consistent with the word/section cuts
   above.
 
+## Phase 3.9 — Pivot the hero demo from chat replay to a Supademo-style product walkthrough
+Product owner, verbatim: "instead of showing off CHAT, can we show off Artifact
+generation for educational purposes... make the LIVE DEMO ACTUALLY LOOK LIKE OUR APP...
+I'D RATHER HAVE IT BE LIKE A VIDEO (SUPADEMO STYLE) OF THE APP IN USE... show off THE
+ACTUAL USEFUL FEATURES OF THE APP (NEWTON NOTEPAD, ARTIFACT GENERATION, STUDY MODE
+(HAVE IT SHOW THE USER ANSWERING THE QUESTION WRONG, AND NEWTON GUIDING THE USER TO THE
+RIGHT ANSWER))... WE ARE THE FIRST EVER AGENTIC LEARNING ENVIRONMENT." This phase
+replaces the chat-transcript hero demo (`DemoTranscript.tsx`, deleted this pass, along
+with its supporting `lib/demoTranscript.ts`, `lib/renderReplyMarkdown.tsx`, and
+`data/demo-transcripts.json` — nothing else referenced them once it was gone) AND folds
+the separate "Verified, not vibes"/`GradedPaper` section and the separate Notepad
+section into one section: `src/components/AppWalkthrough.tsx`, a stepped, auto-advancing
+3-scene walkthrough (progress segments, pause-on-hover, manual prev/next and
+click-to-jump step controls) instead of a token-by-token chat replay.
+- [x] **Scene 1 — Study Mode.** Reuses `GradedPaper.tsx` exactly as it already existed
+      (not rebuilt) for the visual — the real `math-catches-mistake` scenario, unchanged.
+      Paired with the real guiding follow-up question pulled verbatim from that same
+      captured transcript's `chunk` frames: *"Try this: can you find a different pair of
+      numbers that multiply to 6 but add up to 5 instead of 7?"* — Newton's actual
+      captured reply, not paraphrased. `GradedPaper.tsx`'s own figcaption had it link to
+      `#demo` with "Watch the full exchange below" — that pointed at the now-deleted
+      chat-replay demo, so the dead link was removed as part of reusing the component
+      (the visual/marks themselves are untouched).
+- [x] **Scene 2 — Newton Notepad.** The same real "Lecture 14 — Electromagnetism"
+      highlight-to-explain card content the old standalone Notepad section used,
+      unchanged, now inside the walkthrough instead of its own section.
+- [x] **Scene 3 — real artifact generation, ending on a live, interactive artifact.**
+      The real interactive artifact built earlier this session by the real
+      `create_artifact` tool (`services/api/app/tools/create_artifact.py`, Muse Spark /
+      `artifact_generation_model`, a real Pro-gated backend call) — a draggable point on
+      a unit circle with live cos/sin/tan readouts — is moved from `src/data/` into
+      `public/demo/unit-circle-artifact.html` so Next.js serves it as a real static
+      asset; confirmed serving with a real HTTP request against a real `next start`
+      server (`GET /demo/unit-circle-artifact.html` → 200, 16,270 bytes, real HTML).
+      The scene shows the real prompt that generated it ("Build me an interactive
+      artifact that teaches the unit circle"), the real progress label
+      `create_artifact.py`'s own `on_progress` callback uses for `kind="interactive"`
+      ("Building your interactive demo" — reused verbatim from `_ARTIFACT_BUILDING_LABELS`,
+      not invented), then embeds the artifact live via
+      `<iframe sandbox="allow-scripts">` — no `allow-same-origin`, matching that tool's
+      own documented rendering posture (no storage access, no network) since the
+      artifact needs neither. This scene never auto-advances away — it's the walkthrough's
+      terminal/resting state.
+- [x] **Positioning.** One line, stated once, not argued for: the walkthrough's eyebrow
+      reads "The first Agentic Learning Environment", its subtitle "Built to teach you,
+      not do it for you." — Scene 1 (Newton declining to just hand over the answer) is
+      the actual proof; the copy doesn't re-explain it elsewhere on the page.
+- [x] **Section count actually went down, not up.** Hero → Demo/Verified/Notepad (3
+      sections) collapsed into Hero → Walkthrough (1 section) → Capabilities → Pro.
+      `document.querySelectorAll("main > section, main > div > section")` against the
+      rendered page: **6 → 4**. The header's "Features" nav link and the walkthrough's
+      own hero CTA both needed real anchor targets that still exist after the cut —
+      `#verified` (deleted) became `#features` (a real `id` added to the Capabilities
+      section, `src/lib/siteNav.ts` updated) and the hero's "See how it works" now
+      points at `#demo` (the walkthrough's own id) instead of the deleted section.
+- [x] **Real bug found and fixed in the process**: the site header is
+      `position: sticky`, and neither `#demo`, `#features`, nor `#pro` had a
+      `scroll-margin-top` — jumping to any of them (the hero CTA, a nav link, or a
+      Playwright `scrollIntoViewIfNeeded()` during this pass's own verification) landed
+      the section's heading partly underneath the sticky header. Fixed by adding
+      `scroll-margin-top: 96px` to the shared `.section` class in `page.module.css`
+      (covers all three anchors, since all three now share that class). Caught by
+      actually looking at a real screenshot, not just running `tsc`/tests.
+- [x] **Verification, all real.** `npx tsc --noEmit` clean; `npm run build` clean, all 6
+      routes prerendered; the artifact file's static-serving confirmed with a real
+      `curl` against a real running `next start` server (not assumed from the file copy
+      succeeding). Test suite rewritten rather than left with dead assertions for the
+      removed components/sections (`DemoTranscript.test.tsx` and
+      `lib/demoTranscript.test.ts` deleted along with the components/modules they
+      tested; `src/app/page.test.tsx` and `src/components/SiteChrome.test.tsx` updated
+      for the new structure/anchors; a new `src/components/AppWalkthrough.test.tsx`
+      added) — **57/57 tests passing across 7 files** (was 70/70 across 8 at the end of
+      Phase 3.8; the reduction is fewer components to test, not fewer assertions per
+      component). `AppWalkthrough.test.tsx` covers manual step/prev/next navigation,
+      and — using a mocked `IntersectionObserver` plus `vi.useFakeTimers()` — real
+      timer-driven auto-advance (scene 0 → 1 → 2 on its own real schedule), pause-on-hover
+      (advancing the fake clock 15s past a scene's real duration while "hovered" and
+      confirming it did NOT advance), resume-on-unhover, and that scene 2 does not loop
+      back to scene 0 even after 30 real seconds more. Real Playwright screenshots
+      (temp-installed with `npm install --no-save playwright`, fully removed afterward)
+      at 1440x900 and 390x844, of all 3 scenes, plus a `prefers-color-scheme: dark` pass.
+      Scene 3 specifically: the real embedded artifact was actually dragged two
+      different ways through Playwright's frame-locator APIs against the real running
+      iframe — the slider (`#slider` → `.fill("135")`) and the SVG point itself (real
+      `mouse.down()`/`mouse.move()`/`mouse.up()` pointer events on `#svg`) — with the
+      live `#roTheta`/`#roCos`/`#roSin`/`#roTan` readouts confirmed to actually change
+      both times (e.g. 30° → 135° via the slider: cos 0.866→-0.707, sin 0.500→0.707, tan
+      0.577→-1.000; then a further SVG drag to 315°: cos 0.707, sin -0.707, tan -1.000),
+      proving it's genuinely interactive rather than a static screenshot. The
+      auto-advance/pause/no-loop behavior above was also confirmed a second time against
+      a real browser with real (non-fake) timers, not just the fake-timer unit test.
+      Real word/section counts, same `document.querySelector("main").textContent`
+      convention as Phase 3.8's own measurement: **body copy 425 words → 283 words**
+      (this pass replaces three sections' copy with one tighter section, not adding a
+      fourth thing on top); crutch-word count (`real|actual|genuine|honest|verified`,
+      case-insensitive) in rendered/visible text, **11 → 3** (the 3 remaining: the hero's
+      "real tools" and the graded-paper stamp's "Verified"/"real symbolic computation" —
+      all pre-existing, not new instances added by this pass); desktop page height at
+      1440x900 (`document.body.scrollHeight`), **4,874px → 3,569px**.
+- **A real stale-server false alarm during this pass's own verification, worth recording
+  honestly**: an earlier `next start` process was still bound to port 4173 from before a
+  CSS fix (`pkill -f "next start"` didn't match it, and a later start attempt silently
+  no-op'd behind a failed log redirect), so several verification screenshots were
+  actually taken against a stale build with an incomplete CSS chunk — surfacing as a
+  real-looking but fake bug (giant unstyled SVG marks on the graded-paper visual at
+  mobile width). Found by fetching the served CSS chunk directly and diffing its
+  contents/hash against a fresh build, not by trusting the first screenshot. Re-verified
+  end to end (`tsc`, tests, build, a freshly-bound server, then Playwright) once the
+  actual current build was confirmed being served (`GET`'d CSS chunk contained
+  `GradedPaper`/`AppWalkthrough` rules; hash changed between builds as expected).
+- **Honest assessment on the screen-recording question**: this pass does not include a
+  literal Tauri screen recording. An earlier session this same night hit a real WebView2
+  rendering failure trying to launch the desktop app on this machine, and re-fighting
+  that wasn't attempted again here — out of scope, by design, for tonight. What's here
+  instead is real backend-generated data (an actually-captured transcript for Scene 1,
+  the actually-generated artifact for Scene 3) presented through a much higher-fidelity,
+  stepped, video-like UI than the old chat replay. It reads much closer to "the actual
+  app" now, especially Scene 3 where a visitor is dragging a real thing Newton actually
+  built rather than watching text stream into a recreated chat pane. A real Tauri
+  screen-recording (once WebView2 launches reliably on a real capture machine) would
+  still be worth a later pass, particularly for Scene 2 (Notepad) and Scene 1 (Focus
+  Mode's actual in-app chat surface, which this pass does not attempt to recreate at
+  all) — Scene 3 is the one place a literal recording would arguably add the least,
+  since the artifact embedded here already is the real, live, interactive thing itself,
+  not a recording of it.
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).
@@ -338,6 +464,12 @@ not new design work; the product owner had already rejected four rounds of open-
       Keycloak realm; real download links confirmed to resolve to real artifacts.
 
 ## Phase 5 — Interactive demo (hybrid: scripted default + real "Try it live")
+> **Superseded, this scripted-walkthrough item specifically**: Phase 3.9 deleted
+> `DemoTranscript.tsx`, `lib/demoTranscript.ts`, and `data/demo-transcripts.json`
+> entirely, replacing the chat-transcript replay described below with
+> `AppWalkthrough.tsx`'s 3-scene stepped tour (see Phase 3.9's own entry). Left
+> unedited below as an honest record of what that component actually did while it
+> existed, rather than rewritten as if it never happened.
 - [x] Scripted walkthrough: real captured transcripts from genuine sessions against the
       real backend (`apps/website/src/data/demo-transcripts.json` — 3 real scenarios,
       the actual WebSocket wire frames: `user_message_saved`, `tool_start`/`tool_end`

@@ -17,28 +17,27 @@ describe("Home", () => {
       expect(within(nav).getByRole("link", { name: "FAQ" })).toBeInTheDocument();
     });
 
-    it("links FAQ and Pro to real internal destinations, not stubs", () => {
+    it("links Features/FAQ/Pro to real internal destinations, not stubs", () => {
       render(<Home />);
       const nav = screen.getByRole("navigation", { name: /primary/i });
+      expect(within(nav).getByRole("link", { name: "Features" })).toHaveAttribute(
+        "href",
+        "/#features"
+      );
       expect(within(nav).getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "/faq");
       expect(within(nav).getByRole("link", { name: "Pro" })).toHaveAttribute("href", "/#pro");
     });
 
     it("renders Sign In and Sign Up entry points", () => {
       render(<Home />);
-      // Both appear at least once outside the (initially closed) mobile menu: once in
-      // the header, once in the footer's... actually the footer no longer repeats them
-      // (Phase 3.8 drops the redundant Account column) — just the header.
       expect(screen.getAllByRole("link", { name: "Sign In" }).length).toBeGreaterThan(0);
       expect(screen.getAllByRole("link", { name: "Sign Up" }).length).toBeGreaterThan(0);
     });
 
-    it("has a working mobile menu that reveals Features/Pro/FAQ/Sign In (Phase 3.8 fix: previously unreachable below 720px)", () => {
+    it("has a working mobile menu that reveals Features/Pro/FAQ/Sign In", () => {
       render(<Home />);
       const toggle = screen.getByRole("button", { name: /open menu/i });
       expect(toggle).toHaveAttribute("aria-expanded", "false");
-
-      // Before opening, the mobile-only nav panel isn't rendered at all.
       expect(screen.queryByRole("navigation", { name: /mobile/i })).not.toBeInTheDocument();
 
       fireEvent.click(toggle);
@@ -81,63 +80,63 @@ describe("Home", () => {
       }
     });
 
-    it("mentions the free-to-start note (the old separate closing CTA section was cut — this line is now the only place it lives)", () => {
+    it("mentions the free-to-start note", () => {
       render(<Home />);
       expect(screen.getByText(/free to start/i)).toBeInTheDocument();
     });
+
+    it("links the secondary CTA to the walkthrough, not the old removed anchor", () => {
+      render(<Home />);
+      expect(screen.getByRole("link", { name: /see how it works/i })).toHaveAttribute(
+        "href",
+        "#demo"
+      );
+    });
   });
 
-  describe("the real app demo (product owner: demo must be on the landing page, not scrolled to)", () => {
+  describe("the app walkthrough (Phase 3.9: replaces the chat-transcript demo, the Verified/GradedPaper section, and the Notepad section)", () => {
     it("renders immediately after the hero, before every other section", () => {
       render(<Home />);
-      const headings = screen.getAllByRole("heading", { level: 1 }).concat(
-        screen.getAllByRole("heading", { level: 2 })
-      );
+      const headings = screen
+        .getAllByRole("heading", { level: 1 })
+        .concat(screen.getAllByRole("heading", { level: 2 }));
       const headingTexts = headings.map((h) => h.textContent ?? "");
       const heroIndex = headingTexts.findIndex((t) => /checks its work/i.test(t));
       const demoIndex = headingTexts.findIndex((t) => /this is the app/i.test(t));
-      const verifiedIndex = headingTexts.findIndex((t) => /not vibes/i.test(t));
       const featuresIndex = headingTexts.findIndex((t) => /what it does/i.test(t));
       expect(heroIndex).toBeGreaterThanOrEqual(0);
       expect(demoIndex).toBeGreaterThan(heroIndex);
-      // The demo comes immediately after the hero — before the graded-paper section and
-      // every later section — not scrolled-to further down the page.
-      expect(demoIndex).toBeLessThan(verifiedIndex);
       expect(demoIndex).toBeLessThan(featuresIndex);
     });
 
-    it("renders the real desktop app's window chrome: title bar, sidebar, and a real uploaded document", () => {
+    it("states the Agentic Learning Environment positioning once, plainly", () => {
       render(<Home />);
-      expect(screen.getAllByText("Newton").length).toBeGreaterThanOrEqual(3); // header, demo titlebar, demo sidebar
       expect(
-        screen.getByRole("button", { name: /physics 201 - lecture 14\.txt/i })
+        screen.getByText(/the first agentic learning environment/i)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/built to teach you, not do it for you/i)
       ).toBeInTheDocument();
     });
-  });
 
-  describe("verified, not vibes section (the graded-paper visual)", () => {
-    it("shows the real math-catches-mistake worked example as a marked-up page, not a generic card", () => {
+    it("shows the real graded-paper worked example as the first scene by default", () => {
       render(<Home />);
       expect(screen.getByText("Factor x² + 5x + 6")).toBeInTheDocument();
       expect(screen.getByText("(x + 1)(x + 6)")).toBeInTheDocument();
       expect(screen.getByText("(x + 2)(x + 3)")).toBeInTheDocument();
-      expect(screen.getByText(/1 \+ 6 = 7, not 5/i)).toBeInTheDocument();
     });
 
-    it("marks the correction with a real Verified stamp", () => {
+    it("lets a visitor jump straight to the artifact scene via the step controls", () => {
       render(<Home />);
-      // "Verified" also appears in the "Verified, not vibes" heading itself, so this
-      // checks the stamp's own second line (unique to it) alongside at least one
-      // "Verified" text on the page.
-      expect(screen.getByText("real symbolic computation")).toBeInTheDocument();
-      expect(screen.getAllByText("Verified").length).toBeGreaterThan(0);
-    });
+      fireEvent.click(screen.getByRole("tab", { name: /step 3: artifact generation/i }));
 
-    it("keeps chemistry/code/citations as one short line, not a repeated card pattern (Phase 3.8 cut the old 'also verified' strip + footnote)", () => {
-      render(<Home />);
       expect(
-        screen.getByText(/the same standard applies to chemistry, your code, and citations/i)
+        screen.getByText(/build me an interactive artifact that teaches the unit circle/i)
       ).toBeInTheDocument();
+      expect(screen.getByText("Building your interactive demo")).toBeInTheDocument();
+      const frame = screen.getByTitle(/live artifact: the unit circle/i);
+      expect(frame).toHaveAttribute("src", "/demo/unit-circle-artifact.html");
+      expect(frame).toHaveAttribute("sandbox", "allow-scripts");
     });
   });
 
@@ -158,27 +157,10 @@ describe("Home", () => {
       expect(screen.getByText(/focus mode holds back the answer until you ask/i)).toBeInTheDocument();
       expect(screen.getByText(/not politely requested of the model/i)).toBeInTheDocument();
     });
-  });
 
-  describe("the Notepad-in-class section", () => {
-    it("renders the shortened heading + one-sentence description", () => {
+    it("has a real #features anchor for the nav link to land on", () => {
       render(<Home />);
-      expect(
-        screen.getByRole("heading", { name: /notes that don't stop when you get confused/i })
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/highlight anything in your notes and ask newton to explain/i)
-      ).toBeInTheDocument();
-    });
-
-    it("renders a mock note card showing highlight-to-explain in context", () => {
-      render(<Home />);
-      // "Lecture 14" alone also matches the real app demo's document filename
-      // ("Physics 201 - Lecture 14.txt") elsewhere on the page — match the notepad
-      // card's own title text specifically.
-      expect(screen.getByText(/lecture 14 — electromagnetism/i)).toBeInTheDocument();
-      expect(screen.getByText(/the coercive field is path-dependent/i)).toBeInTheDocument();
-      expect(screen.getByText("Explain this")).toBeInTheDocument();
+      expect(document.getElementById("features")).not.toBeNull();
     });
   });
 
@@ -222,11 +204,10 @@ describe("Home", () => {
       expect(screen.getByText("Full research paper writing")).toBeInTheDocument();
       expect(screen.getByText("Deep Research")).toBeInTheDocument();
       expect(screen.getByText(/access to frontier ai models/i)).toBeInTheDocument();
-      // No dollar figure anywhere in the section — the real Pro price isn't known to this codebase.
       expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
     });
 
-    it("does not apologize/over-explain the missing price (Phase 3.8 cut that footnote)", () => {
+    it("does not apologize/over-explain the missing price", () => {
       render(<Home />);
       expect(screen.queryByText(/no price shown here on purpose/i)).not.toBeInTheDocument();
     });
@@ -254,8 +235,8 @@ describe("Home", () => {
     });
   });
 
-  describe("cut sections (Phase 3.8)", () => {
-    it("no longer renders the 'For Students' section (pure duplication of the capability list)", () => {
+  describe("cut sections", () => {
+    it("no longer renders the 'For Students' section (Phase 3.8, pure duplication of the capability list)", () => {
       render(<Home />);
       expect(screen.queryByText(/built for every student/i)).not.toBeInTheDocument();
       expect(screen.queryByText("World Languages")).not.toBeInTheDocument();
@@ -267,21 +248,30 @@ describe("Home", () => {
         screen.queryByText(/study with something that checks its work/i)
       ).not.toBeInTheDocument();
     });
+
+    it("no longer renders the old chat-transcript app-chrome demo (Phase 3.9)", () => {
+      render(<Home />);
+      expect(screen.queryByText(/a recreation of newton's desktop window/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/real sessions, replayed/i)).not.toBeInTheDocument();
+    });
+
+    it("no longer renders the Verified/GradedPaper and Notepad sections as their own separate sections (Phase 3.9: folded into the walkthrough)", () => {
+      render(<Home />);
+      expect(
+        screen.queryByRole("heading", { name: /notes that don't stop when you get confused/i })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/other ai tutors guess\. newton grades\./i)).not.toBeInTheDocument();
+    });
   });
 
-  describe("copy voice (Phase 3.8 rewrite)", () => {
-    it("uses the new, shorter hero subhead", () => {
+  describe("copy voice", () => {
+    it("uses the shorter hero subhead", () => {
       render(<Home />);
       expect(
         screen.getByText(
           /newton solves problems with real tools — symbolic math, chemistry, statistics, your own code — instead of an llm guessing\. it remembers your whole semester\./i
         )
       ).toBeInTheDocument();
-    });
-
-    it("uses the new 'Other AI tutors guess. Newton grades.' line", () => {
-      render(<Home />);
-      expect(screen.getByText(/other ai tutors guess\. newton grades\./i)).toBeInTheDocument();
     });
   });
 });

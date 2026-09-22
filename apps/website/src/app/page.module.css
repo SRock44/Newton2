@@ -60,21 +60,6 @@
   pointer-events: none;
 }
 
-.circleWrap {
-  position: relative;
-  display: inline-block;
-}
-
-.circleAccent {
-  position: absolute;
-  left: -8%;
-  top: -18%;
-  width: 116%;
-  height: 140%;
-  color: var(--color-accent-3);
-  pointer-events: none;
-}
-
 .skipLink {
   position: absolute;
   left: -9999px;
@@ -418,41 +403,6 @@
 
 /* ---------- The real app demo, immediately below the hero copy ---------- */
 
-.heroDemo {
-  position: relative;
-  max-width: 1160px;
-  margin: 0 auto;
-  padding: 12px 32px 96px;
-}
-
-.heroDemoHead {
-  max-width: 640px;
-  margin: 0 auto 32px;
-  text-align: center;
-}
-
-.heroDemoTitle {
-  font-size: var(--font-size-2xl);
-  color: var(--color-text);
-  letter-spacing: -0.01em;
-  margin: 0 0 14px;
-}
-
-.heroDemoSubtitle {
-  font-size: var(--font-size-md);
-  color: var(--color-text-muted);
-  line-height: 1.6;
-}
-
-.heroDemoSubtitle code {
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  font-size: 0.85em;
-  background-color: var(--color-surface-2);
-  border: 1px solid var(--color-border-2);
-  border-radius: 4px;
-  padding: 1px 6px;
-}
-
 /* ---------------------------------------------------------------------
  * Generic section shell
  * ------------------------------------------------------------------- */
@@ -462,36 +412,17 @@
   margin: 0 auto;
   padding: 84px 32px;
   border-top: 1px solid var(--color-border-2);
+  /* The header is position: sticky (see .header above) — without this, jumping to an
+     in-page anchor (the hero's "See how it works" -> #demo, or the nav's #features/
+     #pro) lands the section's own heading partly underneath it. ~74px measured header
+     height (mobile: ~70px) plus a small buffer. */
+  scroll-margin-top: 96px;
 }
 
 .sectionHead {
   max-width: 680px;
   margin: 0 auto 56px;
   text-align: center;
-}
-
-/* An editorial, asymmetric variant of the section head — left-aligned, a bigger and
- * more confident serif moment, paired with an offset intro paragraph instead of the
- * centered eyebrow/title/subtitle stack every other section uses. Used once
- * ("Verified, not vibes") so it reads as a deliberate editorial beat, not the default. */
-.sectionHeadEditorial {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-  gap: 40px;
-  align-items: end;
-  max-width: none;
-  margin: 0 0 56px;
-  text-align: left;
-}
-
-.sectionHeadEditorialTitle {
-  font-size: 44px;
-  line-height: 1.08;
-  letter-spacing: -0.015em;
-}
-
-.sectionHeadEditorialSubtitle {
-  padding-bottom: 4px;
 }
 
 .sectionTitle {
@@ -503,15 +434,6 @@
 
 .sectionSubtitle {
   font-size: var(--font-size-md);
-  color: var(--color-text-muted);
-  line-height: 1.6;
-}
-
-.sectionFootnote {
-  max-width: 680px;
-  margin: 48px auto 0;
-  text-align: center;
-  font-size: var(--font-size-base);
   color: var(--color-text-muted);
   line-height: 1.6;
 }
@@ -541,100 +463,6 @@
 
 .capabilityList > .capabilityItem:first-child {
   border-top: none;
-}
-
-/* ---------------------------------------------------------------------
- * Notepad section
- * ------------------------------------------------------------------- */
-
-.notepadSection {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 56px;
-  align-items: center;
-  max-width: 1160px;
-  margin: 0 auto;
-  padding: 84px 32px;
-  border-top: 1px solid var(--color-border-2);
-}
-
-.notepadCopy {
-  display: flex;
-  flex-direction: column;
-}
-
-.notepadParagraph {
-  font-size: var(--font-size-base);
-  color: var(--color-text-muted);
-  line-height: 1.65;
-  margin: 0 0 18px;
-}
-
-.notepadVisual {
-  display: flex;
-  justify-content: center;
-}
-
-.notepadCard {
-  width: 100%;
-  max-width: 420px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: 26px 26px 22px;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.notepadCard:hover {
-  transform: rotate(-0.6deg) translateY(-3px);
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--color-accent-tint);
-}
-
-.notepadCardTitle {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text);
-  margin: 0 0 14px;
-}
-
-.notepadCardBody {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  line-height: 1.7;
-  margin: 0 0 18px;
-}
-
-.notepadHighlight {
-  background-color: var(--color-accent-tint-strong);
-  color: var(--color-text);
-  border-radius: 3px;
-  padding: 0 3px;
-  box-decoration-break: clone;
-}
-
-.notepadPopover {
-  background-color: var(--color-accent-tint);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-}
-
-.notepadPopoverLabel {
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-accent);
-  margin: 0 0 6px;
-}
-
-.notepadPopoverBody {
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-  line-height: 1.6;
-  margin: 0;
 }
 
 /* ---------------------------------------------------------------------
@@ -846,28 +674,6 @@
   .hero {
     padding: 56px 28px 40px;
   }
-
-  .heroDemo {
-    padding: 8px 20px 72px;
-  }
-
-  .sectionHeadEditorial {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .sectionHeadEditorialTitle {
-    font-size: 36px;
-  }
-
-  .notepadSection {
-    grid-template-columns: 1fr;
-    padding: 64px 28px;
-  }
-
-  .notepadVisual {
-    order: -1;
-  }
 }
 
 @media (max-width: 720px) {
@@ -927,10 +733,6 @@
     font-size: var(--font-size-base);
   }
 
-  .heroDemoTitle {
-    font-size: var(--font-size-xl);
-  }
-
   .section {
     padding: 56px 20px;
   }
@@ -941,14 +743,6 @@
 
   .sectionHead {
     margin-bottom: 40px;
-  }
-
-  .sectionHeadEditorialTitle {
-    font-size: 30px;
-  }
-
-  .notepadSection {
-    padding: 56px 20px;
   }
 
   .footerInner {

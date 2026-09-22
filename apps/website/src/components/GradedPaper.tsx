@@ -1,14 +1,13 @@
 import styles from "./GradedPaper.module.css";
 
-// The "Verified, not vibes" section's single dominant visual (product owner, three
-// rejections in: "entire section is terrible and needs to be re-done"). Replaces the
-// old three-cards-plus-wide-card layout entirely with one concrete idea: a real piece
-// of graded student work. The content is the real "math-catches-mistake" scenario (see
-// src/data/demo-transcripts.json) — the student really wrote (x + 1)(x + 6), Newton's
-// real captured reply really points out the middle term is wrong (1 + 6 = 7, not 5),
-// and the real computed correction really is (x + 2)(x + 3). Nothing here is invented
-// copy; it's the same transcript the interactive demo replays, laid out as a marked-up
-// page instead of a chat log.
+// The Study Mode scene's single dominant visual (product owner, three rejections in on
+// an earlier "Verified, not vibes" card-grid version: "entire section is terrible and
+// needs to be re-done"). One concrete idea instead: a piece of graded student work. The
+// content is the real "math-catches-mistake" scenario captured from Newton's backend —
+// the student wrote (x + 1)(x + 6), Newton's reply points out the middle term is wrong
+// (1 + 6 = 7, not 5), and the computed correction is (x + 2)(x + 3). Nothing here is
+// invented copy. Reused as-is (not rebuilt) by src/components/AppWalkthrough.tsx's
+// first scene.
 export default function GradedPaper() {
   return (
     <figure className={styles.paper}>
@@ -78,8 +77,7 @@ export default function GradedPaper() {
       </div>
 
       <figcaption className={styles.caption}>
-        A reply from Newton&apos;s backend, laid out as a marked-up page.{" "}
-        <a href="#demo">Watch the full exchange below.</a>
+        A reply from Newton&apos;s backend, laid out as a marked-up page.
       </figcaption>
     </figure>
   );

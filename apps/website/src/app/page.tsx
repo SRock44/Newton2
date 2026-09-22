@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
-import DemoTranscript from "@/components/DemoTranscript";
-import GradedPaper from "@/components/GradedPaper";
+import AppWalkthrough from "@/components/AppWalkthrough";
 import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
@@ -14,18 +13,25 @@ import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
 // separate, later phase; nav/CTA links that point at its unbuilt destination use "#"
 // deliberately rather than a route that doesn't exist yet.
 //
-// Phase 3.8 (this pass): a subtraction + rewrite pass, executing a literal work order
-// distilled from three independent critique audits (a visual-density audit, a
-// copywriting-voice audit, and a skeptical-first-time-visitor test) that converged on
-// the same findings — the page was too long, too repetitive, and leaned on
+// Phase 3.8: a subtraction + rewrite pass, executing a literal work order distilled
+// from three independent critique audits (a visual-density audit, a copywriting-voice
+// audit, and a skeptical-first-time-visitor test) that converged on the same findings —
+// the page was too long, too repetitive, and leaned on
 // "real/actual/genuine/honest/verified" as a crutch word instead of letting the demo
-// and the graded-paper visual carry the claims. This pass cuts the "For Students"
-// section (pure duplication of the feature list), collapses the 13-card feature grid
-// into a tight single-line capability list, shortens the Notepad/Pro sections, removes
-// the redundant closing CTA, dedupes the footer against the header nav, fixes a real
-// mobile-nav bug (no way to reach Features/Pro/FAQ below 720px), and rewrites the
+// and the graded-paper visual carry the claims. This pass cut the "For Students"
+// section (pure duplication of the feature list), collapsed the 13-card feature grid
+// into a tight single-line capability list, shortened the Notepad/Pro sections, removed
+// the redundant closing CTA, deduped the footer against the header nav, fixed a real
+// mobile-nav bug (no way to reach Features/Pro/FAQ below 720px), and rewrote the
 // worst instances of the repeated "[Claim]. Not/Never [alternative]." copy skeleton.
-// See WEBSITE-ROADMAP.md's "Phase 3.8" entry for the real before/after numbers.
+//
+// Phase 3.9 (this pass): the chat-transcript hero demo, the separate "Verified, not
+// vibes"/GradedPaper section, and the separate Notepad section are replaced by one
+// Supademo/Arcade-style stepped walkthrough (src/components/AppWalkthrough.tsx) —
+// product owner, verbatim: "show off THE ACTUAL USEFUL FEATURES... WE ARE THE FIRST
+// EVER AGENTIC LEARNING ENVIRONMENT." Three sections become one; see
+// WEBSITE-ROADMAP.md's "Phase 3.9" entry for what changed and the real before/after
+// numbers.
 
 /** A hand-drawn-style wavy underline, dropped beneath a key phrase. Purely decorative. */
 function Squiggle() {
@@ -37,19 +43,6 @@ function Squiggle() {
         stroke="currentColor"
         strokeWidth="3"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-/** A hand-drawn-style circle scribble, drawn around a key phrase. Purely decorative. */
-function CircleScribble() {
-  return (
-    <svg className={styles.circleAccent} viewBox="0 0 120 60" fill="none" aria-hidden="true">
-      <path
-        d="M10 30 C10 10, 40 3, 60 4 C90 5, 112 15, 110 32 C108 50, 78 57, 55 56 C25 55, 8 48, 10 30 Z"
-        stroke="currentColor"
-        strokeWidth="3"
       />
     </svg>
   );
@@ -218,13 +211,10 @@ export default function Home() {
 
       <main id="main">
         {/* ---------------------------------------------------------------- */}
-        {/* Hero + the real app demo, both above the fold. Product owner,    */}
-        {/* verbatim: "The demo should be on the LANDING page once once you  */}
-        {/* go to the website." A single centered copy block (not the old   */}
-        {/* two-column hero-plus-mock-card) so the real DemoTranscript app-  */}
-        {/* chrome recreation can sit directly beneath it, full width,      */}
-        {/* inside the same hero shell/background — no scroll required to   */}
-        {/* reach it, no separate section seam.                             */}
+        {/* Hero. Product owner, verbatim: "The demo should be on the        */}
+        {/* LANDING page once once you go to the website." AppWalkthrough    */}
+        {/* (the app-in-use walkthrough) is the very next section, no other  */}
+        {/* section between it and the hero.                                */}
         {/* ---------------------------------------------------------------- */}
         <div className={styles.heroShell}>
           <section className={styles.hero}>
@@ -246,72 +236,28 @@ export default function Home() {
               <a href="#" className={styles.btnPrimary}>
                 Download Newton
               </a>
-              <a href="#verified" className={styles.btnSecondary}>
+              <a href="#demo" className={styles.btnSecondary}>
                 See how it works
               </a>
               <CornerArrow className={styles.cornerArrow} />
             </div>
             <p className={styles.heroNote}>Windows, macOS, and Linux. Free to start.</p>
           </section>
-
-          <section id="demo" className={styles.heroDemo} aria-labelledby="demo-heading">
-            <Reveal className={styles.heroDemoHead}>
-              <p className={styles.eyebrow}>Real sessions, replayed</p>
-              <h2 id="demo-heading" className={styles.heroDemoTitle}>
-                This is the app.
-              </h2>
-              <p className={styles.heroDemoSubtitle}>
-                A recreation of Newton&apos;s desktop window — sidebar, documents, and
-                all — replaying transcripts captured from Newton&apos;s backend. Below: a
-                document uploaded during that session (
-                <code>Physics 201 - Lecture 14.txt</code>), and a question only that
-                document could answer.
-              </p>
-            </Reveal>
-
-            <Reveal>
-              <DemoTranscript />
-            </Reveal>
-          </section>
         </div>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Verified, not vibes: the graded-paper visual carries this        */}
-        {/* section alone — Phase 3.8 cuts the "also verified" card strip    */}
-        {/* and the closing footnote paragraph that used to restate in      */}
-        {/* prose what the visual already shows.                            */}
+        {/* The app walkthrough — replaces the old chat-transcript demo, the */}
+        {/* "Verified, not vibes"/GradedPaper section, and the Notepad       */}
+        {/* section with one Supademo-style stepped tour. See               */}
+        {/* AppWalkthrough.tsx's own header comment.                        */}
         {/* ---------------------------------------------------------------- */}
-        <section id="verified" className={styles.section}>
-          <Reveal className={styles.sectionHeadEditorial}>
-            <div>
-              <p className={styles.eyebrow}>How it works</p>
-              <h2 className={styles.sectionHeadEditorialTitle}>
-                <span className={styles.circleWrap}>
-                  Verified
-                  <CircleScribble />
-                </span>
-                , not vibes.
-              </h2>
-            </div>
-            <p className={`${styles.sectionSubtitle} ${styles.sectionHeadEditorialSubtitle}`}>
-              Other AI tutors guess. Newton grades.
-            </p>
-          </Reveal>
-
-          <Reveal>
-            <GradedPaper />
-          </Reveal>
-
-          <p className={styles.sectionFootnote}>
-            The same standard applies to chemistry, your code, and citations.
-          </p>
-        </section>
+        <AppWalkthrough />
 
         {/* ---------------------------------------------------------------- */}
         {/* Capability list — a tight, single-line-per-item list replacing   */}
         {/* the old 13-card / 5-subgroup feature grid.                      */}
         {/* ---------------------------------------------------------------- */}
-        <section className={`${styles.section} ${styles.sectionWarm}`} aria-labelledby="features-heading">
+        <section id="features" className={`${styles.section} ${styles.sectionWarm}`} aria-labelledby="features-heading">
           <Reveal className={styles.sectionHead}>
             <p className={styles.eyebrow}>Capabilities</p>
             <h2 id="features-heading" className={styles.sectionTitle}>
@@ -327,44 +273,6 @@ export default function Home() {
                 </li>
               ))}
             </ul>
-          </Reveal>
-        </section>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Notepad in class                                                 */}
-        {/* ---------------------------------------------------------------- */}
-        <section className={`${styles.notepadSection} ${styles.sectionTextured}`} aria-labelledby="notepad-heading">
-          <Reveal className={styles.notepadCopy}>
-            <p className={styles.eyebrow}>The Notepad</p>
-            <h2 id="notepad-heading" className={styles.sectionTitle}>
-              Notes that don&apos;t stop when you get confused.
-            </h2>
-            <p className={styles.notepadParagraph}>
-              Highlight anything in your notes and ask Newton to explain — the answer
-              appears inline, grounded in your own material.
-            </p>
-          </Reveal>
-
-          <Reveal className={styles.notepadVisual} delayMs={120}>
-            <div className={styles.notepadCard} aria-hidden="true">
-              <p className={styles.notepadCardTitle}>Lecture 14 — Electromagnetism</p>
-              <p className={styles.notepadCardBody}>
-                Hysteresis loops show how magnetization lags the applied field.{" "}
-                <span className={styles.notepadHighlight}>
-                  the coercive field is path-dependent
-                </span>{" "}
-                &mdash; depends on the material&apos;s prior magnetic history, not just its
-                current state.
-              </p>
-              <div className={styles.notepadPopover}>
-                <p className={styles.notepadPopoverLabel}>Explain this</p>
-                <p className={styles.notepadPopoverBody}>
-                  Path-dependent means the field needed to bring magnetization back to zero
-                  depends on how the material got there, not only where &ldquo;there&rdquo;
-                  is &mdash; that&apos;s exactly what a hysteresis loop is plotting.
-                </p>
-              </div>
-            </div>
           </Reveal>
         </section>
 

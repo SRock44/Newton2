@@ -11,8 +11,8 @@ import styles from "./SiteChrome.module.css";
  * link data via src/lib/siteNav.ts), just factored out so four new routes don't each
  * duplicate ~120 lines of near-identical header/footer JSX. The landing page itself
  * (page.tsx) keeps its own inline header/footer untouched — this component is
- * deliberately NOT swapped in there, to avoid touching page.tsx's hero/demo/"Verified,
- * not vibes" region, which another pass owns.
+ * deliberately NOT swapped in there, to avoid touching page.tsx's hero/walkthrough
+ * region, which another pass owns.
  */
 export function SiteHeader() {
   return (
