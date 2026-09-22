@@ -39,7 +39,7 @@ const ARTIFACT_DOCUMENT_ID = "c981228f-c878-454a-a4b9-ed5f59092e8a";
 const ARTIFACT_URL_SUFFIX = `/documents/${ARTIFACT_DOCUMENT_ID}/raw`;
 
 const originalFetch = window.fetch.bind(window);
-window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+window.fetch = async (input: RequestInfo | URL) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 
   if (url.startsWith(API_URL) && url.includes(ARTIFACT_URL_SUFFIX)) {
