@@ -452,10 +452,15 @@ async def test_generate_study_plan_from_bare_topic_produces_a_real_multi_item_cu
     assert all(i.source == "topic_generated" for i in items)
     # Proves the curriculum-construction prompt was actually sent, not the old
     # syllabus-extraction prompt reused verbatim with the topic string stuffed in.
+    # A blanket "syllabus" substring ban is too blunt: STUDY_PLAN_TOPIC_PROMPT
+    # legitimately says "there is no syllabus... to work from" as honest framing.
+    # What actually distinguishes the extraction prompt is its own specific
+    # phrasing, not the mere word "syllabus".
     prompt = fake.calls_seen[0]["messages"][0].content
     assert "linear algebra" in prompt
     assert "curriculum" in prompt.lower()
-    assert "syllabus" not in prompt.lower()
+    assert "gradable" not in prompt.lower()
+    assert "extractable schedule" not in prompt.lower()
     assert len(fake.calls_seen) == 1
 
 
