@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import DemoTranscript from "./DemoTranscript";
@@ -31,13 +31,52 @@ describe("DemoTranscript", () => {
     delete window.matchMedia;
   });
 
-  it("renders a tab for each real scenario and starts idle (no autoplay without a real IntersectionObserver)", () => {
+  it("renders a real app-chrome recreation: title bar, a Documents section with the real uploaded file, and a chat tab per real scenario", () => {
     mockReducedMotion(false);
     render(<DemoTranscript />);
+
+    // Window chrome: a title bar carrying the real wordmark, standing in for the
+    // desktop app's actual TitleBar.tsx (appears twice: the title bar and the
+    // recreated sidebar's own brand mark, same as the real app).
+    expect(screen.getAllByText("Newton").length).toBeGreaterThanOrEqual(2);
+
+    // Sidebar Documents section: the one real file uploaded during capture (see
+    // demo-transcripts.json's document-reference scenario).
+    expect(
+      screen.getByRole("button", { name: /physics 201 - lecture 14\.txt/i })
+    ).toBeInTheDocument();
+
+    // The session list doubles as the scenario switcher — one tab per real scenario.
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(4);
     expect(tabs.map((t) => t.textContent)).toEqual(scenarios.map((s) => s.label));
-    expect(screen.getByText(/scroll down, or pick a scenario/i)).toBeInTheDocument();
+    expect(screen.getByText(/scroll down, or pick a chat/i)).toBeInTheDocument();
+  });
+
+  it("leads with the real document-grounded scenario by default (product owner's explicit ask: real document + real grounding, not just computation)", () => {
+    mockReducedMotion(true);
+    render(<DemoTranscript />);
+
+    const documentTab = screen.getAllByRole("tab")[0];
+    expect(scenarios[0].id).toBe("document-reference");
+    expect(documentTab.textContent).toBe(scenarios[0].label);
+    expect(documentTab).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("switching to the document scenario shows the real attached-document chip and the real cited reply", async () => {
+    mockReducedMotion(true);
+    const user = userEvent.setup();
+    render(<DemoTranscript />);
+
+    const documentTab = screen.getByRole("tab", { name: "Cites your own uploaded notes" });
+    await act(async () => {
+      await user.click(documentTab);
+    });
+
+    expect(documentTab).toHaveAttribute("aria-selected", "true");
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getAllByText(/physics 201 - lecture 14\.txt/i).length).toBeGreaterThan(0);
+    expect(within(panel).getByText(/your lecture notes flag this exact point/i)).toBeInTheDocument();
   });
 
   it("switching scenarios plays the newly selected one's real transcript (reduced motion: jumps to its final state)", async () => {
@@ -70,6 +109,27 @@ describe("DemoTranscript", () => {
     expect(screen.queryByText(/everything balances/i)).not.toBeInTheDocument();
   });
 
+  it("clicking the sidebar's Documents entry jumps straight to the document-grounded scenario", async () => {
+    mockReducedMotion(true);
+    const user = userEvent.setup();
+    render(<DemoTranscript />);
+
+    const chemistryTab = screen.getByRole("tab", { name: "Balances a real equation" });
+    await act(async () => {
+      await user.click(chemistryTab);
+    });
+    expect(screen.getByText(/everything balances/i)).toBeInTheDocument();
+
+    const docButton = screen.getByRole("button", { name: /physics 201 - lecture 14\.txt/i });
+    await act(async () => {
+      await user.click(docButton);
+    });
+
+    const documentTab = screen.getByRole("tab", { name: "Cites your own uploaded notes" });
+    expect(documentTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText(/everything balances/i)).not.toBeInTheDocument();
+  });
+
   it("renders a Verified badge only for tool calls whose real verified flag is true, for every scenario", async () => {
     mockReducedMotion(true);
     const user = userEvent.setup();
@@ -86,11 +146,11 @@ describe("DemoTranscript", () => {
       ).length;
 
       const panel = screen.getByRole("tabpanel");
-      const badges = within(panel).getAllByText("Verified");
-      // Every real captured tool_end in this fixture happens to be verified: true, so
-      // this also incidentally proves the badge count tracks the tool-call count.
+      // document-reference is a real memory/grounding reply, not a tool call, so it
+      // genuinely has zero Verified badges — queryAllByText (not getAllByText) so that
+      // real, expected zero-badge case doesn't throw.
+      const badges = within(panel).queryAllByText("Verified");
       expect(badges).toHaveLength(expectedVerifiedCount);
-      expect(expectedVerifiedCount).toBeGreaterThan(0);
     }
   });
 

@@ -3,8 +3,8 @@
 import { useEffect } from "react";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
-import HeroMockCard from "@/components/HeroMockCard";
 import DemoTranscript from "@/components/DemoTranscript";
+import GradedPaper from "@/components/GradedPaper";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
 // built (see ROADMAP.md's Phases 28-32 and services/api/app/tools/registry.py) — no
@@ -24,30 +24,24 @@ const NAV_LINKS = [
   { href: "#", label: "Download" },
 ];
 
-const HOW_IT_WORKS = [
+// The "Verified, not vibes" section's single dominant visual is now GradedPaper.tsx (a
+// real marked-up worked example), not this list of cards — but the other real,
+// specific computation types (chemistry, code, citations) it used to name are still
+// true and worth a line each. See ALSO_VERIFIED below for where they live now: a
+// compact inline strip, not a third repetition of the icon/heading/paragraph card
+// pattern.
+const ALSO_VERIFIED = [
   {
-    eyebrow: "Symbolic Math",
-    prompt: "Factor x² + 5x + 6",
-    result: "(x + 2)(x + 3)",
-    detail:
-      "Computed exactly with real symbolic algebra (SymPy) — not a pattern the model recognizes from training, an answer it actually derived.",
-    badge: "Verified",
+    label: "Chemistry",
+    detail: "balanced by real linear algebra over the composition matrix — not guessed coefficients.",
   },
   {
-    eyebrow: "Chemistry",
-    prompt: "Balance C₃H₈ + O₂ → CO₂ + H₂O",
-    result: "C₃H₈ + 5O₂ → 3CO₂ + 4H₂O",
-    detail:
-      "Solved with real linear algebra over the element-composition matrix. If a system is underdetermined, Newton says so instead of guessing coefficients.",
-    badge: "Verified",
+    label: "Your code",
+    detail: "run against real tests in a real sandbox, not eyeballed for plausibility.",
   },
   {
-    eyebrow: "Research Papers",
-    prompt: "A citation in your draft paper",
-    result: "Checked against the source's real fetched text",
-    detail:
-      "Every citation is scored for real support in the source it points to, and flagged honestly — grounded, ungrounded, or never actually fetched — not just formatted correctly.",
-    badge: "Grounding checked",
+    label: "Citations",
+    detail: "checked against the source's real fetched text, flagged honestly if it doesn't hold up.",
   },
 ];
 
@@ -316,46 +310,66 @@ export default function Home() {
 
       <main id="main">
         {/* ---------------------------------------------------------------- */}
-        {/* Hero                                                             */}
+        {/* Hero + the real app demo, both above the fold. Product owner,    */}
+        {/* verbatim: "The demo should be on the LANDING page once once you  */}
+        {/* go to the website." A single centered copy block (not the old   */}
+        {/* two-column hero-plus-mock-card) so the real DemoTranscript app-  */}
+        {/* chrome recreation can sit directly beneath it, full width,      */}
+        {/* inside the same hero shell/background — no scroll required to   */}
+        {/* reach it, no separate section seam.                             */}
         {/* ---------------------------------------------------------------- */}
         <div className={styles.heroShell}>
           <section className={styles.hero}>
-            <div className={styles.heroCopy}>
-              <p className={styles.eyebrow}>Verified, not vibes</p>
-              <h1 className={styles.title}>
-                An AI tutor that{" "}
-                <span className={styles.squiggleWrap}>
-                  checks its work
-                  <Squiggle />
-                </span>{" "}
-                — with real computation.
-              </h1>
-              <p className={styles.subtitle}>
-                Newton is a native desktop study companion that solves problems with actual
-                tools — symbolic math, real chemistry, statistics, and your own code — instead
-                of an LLM guessing what sounds right. It remembers your whole semester, so
-                review time goes exactly where you&apos;re actually weak.
-              </p>
-              <div className={styles.heroActions}>
-                <a href="#" className={styles.btnPrimary}>
-                  Download Newton
-                </a>
-                <a href="#verified" className={styles.btnSecondary}>
-                  See how it works
-                </a>
-                <CornerArrow className={styles.cornerArrow} />
-              </div>
-              <p className={styles.heroNote}>Windows, macOS, and Linux. Free to start.</p>
+            <p className={styles.eyebrow}>Verified, not vibes</p>
+            <h1 className={styles.title}>
+              An AI tutor that{" "}
+              <span className={styles.squiggleWrap}>
+                checks its work
+                <Squiggle />
+              </span>{" "}
+              — with real computation.
+            </h1>
+            <p className={styles.subtitle}>
+              Newton is a native desktop study companion that solves problems with actual
+              tools — symbolic math, real chemistry, statistics, and your own code — instead
+              of an LLM guessing what sounds right. It remembers your whole semester, so
+              review time goes exactly where you&apos;re actually weak.
+            </p>
+            <div className={styles.heroActions}>
+              <a href="#" className={styles.btnPrimary}>
+                Download Newton
+              </a>
+              <a href="#verified" className={styles.btnSecondary}>
+                See how it works
+              </a>
+              <CornerArrow className={styles.cornerArrow} />
             </div>
+            <p className={styles.heroNote}>Windows, macOS, and Linux. Free to start.</p>
+          </section>
 
-            <div className={styles.heroVisual} aria-hidden="true">
-              <HeroMockCard />
-            </div>
+          <section id="demo" className={styles.heroDemo} aria-labelledby="demo-heading">
+            <Reveal className={styles.heroDemoHead}>
+              <p className={styles.eyebrow}>Real sessions, replayed</p>
+              <h2 id="demo-heading" className={styles.heroDemoTitle}>
+                This is the actual app.
+              </h2>
+              <p className={styles.heroDemoSubtitle}>
+                A real recreation of Newton&apos;s desktop window — sidebar, documents, and
+                all — replaying real transcripts captured from Newton&apos;s actual backend.
+                Leading below: a genuine document, really uploaded (
+                <code>Physics 201 - Lecture 14.txt</code>), and a question only that
+                document could answer.
+              </p>
+            </Reveal>
+
+            <Reveal>
+              <DemoTranscript />
+            </Reveal>
           </section>
         </div>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Verified, not vibes                                              */}
+        {/* Verified, not vibes: the graded-paper visual                     */}
         {/* ---------------------------------------------------------------- */}
         <section id="verified" className={styles.section}>
           <Reveal className={styles.sectionHeadEditorial}>
@@ -370,67 +384,31 @@ export default function Home() {
               </h2>
             </div>
             <p className={`${styles.sectionSubtitle} ${styles.sectionHeadEditorialSubtitle}`}>
-              Most AI tutors tell you an answer sounds right. Newton computes it — and
-              tells you, plainly, when it did.
+              Most AI tutors tell you an answer sounds right. Newton computes it, catches
+              what&apos;s actually wrong, and shows its work like a real grader would.
             </p>
           </Reveal>
 
-          <div className={styles.exampleGrid}>
-            {HOW_IT_WORKS.map((example, i) => (
-              <Reveal
-                key={example.eyebrow}
-                delayMs={i * 90}
-                className={
-                  i === 0 ? styles.exampleSlotWide : i === 1 ? styles.exampleSlotNarrow : styles.exampleSlotFull
-                }
-              >
-                <div className={styles.exampleCard}>
-                  <p className={styles.exampleEyebrow}>{example.eyebrow}</p>
-                  <p className={styles.examplePrompt}>{example.prompt}</p>
-                  <div className={styles.exampleArrow} aria-hidden="true">
-                    &darr;
-                  </div>
-                  <p className={styles.exampleResult}>{example.result}</p>
-                  <p className={styles.exampleDetail}>{example.detail}</p>
-                  <span className={styles.verifiedBadge}>
-                    <svg viewBox="0 0 16 16" className={styles.verifiedIcon} focusable="false">
-                      <path
-                        fill="currentColor"
-                        d="M6.5 11.5 3 8l1.06-1.06L6.5 9.38l5.44-5.44L13 5l-6.5 6.5Z"
-                      />
-                    </svg>
-                    {example.badge}
-                  </span>
-                </div>
-              </Reveal>
-            ))}
-          </div>
+          <Reveal>
+            <GradedPaper />
+          </Reveal>
+
+          <Reveal className={styles.alsoVerifiedStrip}>
+            <p className={styles.alsoVerifiedLabel}>The same standard, everywhere else in Newton:</p>
+            <ul className={styles.alsoVerifiedList}>
+              {ALSO_VERIFIED.map((item) => (
+                <li key={item.label}>
+                  <strong>{item.label}</strong> — {item.detail}
+                </li>
+              ))}
+            </ul>
+          </Reveal>
 
           <p className={styles.sectionFootnote}>
             And when there&apos;s no algorithm for deciding something — a proof&apos;s
             logical validity, an argument&apos;s quality — Newton says so honestly instead
             of pretending a judgment call is a computed fact.
           </p>
-        </section>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Interactive demo (Phase 5, scripted half): real captured          */}
-        {/* transcripts, replayed client-side — no live backend call.        */}
-        {/* ---------------------------------------------------------------- */}
-        <section id="demo" className={`${styles.section} ${styles.sectionTextured}`}>
-          <Reveal className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Real sessions, replayed</p>
-            <h2 className={styles.sectionTitle}>Watch Newton verify something, for real.</h2>
-            <p className={styles.sectionSubtitle}>
-              These are real transcripts captured from Newton&apos;s actual backend — the
-              same tool calls, the same verified flags, the same streamed reply text, just
-              replayed here instead of over a live connection.
-            </p>
-          </Reveal>
-
-          <Reveal>
-            <DemoTranscript />
-          </Reveal>
         </section>
 
         {/* ---------------------------------------------------------------- */}

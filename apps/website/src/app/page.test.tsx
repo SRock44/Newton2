@@ -50,22 +50,57 @@ describe("Home", () => {
     });
   });
 
-  describe("verified, not vibes section", () => {
-    it("shows concrete, specific worked examples rather than generic AI-powered language", () => {
+  describe("the real app demo (product owner: demo must be on the landing page, not scrolled to)", () => {
+    it("renders immediately after the hero, before every other section", () => {
       render(<Home />);
-      // "Factor x² + 5x + 6" appears twice by design: once in the hero mock card,
-      // once in the worked-example card below it.
-      expect(screen.getAllByText(/factor x. \+ 5x \+ 6/i).length).toBeGreaterThanOrEqual(2);
-      expect(screen.getByText("(x + 2)(x + 3)")).toBeInTheDocument();
-      expect(screen.getByText(/balance c.h. \+ o./i)).toBeInTheDocument();
+      const headings = screen.getAllByRole("heading", { level: 1 }).concat(
+        screen.getAllByRole("heading", { level: 2 })
+      );
+      const headingTexts = headings.map((h) => h.textContent ?? "");
+      const heroIndex = headingTexts.findIndex((t) => /checks its work/i.test(t));
+      const demoIndex = headingTexts.findIndex((t) => /this is the actual app/i.test(t));
+      const verifiedIndex = headingTexts.findIndex((t) => /not vibes/i.test(t));
+      const featuresIndex = headingTexts.findIndex((t) => /real capability, organized honestly/i.test(t));
+      expect(heroIndex).toBeGreaterThanOrEqual(0);
+      expect(demoIndex).toBeGreaterThan(heroIndex);
+      // The demo comes immediately after the hero — before the graded-paper section and
+      // every later section — not scrolled-to further down the page.
+      expect(demoIndex).toBeLessThan(verifiedIndex);
+      expect(demoIndex).toBeLessThan(featuresIndex);
     });
 
-    it("labels each worked example with a verified/grounding badge", () => {
+    it("renders the real desktop app's window chrome: title bar, sidebar, and a real uploaded document", () => {
       render(<Home />);
-      expect(screen.getAllByText(/verified — real symbolic computation/i).length).toBeGreaterThan(
-        0
-      );
-      expect(screen.getByText("Grounding checked")).toBeInTheDocument();
+      expect(screen.getAllByText("Newton").length).toBeGreaterThanOrEqual(3); // header, demo titlebar, demo sidebar
+      expect(
+        screen.getByRole("button", { name: /physics 201 - lecture 14\.txt/i })
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("verified, not vibes section (the graded-paper visual)", () => {
+    it("shows the real math-catches-mistake worked example as a marked-up page, not a generic card", () => {
+      render(<Home />);
+      expect(screen.getByText("Factor x² + 5x + 6")).toBeInTheDocument();
+      expect(screen.getByText("(x + 1)(x + 6)")).toBeInTheDocument();
+      expect(screen.getByText("(x + 2)(x + 3)")).toBeInTheDocument();
+      expect(screen.getByText(/1 \+ 6 = 7, not 5/i)).toBeInTheDocument();
+    });
+
+    it("marks the correction with a real Verified stamp", () => {
+      render(<Home />);
+      // "Verified" also appears in the "Verified, not vibes" heading itself, so this
+      // checks the stamp's own second line (unique to it) alongside at least one
+      // "Verified" text on the page.
+      expect(screen.getByText("real symbolic computation")).toBeInTheDocument();
+      expect(screen.getAllByText("Verified").length).toBeGreaterThan(0);
+    });
+
+    it("keeps the other real computation types (chemistry, code, citations) as a compact strip, not a repeated card", () => {
+      render(<Home />);
+      expect(screen.getByText(/balanced by real linear algebra/i)).toBeInTheDocument();
+      expect(screen.getByText(/run against real tests in a real sandbox/i)).toBeInTheDocument();
+      expect(screen.getByText(/checked against the source's real fetched text/i)).toBeInTheDocument();
     });
 
     it("honestly distinguishes computed verification from reasoning-based critique", () => {
@@ -115,7 +150,10 @@ describe("Home", () => {
 
     it("renders a mock note card showing highlight-to-explain in context", () => {
       render(<Home />);
-      expect(screen.getByText(/lecture 14/i)).toBeInTheDocument();
+      // "Lecture 14" alone also matches the real app demo's document filename
+      // ("Physics 201 - Lecture 14.txt") elsewhere on the page — match the notepad
+      // card's own title text specifically.
+      expect(screen.getByText(/lecture 14 — electromagnetism/i)).toBeInTheDocument();
       expect(screen.getByText(/the coercive field is path-dependent/i)).toBeInTheDocument();
       expect(screen.getByText("Explain this")).toBeInTheDocument();
     });

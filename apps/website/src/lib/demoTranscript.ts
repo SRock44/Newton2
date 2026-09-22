@@ -51,6 +51,14 @@ export interface DemoScenario {
   label: string;
   user_message: string;
   frames: DemoFrame[];
+  /** Set only on the real document-grounded scenario ("document-reference") — the
+   * actual filename of the document genuinely uploaded during capture (see
+   * demo-transcripts.json). Used to render a real attached-document chip and to
+   * highlight the matching entry in the demo's recreated sidebar Documents list. */
+  document_filename?: string;
+  /** A real short excerpt of the uploaded document's actual text, captured alongside
+   * the transcript. Not currently rendered, kept for provenance/future use. */
+  document_text_excerpt?: string;
 }
 
 export interface ToolChipState {
