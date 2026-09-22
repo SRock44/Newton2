@@ -6,32 +6,31 @@
  * ------------------------------------------------------------------- */
 
 .stage {
-  display: grid;
-  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
-  gap: 28px;
-  max-width: 1080px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
   margin: 0 auto;
-  align-items: start;
 }
 
-/* ---------- Step rail ---------- */
+/* ---------- Step rail (a horizontal strip above the frame, so the frame itself
+   gets the full section width instead of sharing it with a side column) ---------- */
 
 .rail {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .railItem,
 .railItemActive {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 14px;
+  gap: 10px;
+  flex: 1;
+  padding: 12px 16px;
   border: none;
-  border-left: 3px solid transparent;
-  border-radius: var(--radius-md);
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   background: none;
   text-align: left;
   cursor: pointer;
@@ -44,7 +43,7 @@
 
 .railItemActive {
   background-color: var(--color-accent-tint);
-  border-left-color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
 }
 
 .railIndex {
@@ -142,7 +141,7 @@
 
 .deviceFrame {
   position: relative;
-  height: 480px;
+  height: min(78vh, 760px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background-color: var(--color-surface-2);
@@ -264,14 +263,8 @@
 /* ---------- Responsive ---------- */
 
 @media (max-width: 860px) {
-  .stage {
-    grid-template-columns: 1fr;
-  }
-
   .rail {
-    flex-direction: row;
     overflow-x: auto;
-    gap: 8px;
     padding-bottom: 4px;
   }
 
@@ -279,22 +272,16 @@
   .railItemActive {
     flex: 1 0 auto;
     min-width: 180px;
-    border-left: none;
-    border-bottom: 3px solid transparent;
-  }
-
-  .railItemActive {
-    border-bottom-color: var(--color-accent);
   }
 
   .deviceFrame {
-    height: 400px;
+    height: min(65vh, 520px);
   }
 }
 
 @media (max-width: 640px) {
   .deviceFrame {
-    height: 320px;
+    height: min(58vh, 420px);
   }
 
   .railItem .railCaption,

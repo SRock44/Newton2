@@ -150,7 +150,12 @@ export default function AppWalkthrough() {
   const Scene = SCENE_COMPONENTS[active];
 
   return (
-    <section id="demo" className={pageStyles.section} aria-labelledby="demo-heading">
+    <section
+      id="demo"
+      className={pageStyles.section}
+      style={{ maxWidth: 1360 }}
+      aria-labelledby="demo-heading"
+    >
       <div className={pageStyles.sectionHead}>
         <p className={pageStyles.eyebrow}>The first Agentic Learning Environment</p>
         <h2 id="demo-heading" className={pageStyles.sectionTitle}>

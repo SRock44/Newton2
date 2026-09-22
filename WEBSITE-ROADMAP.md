@@ -531,6 +531,32 @@ This phase replaces them with real screenshots of the real, unmodified app compo
       pages confirmed still serving 200; the real rendered HTML inspected directly to
       confirm `template.tsx`'s wrapper class is actually present (`template-module__*`),
       not just assumed from the file existing.
+- **A real CI break, caused by this phase and fixed the same day**: the new
+  `apps/desktop/src/marketing-harness.tsx` shipped with an unused `init` parameter,
+  which `tsc`'s `noUnusedParameters` treats as a hard error — broke both the desktop
+  app's `frontend-tests` typecheck job and its `tauri-build` job (that build script is
+  `tsc && vite build`, so the typecheck failure took the whole build down with it) on
+  GitHub Actions, undetected locally because verification for this phase only ran
+  `apps/website`'s own `tsc`/tests/build, never `apps/desktop`'s. Fixed by dropping the
+  unused parameter; re-verified `apps/desktop` directly this time (`tsc` clean, `vite
+  build` clean, 699/699 tests) before pushing, and confirmed green on GitHub Actions
+  (not just assumed from the local fix).
+- **Phase 3.10.1 — the device frame was still too small.** Product owner, verbatim:
+  "THE LIVE DEMO IS SO SMALL YOU CAN BARELY SEE THE ACTUAL APPLICATION." Two compounding
+  causes, both fixed: (1) the side-by-side rail-plus-frame layout only gave the frame
+  roughly half the section's width; the rail moved to a horizontal strip above the frame
+  instead, and the section's own max-width grew from the standard 1160px to 1360px for
+  this section specifically (an inline `style` override on the `<section>`, so it can't
+  silently get re-clobbered by a later shared `.section` class edit). (2) The Study Mode
+  and Artifact screenshots themselves were recaptured at a shorter harness viewport
+  (1440×820, down from 1440×900) specifically to crop out the large dead vertical gap
+  between a short conversation and the composer bar, so more of the frame's height is
+  spent on actual content. The device frame itself grew from a fixed 480px to
+  `min(78vh, 760px)`. Re-verified: `tsc`/tests/build all clean again; a real Playwright
+  screenshot at 1440×1400 confirms the frame now renders the real app at a size where
+  the sidebar, tool-activity chips, and reply text are all legible, not shrunk into a
+  corner; a 390×844 mobile pass confirms the horizontal rail and frame still scale down
+  without overflow.
 
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
