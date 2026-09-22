@@ -14,7 +14,15 @@ describe("Home", () => {
       const nav = screen.getByRole("navigation", { name: /primary/i });
       expect(within(nav).getByRole("link", { name: "Features" })).toBeInTheDocument();
       expect(within(nav).getByRole("link", { name: "For Students" })).toBeInTheDocument();
-      expect(within(nav).getByRole("link", { name: "Download" })).toBeInTheDocument();
+      expect(within(nav).getByRole("link", { name: "Pro" })).toBeInTheDocument();
+      expect(within(nav).getByRole("link", { name: "FAQ" })).toBeInTheDocument();
+    });
+
+    it("links FAQ and Pro to real internal destinations, not stubs", () => {
+      render(<Home />);
+      const nav = screen.getByRole("navigation", { name: /primary/i });
+      expect(within(nav).getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "/faq");
+      expect(within(nav).getByRole("link", { name: "Pro" })).toHaveAttribute("href", "/#pro");
     });
 
     it("renders Sign In and Sign Up entry points", () => {
@@ -189,6 +197,39 @@ describe("Home", () => {
       expect(within(footer).getByText("Account")).toBeInTheDocument();
       expect(within(footer).getByText("Company")).toBeInTheDocument();
       expect(within(footer).getAllByRole("link").length).toBeGreaterThanOrEqual(6);
+    });
+
+    it("links About/FAQ/Changelog/Roadmap to real internal routes, not '#' stubs", () => {
+      render(<Home />);
+      const footer = screen.getByRole("contentinfo");
+      expect(within(footer).getByRole("link", { name: "About" })).toHaveAttribute("href", "/about");
+      expect(within(footer).getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "/faq");
+      expect(within(footer).getByRole("link", { name: "Changelog" })).toHaveAttribute(
+        "href",
+        "/changelog"
+      );
+      expect(within(footer).getByRole("link", { name: "Roadmap" })).toHaveAttribute(
+        "href",
+        "/roadmap"
+      );
+    });
+  });
+
+  describe("Pro features section", () => {
+    it("lists real Pro-exclusive tools with no invented price", () => {
+      render(<Home />);
+      expect(screen.getByRole("heading", { name: /everything free, plus the expensive tools/i })).toBeInTheDocument();
+      expect(screen.getByText("Full research paper writing")).toBeInTheDocument();
+      expect(screen.getByText("Deep Research")).toBeInTheDocument();
+      expect(screen.getByText(/access to frontier ai models/i)).toBeInTheDocument();
+      // No dollar figure anywhere in the section — the real Pro price isn't known to this codebase.
+      expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
+    });
+
+    it("has an Upgrade to Pro CTA (stubbed to '#' — checkout isn't built yet)", () => {
+      render(<Home />);
+      const upgradeLink = screen.getByRole("link", { name: /upgrade to pro/i });
+      expect(upgradeLink).toHaveAttribute("href", "#");
     });
   });
 });

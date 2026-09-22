@@ -1,0 +1,248 @@
+/* ---------------------------------------------------------------------
+ * Shared header/footer chrome for the standalone content routes (FAQ/About/
+ * Changelog/Roadmap). Deliberately the same rules as src/app/page.module.css's own
+ * header/footer sections (same tokens, same spacing) so a visitor can't tell these
+ * routes are a separate template from the landing page — kept as a parallel copy
+ * rather than importing page.module.css directly, since CSS Modules are scoped
+ * per-file and the landing page's own header/footer markup is intentionally left
+ * untouched (see SiteChrome.tsx's own comment for why).
+ * ------------------------------------------------------------------- */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 18px 32px;
+}
+
+.wordmark {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.wordmarkWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.wordmarkApple {
+  position: absolute;
+  top: -2px;
+  right: -14px;
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
+.wordmarkWrap:hover .wordmarkApple,
+.wordmarkWrap:focus-within .wordmarkApple {
+  animation: wordmark-apple-fall 0.7s cubic-bezier(0.55, 0, 0.2, 1) both;
+}
+
+@keyframes wordmark-apple-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(16px) rotate(50deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmarkWrap:hover .wordmarkApple,
+  .wordmarkWrap:focus-within .wordmarkApple {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex: 1;
+  justify-content: center;
+}
+
+.navLink {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.navLink:hover {
+  color: var(--color-text);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  white-space: nowrap;
+}
+
+.navLinkAuth {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.navLinkAuth:hover {
+  color: var(--color-text);
+}
+
+.btnPrimarySm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  text-decoration: none;
+  padding: 8px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease;
+}
+
+.btnPrimarySm:hover {
+  background-color: var(--color-accent-hover);
+}
+
+/* ---------------------------------------------------------------------
+ * Footer
+ * ------------------------------------------------------------------- */
+
+.footer {
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  margin-top: auto;
+}
+
+.footerInner {
+  display: flex;
+  justify-content: space-between;
+  gap: 48px;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 56px 32px 40px;
+}
+
+.footerBrand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 280px;
+}
+
+.footerTagline {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-faint);
+  margin: 0;
+}
+
+.footerColumns {
+  display: flex;
+  gap: 64px;
+}
+
+.footerColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 120px;
+}
+
+.footerColumnHeading {
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+  margin: 0;
+}
+
+.footerLinkList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footerLink {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.footerLink:hover {
+  color: var(--color-accent);
+}
+
+.footerBottom {
+  border-top: 1px solid var(--color-border-2);
+  padding: 20px 32px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-faint);
+}
+
+/* ---------------------------------------------------------------------
+ * Responsive
+ * ------------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .headerInner {
+    padding: 16px 20px;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .navLinkAuth {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .footerInner {
+    flex-direction: column;
+    gap: 32px;
+    padding: 48px 20px 32px;
+  }
+
+  .footerColumns {
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+}

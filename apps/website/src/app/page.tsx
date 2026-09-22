@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
 import DemoTranscript from "@/components/DemoTranscript";
 import GradedPaper from "@/components/GradedPaper";
+import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
 // built (see ROADMAP.md's Phases 28-32 and services/api/app/tools/registry.py) — no
@@ -17,12 +19,6 @@ import GradedPaper from "@/components/GradedPaper";
 // and some real personality — plus Phase 5's "scripted" interactive demo (see
 // DemoTranscript.tsx), replaying REAL captured transcripts client-side. No new capability
 // claims, no live backend calls; see WEBSITE-ROADMAP.md.
-
-const NAV_LINKS = [
-  { href: "#verified", label: "Features" },
-  { href: "#for-students", label: "For Students" },
-  { href: "#", label: "Download" },
-];
 
 // The "Verified, not vibes" section's single dominant visual is now GradedPaper.tsx (a
 // real marked-up worked example), not this list of cards — but the other real,
@@ -185,28 +181,56 @@ const STUDENT_CARDS = [
   },
 ];
 
-const FOOTER_COLUMNS = [
+// Pro-exclusive features — every one confirmed gated behind billing_service.is_pro() in
+// the real backend (app/services/billing.py's is_pro, reused by app/tools/
+// write_research_paper.py, create_artifact.py, deep_research.py, study_session.py, and
+// app/routers/voice.py). Deliberately no dollar figure anywhere on this page — the real
+// Pro price lives in Stripe config, not in this codebase, and isn't something this site
+// can honestly state. "Upgrade to Pro" links to "#" for the same Phase-4 reason every
+// other sign-up/billing CTA on this page does: checkout isn't built yet.
+const FREE_INCLUDES = [
+  "Unlimited chatting with the tutor — no daily or weekly cap",
+  "Every verified-computation tool: symbolic math, real chemistry, statistics, numeric methods, code and proof checking",
+  "Flashcards scheduled with FSRS, plus practice exams and study plans — up to about 5 items per generation",
+  "The semester-spanning document library, cross-document synthesis, and the Notepad",
+  "Focus Mode and Learn Mode, and the weak-areas engine",
+];
+
+const PRO_FEATURES = [
   {
-    heading: "Product",
-    links: [
-      { href: "#verified", label: "Features" },
-      { href: "#for-students", label: "For Students" },
-      { href: "#", label: "Download" },
-    ],
+    title: "Full research paper writing",
+    description:
+      "A plan-then-approve workflow that compiles a real, cited LaTeX paper — MLA, Chicago, IEEE, or APA7 — to PDF, with every citation checked against the real fetched text of its source.",
   },
   {
-    heading: "Account",
-    links: [
-      { href: "#", label: "Sign In" },
-      { href: "#", label: "Sign Up" },
-    ],
+    title: "AI-generated interactive artifacts",
+    description:
+      "Diagrams, charts, slideshows, interactive demos, and quiz games, built to your actual material rather than a generic template.",
   },
   {
-    heading: "Company",
-    links: [
-      { href: "#", label: "About" },
-      { href: "#", label: "Contact" },
-    ],
+    title: "Deep Research",
+    description:
+      "A standalone tool that synthesizes a cited report from several real web sources for an open question, in one turn — no paper planning or LaTeX involved.",
+  },
+  {
+    title: "Composite study sessions",
+    description:
+      "One request fans out a full study plan, flashcards, and a practice exam concurrently, then composes one summary — instead of generating each piece separately.",
+  },
+  {
+    title: "Voice, including Conversation Practice",
+    description:
+      "Real speech-to-text and text-to-speech, plus turn-based spoken roleplay practice in your target language with gentle in-context corrections.",
+  },
+  {
+    title: "Access to frontier AI models",
+    description:
+      "Route harder problems to a stronger model than the free-tier default, with a monthly usage allowance.",
+  },
+  {
+    title: "Higher generation limits",
+    description:
+      "About 15 items per flashcard, practice-exam, or study-plan generation instead of about 5 — more material per request, not a different tool.",
   },
 ];
 
@@ -291,9 +315,9 @@ export default function Home() {
 
           <nav className={styles.nav} aria-label="Primary">
             {NAV_LINKS.map((link) => (
-              <a key={link.label} href={link.href} className={styles.navLink}>
+              <Link key={link.label} href={link.href} className={styles.navLink}>
                 {link.label}
-              </a>
+              </Link>
             ))}
           </nav>
 
@@ -528,6 +552,56 @@ export default function Home() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
+        {/* Pro features — real Pro-exclusive capability, no invented price.  */}
+        {/* ---------------------------------------------------------------- */}
+        <section id="pro" className={`${styles.section} ${styles.sectionTextured}`} aria-labelledby="pro-heading">
+          <Reveal className={styles.sectionHead}>
+            <p className={styles.eyebrow}>Newton Pro</p>
+            <h2 id="pro-heading" className={styles.sectionTitle}>
+              Everything free, plus the expensive tools.
+            </h2>
+            <p className={styles.sectionSubtitle}>
+              Pro unlocks the tools that cost real money to run per use — a compiled
+              research paper, a synthesized web report, real speech synthesis — plus more
+              headroom on the generation tools everyone already gets.
+            </p>
+          </Reveal>
+
+          <div className={styles.proGrid}>
+            <Reveal className={styles.proColumn}>
+              <p className={styles.proColumnLabel}>Free</p>
+              <ul className={styles.proList}>
+                {FREE_INCLUDES.map((item) => (
+                  <li key={item} className={styles.proListItem}>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </Reveal>
+
+            <Reveal className={styles.proColumnPro} delayMs={90}>
+              <p className={styles.proColumnLabelPro}>Pro</p>
+              <ul className={styles.proFeatureList}>
+                {PRO_FEATURES.map((feature) => (
+                  <li key={feature.title} className={styles.proFeatureItem}>
+                    <p className={styles.proFeatureTitle}>{feature.title}</p>
+                    <p className={styles.proFeatureDescription}>{feature.description}</p>
+                  </li>
+                ))}
+              </ul>
+              <a href="#" className={styles.btnPrimary}>
+                Upgrade to Pro
+              </a>
+            </Reveal>
+          </div>
+
+          <p className={styles.sectionFootnote}>
+            No price shown here on purpose — checkout isn&apos;t built into this site yet,
+            and we&apos;d rather leave this blank than guess.
+          </p>
+        </section>
+
+        {/* ---------------------------------------------------------------- */}
         {/* Closing CTA                                                      */}
         {/* ---------------------------------------------------------------- */}
         <div className={styles.closingShell}>
@@ -557,9 +631,9 @@ export default function Home() {
                 <ul className={styles.footerLinkList}>
                   {column.links.map((link) => (
                     <li key={link.label}>
-                      <a href={link.href} className={styles.footerLink}>
+                      <Link href={link.href} className={styles.footerLink}>
                         {link.label}
-                      </a>
+                      </Link>
                     </li>
                   ))}
                 </ul>
