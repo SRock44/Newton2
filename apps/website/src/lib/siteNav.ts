@@ -6,6 +6,11 @@
  * Contact — no real destination exists), matching this codebase's own established
  * convention of never stubbing a route that doesn't actually exist. See
  * WEBSITE-ROADMAP.md's "Phase 3.6" entry for what these five real routes are and why.
+ *
+ * Phase 3.8: "For Students" dropped (the section it pointed to was cut as redundant
+ * with the feature list). The footer's "Product" column no longer repeats the primary
+ * nav's Features/Pro links, and the old "Account" column is gone — Sign In/Sign Up
+ * already live in the header, so the footer doesn't need to say them again.
  */
 
 export interface NavLink {
@@ -15,7 +20,6 @@ export interface NavLink {
 
 export const NAV_LINKS: NavLink[] = [
   { href: "/#verified", label: "Features" },
-  { href: "/#for-students", label: "For Students" },
   { href: "/#pro", label: "Pro" },
   { href: "/faq", label: "FAQ" },
 ];
@@ -24,18 +28,8 @@ export const FOOTER_COLUMNS: { heading: string; links: NavLink[] }[] = [
   {
     heading: "Product",
     links: [
-      { href: "/#verified", label: "Features" },
-      { href: "/#for-students", label: "For Students" },
-      { href: "/#pro", label: "Pro" },
       { href: "/roadmap", label: "Roadmap" },
       { href: "#", label: "Download" },
-    ],
-  },
-  {
-    heading: "Account",
-    links: [
-      { href: "#", label: "Sign In" },
-      { href: "#", label: "Sign Up" },
     ],
   },
   {

@@ -78,8 +78,8 @@ export default function GradedPaper() {
       </div>
 
       <figcaption className={styles.caption}>
-        A real reply from Newton&apos;s actual backend, laid out as a marked-up page —
-        not a mockup. <a href="#demo">Watch the full exchange below.</a>
+        A reply from Newton&apos;s backend, laid out as a marked-up page.{" "}
+        <a href="#demo">Watch the full exchange below.</a>
       </figcaption>
     </figure>
   );

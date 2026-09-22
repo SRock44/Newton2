@@ -32,10 +32,16 @@ describe("SiteFooter", () => {
     );
   });
 
-  it("keeps genuinely unbuilt destinations (sign in/up, download, contact) honestly stubbed", () => {
+  it("keeps genuinely unbuilt destinations (download, contact) honestly stubbed", () => {
     render(<SiteFooter />);
     const footer = screen.getByRole("contentinfo");
-    expect(within(footer).getByRole("link", { name: "Sign In" })).toHaveAttribute("href", "#");
     expect(within(footer).getByRole("link", { name: "Download" })).toHaveAttribute("href", "#");
+  });
+
+  it("doesn't repeat Sign In/Sign Up — they already live in the header", () => {
+    render(<SiteFooter />);
+    const footer = screen.getByRole("contentinfo");
+    expect(within(footer).queryByRole("link", { name: "Sign In" })).not.toBeInTheDocument();
+    expect(within(footer).queryByRole("link", { name: "Sign Up" })).not.toBeInTheDocument();
   });
 });

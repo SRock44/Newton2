@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
@@ -14,225 +14,18 @@ import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
 // separate, later phase; nav/CTA links that point at its unbuilt destination use "#"
 // deliberately rather than a route that doesn't exist yet.
 //
-// Phase 3.5 (this pass): a visual/motion overhaul — a wider but still cohesive color
-// story, real scroll-triggered and hover motion (all respecting prefers-reduced-motion),
-// and some real personality — plus Phase 5's "scripted" interactive demo (see
-// DemoTranscript.tsx), replaying REAL captured transcripts client-side. No new capability
-// claims, no live backend calls; see WEBSITE-ROADMAP.md.
-
-// The "Verified, not vibes" section's single dominant visual is now GradedPaper.tsx (a
-// real marked-up worked example), not this list of cards — but the other real,
-// specific computation types (chemistry, code, citations) it used to name are still
-// true and worth a line each. See ALSO_VERIFIED below for where they live now: a
-// compact inline strip, not a third repetition of the icon/heading/paragraph card
-// pattern.
-const ALSO_VERIFIED = [
-  {
-    label: "Chemistry",
-    detail: "balanced by real linear algebra over the composition matrix — not guessed coefficients.",
-  },
-  {
-    label: "Your code",
-    detail: "run against real tests in a real sandbox, not eyeballed for plausibility.",
-  },
-  {
-    label: "Citations",
-    detail: "checked against the source's real fetched text, flagged honestly if it doesn't hold up.",
-  },
-];
-
-type FeatureItem = { title: string; description: string };
-type FeatureGroup = { name: string; blurb: string; items: FeatureItem[] };
-
-const FEATURE_GROUPS: FeatureGroup[] = [
-  {
-    name: "Verified Computation",
-    blurb: "The same standard, extended past algebra: a real answer, or an honest “I can't verify this.”",
-    items: [
-      {
-        title: "Symbolic math & linear algebra",
-        description:
-          "Solve, differentiate, integrate, simplify, factor, and expand exactly, plus real determinants, inverses, eigenvalues, and null spaces.",
-      },
-      {
-        title: "Real chemistry",
-        description:
-          "Balance any equation, work stoichiometry with real atomic weights, and solve gas-law and pH problems exactly — not restated word problems.",
-      },
-      {
-        title: "Numeric methods & statistics",
-        description:
-          "Root-finding, curve fitting, ODE integration, and ill-conditioned systems, plus real t-tests, regression, ANOVA, and chi-square with real p-values.",
-      },
-      {
-        title: "Checks your code and your proofs",
-        description:
-          "Runs your own code against real tests in a sandbox and reports what happened. Critiques proof structure — induction, contradiction, contrapositive, case analysis — verifying every algebraic sub-step for real.",
-      },
-    ],
-  },
-  {
-    name: "Real Memory & Progress Tracking",
-    blurb: "A whole semester of your own performance, actually put to use.",
-    items: [
-      {
-        title: "FSRS-scheduled flashcards",
-        description:
-          "Spaced repetition scheduled by the same forgetting-curve science serious memory research uses, in recognition and typed-recall (production) modes.",
-      },
-      {
-        title: "Practice exams that remember",
-        description:
-          "Full exams generated from your material, with every missed question logged permanently instead of graded once and forgotten.",
-      },
-      {
-        title: "A weak-areas engine that closes the loop",
-        description:
-          "Tracks your real performance across the term and opens a pre-filtered review queue for exactly the cards and questions you're weak on.",
-      },
-    ],
-  },
-  {
-    name: "Real Document Understanding",
-    blurb: "A persistent library that gets smarter as your semester fills up, not a chat that forgets when it ends.",
-    items: [
-      {
-        title: "A semester-spanning document library",
-        description:
-          "Everything you upload stays retrievable — searched, quoted, and reasoned over — for the rest of the term, not just this conversation.",
-      },
-      {
-        title: "Cross-document synthesis & annotation",
-        description:
-          "Ask a question that spans several readings and get an answer that actually draws from each of them, or highlight a passage in any document and get an explanation attached right there.",
-      },
-    ],
-  },
-  {
-    name: "Honest by Design",
-    blurb: "Trust mechanisms built into the backend, not promises the model makes you.",
-    items: [
-      {
-        title: "Server-enforced Focus Mode",
-        description:
-          "Turn it on and the backend itself — not a politely-asked model — holds back the final answer until you actually ask for it.",
-      },
-      {
-        title: "A visible Verified badge",
-        description:
-          "Every chat reply tells you plainly whether it came from real computation or a reasoned judgment call. No guessing which one you got.",
-      },
-    ],
-  },
-  {
-    name: "Real Language Practice",
-    blurb: "Actual spoken practice, not text dictated into a box.",
-    items: [
-      {
-        title: "Conversation Practice",
-        description:
-          "Turn-based spoken roleplay in your target language, with real multi-language text-to-speech and gentle in-context corrections.",
-      },
-      {
-        title: "Production-mode flashcards",
-        description:
-          "Recognition cards show you the term; production cards make you actually type it from the definition, graded with a diacritic-aware comparison.",
-      },
-    ],
-  },
-];
-
-const STUDENT_CARDS = [
-  {
-    major: "Math",
-    headline: "Real per-step math, not just final answers.",
-    description:
-      "Newton pinpoints exactly which step in your algebra or calculus went wrong and walks you up a real hint ladder before giving anything away. Proof structure gets checked too — induction, contradiction, contrapositive, case analysis — with every algebraic sub-step computationally verified.",
-  },
-  {
-    major: "Computer Science",
-    headline: "Checks your code. Never writes it for you.",
-    description:
-      "Run your own program against real tests in a real sandbox and get back exactly which ones passed, which failed, and why — the same discipline as checking a math answer, extended to code, deliberately never a tool that edits your project for you.",
-  },
-  {
-    major: "Engineering & Natural Sciences",
-    headline: "Real numbers for real coursework.",
-    description:
-      "Balance a chemical equation with real linear algebra, run a stoichiometry problem with real atomic weights, or solve an ill-conditioned system with a numeric solver that tells you honestly when a matrix is poorly conditioned — the actual content of a chem, physics, or statics course.",
-  },
-  {
-    major: "Social Sciences",
-    headline: "Real inferential statistics, not a definition of one.",
-    description:
-      "Run an actual t-test, correlation, regression, chi-square, or ANOVA on your own data and get real coefficients, real p-values, and a real expected-frequency table — the actual shape of an empirical-methods course.",
-  },
-  {
-    major: "Humanities",
-    headline: "Papers that cite honestly.",
-    description:
-      "Compile a real IEEE, APA7, MLA, or Chicago paper, and every cited claim gets checked against the real fetched text of its source — flagged plainly if a citation doesn't actually say what the paper claims it says.",
-  },
-  {
-    major: "World Languages",
-    headline: "Actual spoken practice, not dictation.",
-    description:
-      "Turn-based conversation practice in your target language with real text-to-speech and gentle corrections, plus production-mode flashcards that make you actually produce the word instead of just recognizing it.",
-  },
-];
-
-// Pro-exclusive features — every one confirmed gated behind billing_service.is_pro() in
-// the real backend (app/services/billing.py's is_pro, reused by app/tools/
-// write_research_paper.py, create_artifact.py, deep_research.py, study_session.py, and
-// app/routers/voice.py). Deliberately no dollar figure anywhere on this page — the real
-// Pro price lives in Stripe config, not in this codebase, and isn't something this site
-// can honestly state. "Upgrade to Pro" links to "#" for the same Phase-4 reason every
-// other sign-up/billing CTA on this page does: checkout isn't built yet.
-const FREE_INCLUDES = [
-  "Unlimited chatting with the tutor — no daily or weekly cap",
-  "Every verified-computation tool: symbolic math, real chemistry, statistics, numeric methods, code and proof checking",
-  "Flashcards scheduled with FSRS, plus practice exams and study plans — up to about 5 items per generation",
-  "The semester-spanning document library, cross-document synthesis, and the Notepad",
-  "Focus Mode and Learn Mode, and the weak-areas engine",
-];
-
-const PRO_FEATURES = [
-  {
-    title: "Full research paper writing",
-    description:
-      "A plan-then-approve workflow that compiles a real, cited LaTeX paper — MLA, Chicago, IEEE, or APA7 — to PDF, with every citation checked against the real fetched text of its source.",
-  },
-  {
-    title: "AI-generated interactive artifacts",
-    description:
-      "Diagrams, charts, slideshows, interactive demos, and quiz games, built to your actual material rather than a generic template.",
-  },
-  {
-    title: "Deep Research",
-    description:
-      "A standalone tool that synthesizes a cited report from several real web sources for an open question, in one turn — no paper planning or LaTeX involved.",
-  },
-  {
-    title: "Composite study sessions",
-    description:
-      "One request fans out a full study plan, flashcards, and a practice exam concurrently, then composes one summary — instead of generating each piece separately.",
-  },
-  {
-    title: "Voice, including Conversation Practice",
-    description:
-      "Real speech-to-text and text-to-speech, plus turn-based spoken roleplay practice in your target language with gentle in-context corrections.",
-  },
-  {
-    title: "Access to frontier AI models",
-    description:
-      "Route harder problems to a stronger model than the free-tier default, with a monthly usage allowance.",
-  },
-  {
-    title: "Higher generation limits",
-    description:
-      "About 15 items per flashcard, practice-exam, or study-plan generation instead of about 5 — more material per request, not a different tool.",
-  },
-];
+// Phase 3.8 (this pass): a subtraction + rewrite pass, executing a literal work order
+// distilled from three independent critique audits (a visual-density audit, a
+// copywriting-voice audit, and a skeptical-first-time-visitor test) that converged on
+// the same findings — the page was too long, too repetitive, and leaned on
+// "real/actual/genuine/honest/verified" as a crutch word instead of letting the demo
+// and the graded-paper visual carry the claims. This pass cuts the "For Students"
+// section (pure duplication of the feature list), collapses the 13-card feature grid
+// into a tight single-line capability list, shortens the Notepad/Pro sections, removes
+// the redundant closing CTA, dedupes the footer against the header nav, fixes a real
+// mobile-nav bug (no way to reach Features/Pro/FAQ below 720px), and rewrites the
+// worst instances of the repeated "[Claim]. Not/Never [alternative]." copy skeleton.
+// See WEBSITE-ROADMAP.md's "Phase 3.8" entry for the real before/after numbers.
 
 /** A hand-drawn-style wavy underline, dropped beneath a key phrase. Purely decorative. */
 function Squiggle() {
@@ -284,7 +77,63 @@ function CornerArrow({ className }: { className?: string }) {
   );
 }
 
+/** A tight hamburger icon for the mobile nav toggle. Purely decorative (the button
+ * carries its own aria-label); the three bars are plain spans, not SVG, so they can
+ * be styled/animated with CSS alone. */
+function MenuIcon() {
+  return (
+    <span className={styles.menuToggleBars} aria-hidden="true">
+      <span className={styles.menuToggleBar} />
+      <span className={styles.menuToggleBar} />
+      <span className={styles.menuToggleBar} />
+    </span>
+  );
+}
+
+// A tight, single-line capability list — Phase 3.8 replaces the old 13-card, 5-subgroup
+// feature grid (a separate heading + blurb + 2-column card grid per subgroup) with this,
+// per the density audit's finding that it was the worst instance of the repeated
+// icon-less "heading + paragraph" card pattern on the page. Each line still traces back
+// to a real, specific tool (see the removed FEATURE_GROUPS' history in git for exact
+// grounding, unchanged by this rewrite — only the presentation and the copy voice
+// changed, not the underlying claims).
+const CAPABILITIES = [
+  "Symbolic math, linear algebra, chemistry, and statistics, solved exactly.",
+  "Runs your code against test cases and checks proof structure step by step.",
+  "FSRS-scheduled flashcards, practice exams, and a weak-areas engine that closes the loop.",
+  "A semester-spanning document library with cross-document synthesis and inline annotation.",
+  "Focus Mode holds back the answer until you ask. Enforced server-side, not politely requested of the model.",
+  "Spoken conversation practice and production-mode flashcards for language courses.",
+];
+
+// Free tier, cut to the 3 items that matter most (Part 1's target: 3 max, down from 5).
+const FREE_INCLUDES = [
+  "Unlimited chatting with the tutor",
+  "Every computation tool — math, chemistry, statistics, code and proof checking",
+  "Flashcards, practice exams, the document library, and Focus Mode",
+];
+
+// Pro-exclusive features — every one confirmed gated behind billing_service.is_pro() in
+// the real backend (app/services/billing.py's is_pro, reused by app/tools/
+// write_research_paper.py, create_artifact.py, deep_research.py, study_session.py, and
+// app/routers/voice.py). Titles only (Part 1 cuts the per-feature body paragraphs).
+// Deliberately no dollar figure anywhere on this page — the real Pro price lives in
+// Stripe config, not in this codebase. "Upgrade to Pro" links to "#" for the same
+// Phase-4 reason every other sign-up/billing CTA on this page does: checkout isn't
+// built yet.
+const PRO_FEATURES = [
+  "Full research paper writing",
+  "AI-generated interactive artifacts",
+  "Deep Research",
+  "Composite study sessions",
+  "Voice, including Conversation Practice",
+  "Access to frontier AI models",
+  "Higher generation limits",
+];
+
 export default function Home() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   // A small, tasteful easter egg for anyone curious enough to open the console — not
   // required by anything, doesn't affect the honest-claims surface of the page itself.
   useEffect(() => {
@@ -328,8 +177,43 @@ export default function Home() {
             <a href="#" className={styles.btnPrimarySm}>
               Sign Up
             </a>
+            <button
+              type="button"
+              className={styles.menuToggle}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-nav"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              onClick={() => setMobileMenuOpen((open) => !open)}
+            >
+              <MenuIcon />
+            </button>
           </div>
         </div>
+
+        {mobileMenuOpen && (
+          <nav id="mobile-nav" className={styles.mobileNav} aria-label="Mobile">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={styles.mobileNavLink}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <a href="#" className={styles.mobileNavLink} onClick={() => setMobileMenuOpen(false)}>
+              Sign In
+            </a>
+            <a
+              href="#"
+              className={styles.mobileNavLinkPrimary}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Sign Up
+            </a>
+          </nav>
+        )}
       </header>
 
       <main id="main">
@@ -354,10 +238,9 @@ export default function Home() {
               — with real computation.
             </h1>
             <p className={styles.subtitle}>
-              Newton is a native desktop study companion that solves problems with actual
-              tools — symbolic math, real chemistry, statistics, and your own code — instead
-              of an LLM guessing what sounds right. It remembers your whole semester, so
-              review time goes exactly where you&apos;re actually weak.
+              Newton solves problems with real tools — symbolic math, chemistry,
+              statistics, your own code — instead of an LLM guessing. It remembers your
+              whole semester.
             </p>
             <div className={styles.heroActions}>
               <a href="#" className={styles.btnPrimary}>
@@ -375,12 +258,12 @@ export default function Home() {
             <Reveal className={styles.heroDemoHead}>
               <p className={styles.eyebrow}>Real sessions, replayed</p>
               <h2 id="demo-heading" className={styles.heroDemoTitle}>
-                This is the actual app.
+                This is the app.
               </h2>
               <p className={styles.heroDemoSubtitle}>
-                A real recreation of Newton&apos;s desktop window — sidebar, documents, and
-                all — replaying real transcripts captured from Newton&apos;s actual backend.
-                Leading below: a genuine document, really uploaded (
+                A recreation of Newton&apos;s desktop window — sidebar, documents, and
+                all — replaying transcripts captured from Newton&apos;s backend. Below: a
+                document uploaded during that session (
                 <code>Physics 201 - Lecture 14.txt</code>), and a question only that
                 document could answer.
               </p>
@@ -393,7 +276,10 @@ export default function Home() {
         </div>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Verified, not vibes: the graded-paper visual                     */}
+        {/* Verified, not vibes: the graded-paper visual carries this        */}
+        {/* section alone — Phase 3.8 cuts the "also verified" card strip    */}
+        {/* and the closing footnote paragraph that used to restate in      */}
+        {/* prose what the visual already shows.                            */}
         {/* ---------------------------------------------------------------- */}
         <section id="verified" className={styles.section}>
           <Reveal className={styles.sectionHeadEditorial}>
@@ -408,8 +294,7 @@ export default function Home() {
               </h2>
             </div>
             <p className={`${styles.sectionSubtitle} ${styles.sectionHeadEditorialSubtitle}`}>
-              Most AI tutors tell you an answer sounds right. Newton computes it, catches
-              what&apos;s actually wrong, and shows its work like a real grader would.
+              Other AI tutors guess. Newton grades.
             </p>
           </Reveal>
 
@@ -417,55 +302,32 @@ export default function Home() {
             <GradedPaper />
           </Reveal>
 
-          <Reveal className={styles.alsoVerifiedStrip}>
-            <p className={styles.alsoVerifiedLabel}>The same standard, everywhere else in Newton:</p>
-            <ul className={styles.alsoVerifiedList}>
-              {ALSO_VERIFIED.map((item) => (
-                <li key={item.label}>
-                  <strong>{item.label}</strong> — {item.detail}
-                </li>
-              ))}
-            </ul>
-          </Reveal>
-
           <p className={styles.sectionFootnote}>
-            And when there&apos;s no algorithm for deciding something — a proof&apos;s
-            logical validity, an argument&apos;s quality — Newton says so honestly instead
-            of pretending a judgment call is a computed fact.
+            The same standard applies to chemistry, your code, and citations.
           </p>
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Feature grid                                                     */}
+        {/* Capability list — a tight, single-line-per-item list replacing   */}
+        {/* the old 13-card / 5-subgroup feature grid.                      */}
         {/* ---------------------------------------------------------------- */}
         <section className={`${styles.section} ${styles.sectionWarm}`} aria-labelledby="features-heading">
           <Reveal className={styles.sectionHead}>
-            <p className={styles.eyebrow}>Everything, actually built</p>
+            <p className={styles.eyebrow}>Capabilities</p>
             <h2 id="features-heading" className={styles.sectionTitle}>
-              Real capability, organized honestly.
+              What it does.
             </h2>
           </Reveal>
 
-          <div className={styles.featureGroups}>
-            {FEATURE_GROUPS.map((group, i) => (
-              <Reveal key={group.name} delayMs={Math.min(i, 3) * 70}>
-                <div className={styles.featureGroup}>
-                  <div className={styles.featureGroupHead}>
-                    <h3 className={styles.featureGroupName}>{group.name}</h3>
-                    <p className={styles.featureGroupBlurb}>{group.blurb}</p>
-                  </div>
-                  <div className={styles.featureItemGrid}>
-                    {group.items.map((item) => (
-                      <div key={item.title} className={styles.featureItem}>
-                        <h4 className={styles.featureItemTitle}>{item.title}</h4>
-                        <p className={styles.featureItemDescription}>{item.description}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
+          <Reveal>
+            <ul className={styles.capabilityList}>
+              {CAPABILITIES.map((item) => (
+                <li key={item} className={styles.capabilityItem}>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </Reveal>
         </section>
 
         {/* ---------------------------------------------------------------- */}
@@ -475,21 +337,11 @@ export default function Home() {
           <Reveal className={styles.notepadCopy}>
             <p className={styles.eyebrow}>The Notepad</p>
             <h2 id="notepad-heading" className={styles.sectionTitle}>
-              Take live lecture notes. Never lose the thread.
+              Notes that don&apos;t stop when you get confused.
             </h2>
             <p className={styles.notepadParagraph}>
-              You&apos;re in lecture and the professor has already moved on before
-              you&apos;ve processed the last definition. Type your notes in Newton the way
-              you always have. The moment something doesn&apos;t click, highlight it right
-              there in your notes and ask Newton to explain — the explanation appears
-              inline, grounded in your own notes and documents, without you ever leaving the
-              page or breaking your train of thought.
-            </p>
-            <p className={styles.notepadParagraph}>
-              Every note is saved, named, and retrievable the same way your uploaded
-              readings are — so &ldquo;explain the thing my professor said about
-              hysteresis&rdquo; actually finds it, three weeks later, the night before the
-              exam.
+              Highlight anything in your notes and ask Newton to explain — the answer
+              appears inline, grounded in your own material.
             </p>
           </Reveal>
 
@@ -517,53 +369,15 @@ export default function Home() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Built for every student                                         */}
-        {/* ---------------------------------------------------------------- */}
-        <section id="for-students" className={styles.section}>
-          <Reveal className={styles.sectionHead}>
-            <p className={styles.eyebrow}>For Students</p>
-            <h2 className={styles.sectionTitle}>Built for every student.</h2>
-            <p className={styles.sectionSubtitle}>
-              Newton was reviewed major-by-major by skeptical-student critique passes
-              before anything here was written. What it&apos;s actually good at, by major:
-            </p>
-          </Reveal>
-
-          <div className={styles.studentGrid}>
-            {STUDENT_CARDS.map((card, i) => (
-              <Reveal key={card.major} delayMs={Math.min(i, 5) * 60}>
-                <div className={styles.studentCard}>
-                  <p className={styles.studentMajor}>{card.major}</p>
-                  <h3 className={styles.studentHeadline}>{card.headline}</h3>
-                  <p className={styles.studentDescription}>{card.description}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-
-          <Reveal className={styles.calloutStrip}>
-            <p>
-              <strong>Starting from zero, or grinding for a test?</strong> Generate a full
-              study plan, flashcards, and a practice exam from just a topic — SAT, GRE,
-              MCAT, or anything else — no document required. The weak-areas engine takes it
-              from there.
-            </p>
-          </Reveal>
-        </section>
-
-        {/* ---------------------------------------------------------------- */}
         {/* Pro features — real Pro-exclusive capability, no invented price.  */}
         {/* ---------------------------------------------------------------- */}
-        <section id="pro" className={`${styles.section} ${styles.sectionTextured}`} aria-labelledby="pro-heading">
+        <section id="pro" className={`${styles.section} ${styles.sectionTextured}`} aria-label="Newton Pro">
           <Reveal className={styles.sectionHead}>
             <p className={styles.eyebrow}>Newton Pro</p>
-            <h2 id="pro-heading" className={styles.sectionTitle}>
-              Everything free, plus the expensive tools.
-            </h2>
             <p className={styles.sectionSubtitle}>
-              Pro unlocks the tools that cost real money to run per use — a compiled
-              research paper, a synthesized web report, real speech synthesis — plus more
-              headroom on the generation tools everyone already gets.
+              Pro unlocks the tools that cost money to run per use — a compiled research
+              paper, a synthesized web report, speech synthesis — plus more headroom on
+              the generation tools everyone already gets.
             </p>
           </Reveal>
 
@@ -583,9 +397,8 @@ export default function Home() {
               <p className={styles.proColumnLabelPro}>Pro</p>
               <ul className={styles.proFeatureList}>
                 {PRO_FEATURES.map((feature) => (
-                  <li key={feature.title} className={styles.proFeatureItem}>
-                    <p className={styles.proFeatureTitle}>{feature.title}</p>
-                    <p className={styles.proFeatureDescription}>{feature.description}</p>
+                  <li key={feature} className={styles.proFeatureItem}>
+                    <p className={styles.proFeatureTitle}>{feature}</p>
                   </li>
                 ))}
               </ul>
@@ -594,27 +407,7 @@ export default function Home() {
               </a>
             </Reveal>
           </div>
-
-          <p className={styles.sectionFootnote}>
-            No price shown here on purpose — checkout isn&apos;t built into this site yet,
-            and we&apos;d rather leave this blank than guess.
-          </p>
         </section>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Closing CTA                                                      */}
-        {/* ---------------------------------------------------------------- */}
-        <div className={styles.closingShell}>
-          <Reveal className={styles.closingSection}>
-            <h2 className={styles.closingTitle}>Study with something that checks its work.</h2>
-            <p className={styles.closingSubtitle}>
-              Free to start, on Windows, macOS, and Linux.
-            </p>
-            <a href="#" className={styles.btnPrimary}>
-              Download Newton
-            </a>
-          </Reveal>
-        </div>
       </main>
 
       <footer className={styles.footer}>

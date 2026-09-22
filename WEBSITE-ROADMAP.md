@@ -252,6 +252,83 @@ Phase 3.5's visual overhaul was rejected a second and third time by the product 
 - [x] Verification: `tsc --noEmit` clean; 41/41 tests passing in this branch (65/65 across the full merged site including Phase 3.6's work); `npm run build` clean; real Playwright screenshots using incremental `window.scrollTo` steps rather than a single `fullPage: true` capture (a real false-positive was caught in an earlier round — Playwright's fullPage capture resizes instantly rather than scrolling like a real user, racing the `IntersectionObserver` reveals and making fully-working content look broken; incremental scrolling avoids that) — reviewed at 1440x900 and 390px, plus a dark-mode pass confirming the new red-pen/verified-stamp colors use the existing CSS-token system with real dark variants.
 - **Coordinating-session verification.** Both this branch and Phase 3.6's branch were built in parallel and both modified `page.tsx` substantially — merged sequentially with a real, hand-resolved conflict (not an automatic superset this time): `NAV_LINKS`/`FOOTER_COLUMNS` now come from Phase 3.6's shared `siteNav.ts` module (more correct than this branch's own local nav array, since the new FAQ/About/Changelog/Roadmap pages all need the same nav), while this phase's `GradedPaper` import and `ALSO_VERIFIED` naming were kept. Full re-verification after merge, from a clean `npm install` (not just the pre-merge state): `tsc` clean, **65/65 tests passing**, `npm run build` producing all 6 real routes, and real Playwright screenshots (incremental-scroll, not `fullPage`) of the merged home page and all four new content pages, reviewed directly — no overlapping text, no broken spacing, real navigation confirmed working end to end.
 
+## Phase 3.8 — Subtraction + rewrite pass (three converging critique audits)
+Executed as a literal work order distilled from three independent critique passes on
+the live Phase 3.7 page — a quantified visual-density audit, a copywriting-voice audit
+quoting exact text, and a skeptical-first-time-visitor test — that converged on the same
+findings: the page was too long, too repetitive, and leaned on
+"real/actual/genuine/honest/verified" as a crutch word instead of letting the demo and
+the graded-paper visual carry the claims. This was disciplined subtraction and rewrite,
+not new design work; the product owner had already rejected four rounds of open-ended
+"make it better" passes.
+- [x] **Cut list executed** (`apps/website/src/app/page.tsx`,
+      `page.module.css`): deleted the "For Students" section entirely (~6 cards,
+      duplicated the feature grid almost verbatim); collapsed the 13-card, 5-subgroup
+      feature grid into a 6-item, single-line-per-item capability list (`CAPABILITIES`);
+      cut the "also verified" card strip and the closing footnote paragraph from the
+      "Verified, not vibes" section, replacing both with one line ("The same standard
+      applies to chemistry, your code, and citations."); shortened the Notepad section
+      from 2 paragraphs (~140 words) to 1 sentence; shortened Pro (7 feature
+      descriptions cut to titles only, free-tier list cut from 5 items to 3, the
+      "Everything free, plus the expensive tools" heading sentence cut, replaced by an
+      `aria-label` on the section); deduped the footer's "Product" column against the
+      main nav (dropped Features/Pro, since both are already in the header) and removed
+      the "Account" column entirely (Sign In/Sign Up already live in the header) —
+      `src/lib/siteNav.ts`'s `NAV_LINKS`/`FOOTER_COLUMNS` updated accordingly, also
+      dropping the now-dead "For Students" nav entry; cut the separate closing CTA
+      section (redundant with the hero's own CTA — "Free to start" already lives in the
+      hero's existing note line, so nothing was lost).
+- [x] **Copy voice rewrite**: applied the audit's exact specified rewrites verbatim —
+      the hero subhead, the "Other AI tutors guess. Newton grades." line (replacing
+      "Most AI tutors tell you an answer sounds right..."), the Focus Mode line
+      ("Focus Mode holds back the answer until you ask. Enforced server-side, not
+      politely requested of the model."), the Notepad's one-sentence description, "This
+      is the app." (was "This is the actual app."), and "What it does." (was "Real
+      capability, organized honestly."). Also trimmed crutch-word instances in
+      `src/components/GradedPaper.tsx`'s figcaption and `src/components/
+      DemoTranscript.tsx`'s idle/disclaimer/tooltip copy (structure/positioning of both
+      components left untouched, per the task's explicit scope). "Verified, not vibes"
+      (the eyebrow/tagline) and the Verified badge/stamp itself were deliberately kept
+      — the one place the word is doing real work.
+- [x] **Mobile nav bug fixed**: below 720px the header previously hid the primary nav
+      and the Sign In link with no replacement, leaving Features/Pro/FAQ/Sign In
+      completely unreachable on mobile — confirmed by the skeptical-visitor audit. Added
+      a real hamburger toggle (`.menuToggle`) + dropdown panel (`#mobile-nav`,
+      `aria-expanded`/`aria-controls`) in `page.tsx`, rendering `NAV_LINKS` plus Sign
+      In/Sign Up; closes on link click. Verified working via a real Playwright click (not
+      just a screenshot): the toggle opens the panel, all 5 links are present and
+      reachable, and clicking FAQ navigates to the real `/faq` route
+      (`page.waitForURL`).
+- [x] **Verification, all real**: `npx tsc --noEmit` clean; `npm run build` clean, all 6
+      routes (`/`, `/about`, `/changelog`, `/faq`, `/roadmap`, `/_not-found`) statically
+      prerendered; the website's test suite (`src/app/page.test.tsx`,
+      `src/components/SiteChrome.test.tsx`) rewritten to match the cut/renamed content
+      instead of leaving dead assertions — **70/70 tests passing** across all 8 test
+      files (the previously-tracked 3 pre-existing `demoTranscript`-scenario-count
+      failures are no longer reproducing). Real word/section counts, measured by
+      rendering both the pre-Phase-3.8 page and the new page with React Testing Library
+      and reading `document.querySelector("main").textContent` (not estimated): **body
+      copy 1,483 words → 425 words** (a 71% cut, under the ~500-word target); **content
+      sections 7 → 6** by the same measurement convention (Hero, Demo, Verified,
+      Capabilities, Notepad, Pro — down from Hero, Demo, Verified, Feature Grid,
+      Notepad, For Students, Pro; the separate closing CTA, which added an 8th, is
+      gone). Crutch-word count (`real|actual|genuine|honest|verified`, case-insensitive)
+      measured two ways: in the page's **rendered/visible text**, 88 → 11 occurrences
+      (the 11 remaining are the "Verified, not vibes" eyebrow/tagline, the Verified
+      badge/stamp, and the hero's "real tools"/"real computation" phrasing specified
+      verbatim by the audit's own exact-rewrite instructions); in the raw
+      `page.tsx` source text (including code comments), grepping the literal file per
+      the task's own instruction, 108 → 27. Real, incremental-scroll Playwright
+      screenshots (temp-installed with `npm install --no-save playwright`, fully
+      removed afterward with `npm uninstall --no-save playwright`) at 1440x900 and
+      390x844 confirmed no overlapping text or broken spacing anywhere on the shortened
+      page, and specifically confirmed the mobile hamburger menu opening, showing real
+      links, and navigating on click.
+- **Note**: the desktop page height dropped from the pre-pass 8,229px (the number the
+  original density audit measured) to **4,874px** measured the same way (`document.body.
+  scrollHeight` at 1440x900) — a 41% reduction, consistent with the word/section cuts
+  above.
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).

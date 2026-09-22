@@ -249,7 +249,7 @@ export default function DemoTranscript() {
                             chip.verified ? styles.chipVerified : ""
                           }`}
                           style={{ animationDelay: `${Math.min(i, 6) * 70}ms` }}
-                          title={chip.verified ? "Computed with real math/code, not guessed" : undefined}
+                          title={chip.verified ? "Computed, not guessed" : undefined}
                         >
                           <span className={styles.chipIcon} aria-hidden="true" />
                           {chip.label}
@@ -274,7 +274,7 @@ export default function DemoTranscript() {
 
               {!state.showUserMessage && (
                 <p className={styles.transcriptIdle}>
-                  Scroll down, or pick a chat in the sidebar, to watch a real reply.
+                  Scroll down, or pick a chat in the sidebar.
                 </p>
               )}
             </div>
@@ -289,7 +289,7 @@ export default function DemoTranscript() {
                 <span aria-hidden="true">↺</span> Replay
               </button>
               <p className={styles.transcriptDisclaimer}>
-                A real transcript captured from Newton&apos;s actual backend, replayed here — not a
+                A transcript captured from Newton&apos;s backend, replayed here — not a
                 live chat.
               </p>
             </div>

@@ -228,7 +228,52 @@
 }
 
 /* ---------------------------------------------------------------------
- * Shared buttons (hero / closing CTA)
+ * Mobile nav — Phase 3.8 fix: below 720px the primary nav/Sign-In link are
+ * hidden (see the responsive block at the bottom of this file) with no
+ * replacement, leaving Features/Pro/FAQ/Sign In completely unreachable on
+ * mobile. This hamburger toggle + dropdown panel is the fix.
+ * ------------------------------------------------------------------- */
+
+.menuToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.menuToggle:hover,
+.menuToggle:focus-visible {
+  background-color: var(--color-surface-2);
+}
+
+.menuToggleBars {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 20px;
+}
+
+.menuToggleBar {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background-color: var(--color-text);
+  border-radius: 1px;
+}
+
+.mobileNav {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------
+ * Shared buttons (hero)
  * ------------------------------------------------------------------- */
 
 .btnPrimary {
@@ -472,128 +517,30 @@
 }
 
 /* ---------------------------------------------------------------------
- * "The same standard, everywhere else" strip — a compact inline list, not
- * a third repetition of an icon/heading/paragraph card (the GradedPaper
- * visual above it is the section's one dominant visual element).
+ * Capability list — Phase 3.8 replaces the old 13-card, 5-subgroup feature
+ * grid with a tight, single-line-per-item list. No icon, no separate
+ * heading+blurb per group — the list itself is the content.
  * ------------------------------------------------------------------- */
 
-.alsoVerifiedStrip {
-  max-width: 780px;
-  margin: 64px auto 0;
-  text-align: center;
-}
-
-.alsoVerifiedLabel {
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--color-text-faint);
-  margin: 0 0 16px;
-}
-
-.alsoVerifiedList {
+.capabilityList {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px 32px;
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.alsoVerifiedList li {
-  position: relative;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  line-height: 1.55;
-  max-width: 30ch;
-  text-align: left;
-}
-
-.alsoVerifiedList li + li::before {
-  content: "";
-  position: absolute;
-  left: -17px;
-  top: 4px;
-  bottom: 4px;
-  width: 1px;
-  background-color: var(--color-border);
-}
-
-.alsoVerifiedList strong {
-  color: var(--color-accent);
-  font-weight: var(--font-weight-semibold);
-}
-
-/* ---------------------------------------------------------------------
- * Feature groups
- * ------------------------------------------------------------------- */
-
-.featureGroups {
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-}
-
-.featureGroup {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 2.15fr);
-  gap: 32px;
-  padding-top: 40px;
+.capabilityItem {
+  padding: 18px 4px;
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+  line-height: 1.5;
   border-top: 1px solid var(--color-border-2);
 }
 
-/* .featureGroup is wrapped in a Reveal <div> (see page.tsx), so ":first-child" on the
- * group itself would never match — target the first Reveal wrapper's child instead. */
-.featureGroups > *:first-child > .featureGroup {
-  padding-top: 0;
+.capabilityList > .capabilityItem:first-child {
   border-top: none;
-}
-
-.featureGroupHead {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.featureGroupName {
-  font-size: var(--font-size-lg);
-  color: var(--color-text);
-}
-
-.featureGroupBlurb {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.featureItemGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px 28px;
-}
-
-.featureItem {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.featureItemTitle {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text);
-  margin: 0;
-}
-
-.featureItemDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  line-height: 1.6;
-  margin: 0;
 }
 
 /* ---------------------------------------------------------------------
@@ -688,112 +635,6 @@
   color: var(--color-text);
   line-height: 1.6;
   margin: 0;
-}
-
-/* ---------------------------------------------------------------------
- * Built for every student
- * ------------------------------------------------------------------- */
-
-.studentGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-  margin-bottom: 40px;
-}
-
-.studentCard {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  padding: 24px 24px;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.25s ease, transform 0.25s ease, border-left-color 0.25s ease;
-}
-
-.studentCard:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-3px) scale(1.015);
-  border-left-color: var(--color-accent-2);
-}
-
-.studentMajor {
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-accent);
-  margin: 0;
-}
-
-.studentHeadline {
-  font-size: var(--font-size-md);
-  color: var(--color-text);
-  margin: 0;
-}
-
-.studentDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.calloutStrip {
-  background-color: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 22px 28px;
-  text-align: center;
-}
-
-.calloutStrip p {
-  font-size: var(--font-size-base);
-  color: var(--color-text);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.calloutStrip strong {
-  color: var(--color-accent);
-}
-
-/* ---------------------------------------------------------------------
- * Closing CTA
- * ------------------------------------------------------------------- */
-
-.closingShell {
-  position: relative;
-  background: radial-gradient(circle at 50% 0%, var(--color-accent-tint) 0%, transparent 60%),
-    linear-gradient(180deg, var(--color-bg), var(--color-accent-2-tint) 160%);
-}
-
-.closingSection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 20px;
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 96px 32px;
-  border-top: 1px solid var(--color-border-2);
-}
-
-.closingTitle {
-  font-size: 42px;
-  line-height: 1.12;
-  letter-spacing: -0.01em;
-  color: var(--color-text);
-}
-
-.closingSubtitle {
-  font-size: var(--font-size-md);
-  color: var(--color-text-muted);
-  margin-bottom: 4px;
 }
 
 /* ---------------------------------------------------------------------
@@ -991,13 +832,6 @@
   margin: 0;
 }
 
-.proFeatureDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  line-height: 1.55;
-  margin: 0;
-}
-
 @media (max-width: 900px) {
   .proGrid {
     grid-template-columns: 1fr;
@@ -1026,15 +860,6 @@
     font-size: 36px;
   }
 
-  .featureGroup {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-
-  .featureItemGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .notepadSection {
     grid-template-columns: 1fr;
     padding: 64px 28px;
@@ -1042,10 +867,6 @@
 
   .notepadVisual {
     order: -1;
-  }
-
-  .studentGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1060,6 +881,40 @@
 
   .navLinkAuth {
     display: none;
+  }
+
+  .menuToggle {
+    display: flex;
+  }
+
+  .mobileNav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 20px 20px;
+    border-top: 1px solid var(--color-border-2);
+    background-color: var(--color-surface);
+  }
+
+  .mobileNavLink {
+    padding: 12px 4px;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-border-2);
+  }
+
+  .mobileNavLinkPrimary {
+    margin-top: 10px;
+    display: inline-flex;
+    justify-content: center;
+    padding: 12px;
+    background-color: var(--color-accent);
+    color: var(--color-accent-contrast);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-weight: var(--font-weight-semibold);
   }
 }
 
@@ -1088,28 +943,12 @@
     margin-bottom: 40px;
   }
 
-  .alsoVerifiedList li + li::before {
-    display: none;
-  }
-
   .sectionHeadEditorialTitle {
     font-size: 30px;
   }
 
-  .featureItemGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .studentGrid {
-    grid-template-columns: 1fr;
-  }
-
   .notepadSection {
     padding: 56px 20px;
-  }
-
-  .closingSection {
-    padding: 72px 20px;
   }
 
   .footerInner {

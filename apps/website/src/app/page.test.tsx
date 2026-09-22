@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import Home from "./page";
 
 describe("Home", () => {
@@ -13,7 +13,6 @@ describe("Home", () => {
       render(<Home />);
       const nav = screen.getByRole("navigation", { name: /primary/i });
       expect(within(nav).getByRole("link", { name: "Features" })).toBeInTheDocument();
-      expect(within(nav).getByRole("link", { name: "For Students" })).toBeInTheDocument();
       expect(within(nav).getByRole("link", { name: "Pro" })).toBeInTheDocument();
       expect(within(nav).getByRole("link", { name: "FAQ" })).toBeInTheDocument();
     });
@@ -27,9 +26,34 @@ describe("Home", () => {
 
     it("renders Sign In and Sign Up entry points", () => {
       render(<Home />);
-      // Both appear twice by design: once in the header, once in the footer.
+      // Both appear at least once outside the (initially closed) mobile menu: once in
+      // the header, once in the footer's... actually the footer no longer repeats them
+      // (Phase 3.8 drops the redundant Account column) — just the header.
       expect(screen.getAllByRole("link", { name: "Sign In" }).length).toBeGreaterThan(0);
       expect(screen.getAllByRole("link", { name: "Sign Up" }).length).toBeGreaterThan(0);
+    });
+
+    it("has a working mobile menu that reveals Features/Pro/FAQ/Sign In (Phase 3.8 fix: previously unreachable below 720px)", () => {
+      render(<Home />);
+      const toggle = screen.getByRole("button", { name: /open menu/i });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+      // Before opening, the mobile-only nav panel isn't rendered at all.
+      expect(screen.queryByRole("navigation", { name: /mobile/i })).not.toBeInTheDocument();
+
+      fireEvent.click(toggle);
+
+      const mobileNav = screen.getByRole("navigation", { name: /mobile/i });
+      expect(within(mobileNav).getByRole("link", { name: "Features" })).toBeInTheDocument();
+      expect(within(mobileNav).getByRole("link", { name: "Pro" })).toBeInTheDocument();
+      expect(within(mobileNav).getByRole("link", { name: "FAQ" })).toBeInTheDocument();
+      expect(within(mobileNav).getByRole("link", { name: "Sign In" })).toBeInTheDocument();
+      expect(within(mobileNav).getByRole("link", { name: "Sign Up" })).toBeInTheDocument();
+
+      expect(screen.getByRole("button", { name: /close menu/i })).toHaveAttribute(
+        "aria-expanded",
+        "true"
+      );
     });
   });
 
@@ -39,7 +63,7 @@ describe("Home", () => {
       expect(
         screen.getByRole("heading", { level: 1, name: /checks its work/i })
       ).toBeInTheDocument();
-      expect(screen.getByText(/native desktop study companion/i)).toBeInTheDocument();
+      expect(screen.getByText(/instead of an llm guessing/i)).toBeInTheDocument();
     });
 
     it("renders a visible primary download CTA", () => {
@@ -56,6 +80,11 @@ describe("Home", () => {
         expect(link).toHaveAttribute("href", "#");
       }
     });
+
+    it("mentions the free-to-start note (the old separate closing CTA section was cut — this line is now the only place it lives)", () => {
+      render(<Home />);
+      expect(screen.getByText(/free to start/i)).toBeInTheDocument();
+    });
   });
 
   describe("the real app demo (product owner: demo must be on the landing page, not scrolled to)", () => {
@@ -66,9 +95,9 @@ describe("Home", () => {
       );
       const headingTexts = headings.map((h) => h.textContent ?? "");
       const heroIndex = headingTexts.findIndex((t) => /checks its work/i.test(t));
-      const demoIndex = headingTexts.findIndex((t) => /this is the actual app/i.test(t));
+      const demoIndex = headingTexts.findIndex((t) => /this is the app/i.test(t));
       const verifiedIndex = headingTexts.findIndex((t) => /not vibes/i.test(t));
-      const featuresIndex = headingTexts.findIndex((t) => /real capability, organized honestly/i.test(t));
+      const featuresIndex = headingTexts.findIndex((t) => /what it does/i.test(t));
       expect(heroIndex).toBeGreaterThanOrEqual(0);
       expect(demoIndex).toBeGreaterThan(heroIndex);
       // The demo comes immediately after the hero — before the graded-paper section and
@@ -104,56 +133,42 @@ describe("Home", () => {
       expect(screen.getAllByText("Verified").length).toBeGreaterThan(0);
     });
 
-    it("keeps the other real computation types (chemistry, code, citations) as a compact strip, not a repeated card", () => {
+    it("keeps chemistry/code/citations as one short line, not a repeated card pattern (Phase 3.8 cut the old 'also verified' strip + footnote)", () => {
       render(<Home />);
-      expect(screen.getByText(/balanced by real linear algebra/i)).toBeInTheDocument();
-      expect(screen.getByText(/run against real tests in a real sandbox/i)).toBeInTheDocument();
-      expect(screen.getByText(/checked against the source's real fetched text/i)).toBeInTheDocument();
-    });
-
-    it("honestly distinguishes computed verification from reasoning-based critique", () => {
-      render(<Home />);
-      expect(screen.getByText(/no algorithm for deciding something/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/the same standard applies to chemistry, your code, and citations/i)
+      ).toBeInTheDocument();
     });
   });
 
-  describe("feature groups", () => {
-    it("organizes real capabilities into named groups, not a flat bullet dump", () => {
+  describe("capability list (Phase 3.8: replaces the old 13-card, 5-subgroup feature grid)", () => {
+    it("renders a tight single-line-per-item list, not a card grid", () => {
       render(<Home />);
-      expect(screen.getByText("Verified Computation")).toBeInTheDocument();
-      expect(screen.getByText("Real Memory & Progress Tracking")).toBeInTheDocument();
-      expect(screen.getByText("Real Document Understanding")).toBeInTheDocument();
-      expect(screen.getByText("Honest by Design")).toBeInTheDocument();
-      expect(screen.getByText("Real Language Practice")).toBeInTheDocument();
-    });
-
-    it("grounds the Verified Computation group in real, specific tool capability", () => {
-      render(<Home />);
-      expect(screen.getByText(/symbolic math & linear algebra/i)).toBeInTheDocument();
-      expect(screen.getByText(/checks your code and your proofs/i)).toBeInTheDocument();
-    });
-
-    it("names the FSRS spaced-repetition mechanism and the weak-areas engine specifically", () => {
-      render(<Home />);
-      expect(screen.getByText(/fsrs-scheduled flashcards/i)).toBeInTheDocument();
-      expect(screen.getByText(/weak-areas engine that closes the loop/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /what it does/i })).toBeInTheDocument();
+      expect(
+        screen.getByText(/symbolic math, linear algebra, chemistry, and statistics/i)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/fsrs-scheduled flashcards, practice exams, and a weak-areas engine/i)
+      ).toBeInTheDocument();
     });
 
     it("describes server-enforced Focus Mode, not just a prompt asking nicely", () => {
       render(<Home />);
-      expect(screen.getByText(/server-enforced focus mode/i)).toBeInTheDocument();
-      expect(screen.getByText(/not a politely-asked model/i)).toBeInTheDocument();
+      expect(screen.getByText(/focus mode holds back the answer until you ask/i)).toBeInTheDocument();
+      expect(screen.getByText(/not politely requested of the model/i)).toBeInTheDocument();
     });
   });
 
   describe("the Notepad-in-class section", () => {
-    it("tells a concrete classroom scenario, not an abstract feature blurb", () => {
+    it("renders the shortened heading + one-sentence description", () => {
       render(<Home />);
       expect(
-        screen.getByRole("heading", { name: /take live lecture notes/i })
+        screen.getByRole("heading", { name: /notes that don't stop when you get confused/i })
       ).toBeInTheDocument();
-      expect(screen.getByText(/you're in lecture/i)).toBeInTheDocument();
-      expect(screen.getByText(/highlight it right there in your notes/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/highlight anything in your notes and ask newton to explain/i)
+      ).toBeInTheDocument();
     });
 
     it("renders a mock note card showing highlight-to-explain in context", () => {
@@ -167,36 +182,22 @@ describe("Home", () => {
     });
   });
 
-  describe("built for every student section", () => {
-    it("renders per-major cards grounded in the real critique-review findings", () => {
-      render(<Home />);
-      expect(screen.getByText("Math")).toBeInTheDocument();
-      expect(screen.getByText("Computer Science")).toBeInTheDocument();
-      expect(screen.getByText("Engineering & Natural Sciences")).toBeInTheDocument();
-      expect(screen.getByText("Social Sciences")).toBeInTheDocument();
-      expect(screen.getByText("Humanities")).toBeInTheDocument();
-      expect(screen.getByText("World Languages")).toBeInTheDocument();
-    });
-
-    it("grounds the Computer Science card in the real check-don't-write distinction", () => {
-      render(<Home />);
-      expect(screen.getByText(/checks your code\. never writes it for you\./i)).toBeInTheDocument();
-    });
-
-    it("mentions bare-topic generation for self-directed/test-prep students", () => {
-      render(<Home />);
-      expect(screen.getByText(/starting from zero, or grinding for a test/i)).toBeInTheDocument();
-    });
-  });
-
   describe("footer", () => {
-    it("renders a real, structured footer with multiple link columns, not just a wordmark", () => {
+    it("renders a compact footer without a redundant Account column", () => {
       render(<Home />);
       const footer = screen.getByRole("contentinfo");
       expect(within(footer).getByText("Product")).toBeInTheDocument();
-      expect(within(footer).getByText("Account")).toBeInTheDocument();
       expect(within(footer).getByText("Company")).toBeInTheDocument();
-      expect(within(footer).getAllByRole("link").length).toBeGreaterThanOrEqual(6);
+      expect(within(footer).queryByText("Account")).not.toBeInTheDocument();
+      expect(within(footer).queryByRole("link", { name: "Sign In" })).not.toBeInTheDocument();
+      expect(within(footer).queryByRole("link", { name: "Sign Up" })).not.toBeInTheDocument();
+    });
+
+    it("doesn't repeat the primary nav's Features/Pro links in the Product column", () => {
+      render(<Home />);
+      const footer = screen.getByRole("contentinfo");
+      expect(within(footer).queryByRole("link", { name: "Features" })).not.toBeInTheDocument();
+      expect(within(footer).queryByRole("link", { name: "Pro" })).not.toBeInTheDocument();
     });
 
     it("links About/FAQ/Changelog/Roadmap to real internal routes, not '#' stubs", () => {
@@ -218,7 +219,6 @@ describe("Home", () => {
   describe("Pro features section", () => {
     it("lists real Pro-exclusive tools with no invented price", () => {
       render(<Home />);
-      expect(screen.getByRole("heading", { name: /everything free, plus the expensive tools/i })).toBeInTheDocument();
       expect(screen.getByText("Full research paper writing")).toBeInTheDocument();
       expect(screen.getByText("Deep Research")).toBeInTheDocument();
       expect(screen.getByText(/access to frontier ai models/i)).toBeInTheDocument();
@@ -226,10 +226,62 @@ describe("Home", () => {
       expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
     });
 
+    it("does not apologize/over-explain the missing price (Phase 3.8 cut that footnote)", () => {
+      render(<Home />);
+      expect(screen.queryByText(/no price shown here on purpose/i)).not.toBeInTheDocument();
+    });
+
+    it("shows Pro feature titles only, no per-feature body paragraph", () => {
+      render(<Home />);
+      expect(
+        screen.queryByText(/a plan-then-approve workflow that compiles/i)
+      ).not.toBeInTheDocument();
+    });
+
+    it("caps the free-tier list at 3 items", () => {
+      render(<Home />);
+      const proSection = document.getElementById("pro");
+      expect(proSection).not.toBeNull();
+      const freeList = within(proSection as HTMLElement).getByText("Free").closest("div");
+      const items = within(freeList as HTMLElement).getAllByRole("listitem");
+      expect(items.length).toBeLessThanOrEqual(3);
+    });
+
     it("has an Upgrade to Pro CTA (stubbed to '#' — checkout isn't built yet)", () => {
       render(<Home />);
       const upgradeLink = screen.getByRole("link", { name: /upgrade to pro/i });
       expect(upgradeLink).toHaveAttribute("href", "#");
+    });
+  });
+
+  describe("cut sections (Phase 3.8)", () => {
+    it("no longer renders the 'For Students' section (pure duplication of the capability list)", () => {
+      render(<Home />);
+      expect(screen.queryByText(/built for every student/i)).not.toBeInTheDocument();
+      expect(screen.queryByText("World Languages")).not.toBeInTheDocument();
+    });
+
+    it("no longer renders a separate closing CTA section (redundant with the hero CTA)", () => {
+      render(<Home />);
+      expect(
+        screen.queryByText(/study with something that checks its work/i)
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("copy voice (Phase 3.8 rewrite)", () => {
+    it("uses the new, shorter hero subhead", () => {
+      render(<Home />);
+      expect(
+        screen.getByText(
+          /newton solves problems with real tools — symbolic math, chemistry, statistics, your own code — instead of an llm guessing\. it remembers your whole semester\./i
+        )
+      ).toBeInTheDocument();
+    });
+
+    it("uses the new 'Other AI tutors guess. Newton grades.' line", () => {
+      render(<Home />);
+      expect(screen.getByText(/other ai tutors guess\. newton grades\./i)).toBeInTheDocument();
     });
   });
 });
