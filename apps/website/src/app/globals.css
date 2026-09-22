@@ -1,0 +1,135 @@
+/* ---------------------------------------------------------------------
+ * Design tokens
+ * Ported from apps/desktop/src/App.css: the same warm, ink-and-paper
+ * palette (parchment/ivory in light mode, warm charcoal in dark mode)
+ * and the same deep cobalt-ink blue accent, so the website reads as the
+ * same product as the desktop app rather than a from-scratch redesign.
+ * The website has no Settings → Appearance yet (no data-theme toggle),
+ * so dark mode here follows the OS preference only.
+ * ------------------------------------------------------------------- */
+
+:root {
+  /* Neutrals — warm parchment/ivory, not neutral gray */
+  --color-bg: #f5efe3;
+  --color-surface: #fffcf6;
+  --color-surface-2: #ede2ca;
+  --color-surface-3: #e1d3b3;
+  --color-border: #ddcca5;
+  --color-border-2: #e6d9b9;
+  --color-text: #241f16;
+  --color-text-muted: #6d6250;
+  --color-text-faint: #a2947a;
+
+  /* Brand accent — deep cobalt-ink blue */
+  --color-accent: #2f4d8c;
+  --color-accent-hover: #263e70;
+  --color-accent-active: #1e325a;
+  --color-accent-contrast: #fdf9f0;
+  --color-accent-tint: rgba(47, 77, 140, 0.12);
+  --color-accent-tint-strong: rgba(47, 77, 140, 0.22);
+
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(36, 26, 12, 0.08);
+  --shadow-md: 0 12px 32px rgba(36, 26, 12, 0.14);
+  --shadow-lg: 0 20px 48px rgba(36, 26, 12, 0.22);
+
+  --focus-ring: 0 0 0 3px var(--color-accent-tint-strong);
+
+  --font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Avenir, Helvetica,
+    Arial, sans-serif;
+  --font-serif: "Fraunces Variable", Georgia, "Times New Roman", serif;
+
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-md: 18px;
+  --font-size-lg: 22px;
+  --font-size-xl: 32px;
+  --font-size-2xl: 48px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1c1712;
+    --color-surface: #251f18;
+    --color-surface-2: #2d251c;
+    --color-surface-3: #392f23;
+    --color-border: #3c3021;
+    --color-border-2: #2e2519;
+    --color-text: #f1e7d6;
+    --color-text-muted: #b3a488;
+    --color-text-faint: #7c6f59;
+
+    --color-accent: #7c9de8;
+    --color-accent-hover: #93b1ec;
+    --color-accent-active: #648ae0;
+    --color-accent-contrast: #10182a;
+    --color-accent-tint: rgba(124, 157, 232, 0.18);
+    --color-accent-tint-strong: rgba(124, 157, 232, 0.3);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100vw;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-regular);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-serif);
+  font-weight: var(--font-weight-semibold);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
