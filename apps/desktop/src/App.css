@@ -5081,7 +5081,9 @@ body.is-resizing-panel * {
 }
 
 .notepad-window__tag-pills--header {
-  padding: 0 var(--space-3) var(--space-2);
+  /* a row of its own under the title, clear of the header's bottom border */
+  padding: var(--space-2) var(--space-3) 0;
+  align-items: center;
 }
 
 .notepad-window__tag-pill {
