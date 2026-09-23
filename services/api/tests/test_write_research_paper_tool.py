@@ -957,3 +957,57 @@ def test_plan_headings_lose_a_leading_number_because_latex_numbers_sections_itse
     assert _strip_heading_number("Introduction") == "Introduction"
     assert _strip_heading_number("2D Poisson problem") == "2D Poisson problem"
     assert _strip_heading_number("1.") == "1."
+
+
+class _ScriptedProvider(ChatProvider):
+    """Answers each call with the next scripted reply (one section, so the order is fixed)."""
+
+    def __init__(self, replies: list[str]):
+        self._replies = list(replies)
+        self.calls = 0
+
+    async def stream_chat(
+        self, messages: list[ChatTurn], model: str, tools: list[ToolSpec] | None = None
+    ) -> AsyncIterator[StreamEvent]:
+        self.calls += 1
+        yield TextDelta(self._replies.pop(0))
+
+
+async def _draft_with(monkeypatch, replies: list[str]):
+    provider = _ScriptedProvider(replies)
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+    draft = await wrp._draft_section(
+        style_label="arXiv preprint",
+        title="T",
+        abstract_sketch="A.",
+        heading="Introduction",
+        summary="",
+        document_text=None,
+        session_id=None,
+        user_id=None,
+    )
+    return draft, provider
+
+
+async def test_a_stray_cjk_character_triggers_one_redraft_instead_of_failing_the_compile(monkeypatch):
+    bad = '{"prose": "Asymptotic formulas of this kind\u662f are optimistic.", "sources": []}'
+    good = '{"prose": "Asymptotic formulas of this kind are optimistic.", "sources": []}'
+    draft, provider = await _draft_with(monkeypatch, [bad, good])
+    assert provider.calls == 2
+    assert draft.prose == "Asymptotic formulas of this kind are optimistic."
+
+
+async def test_a_stray_character_that_persists_is_dropped_rather_than_sinking_the_paper(monkeypatch):
+    bad = '{"prose": "Asymptotic formulas of this kind\u662f are optimistic.", "sources": []}'
+    draft, provider = await _draft_with(monkeypatch, [bad, bad])
+    assert provider.calls == 2
+    assert "\u662f" not in draft.prose
+    assert draft.prose == "Asymptotic formulas of this kind are optimistic."
+
+
+async def test_accented_latin_and_greek_are_left_alone(monkeypatch):
+    ok = '{"prose": "Gauss\u2013Seidel on the Poincar\u00e9 map, \u03c9 = 1.9.", "sources": []}'
+    draft, provider = await _draft_with(monkeypatch, [ok])
+    assert provider.calls == 1
+    assert "Poincar\u00e9" in draft.prose and "\u03c9" in draft.prose

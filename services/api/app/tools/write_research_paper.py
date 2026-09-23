@@ -255,6 +255,12 @@ Original document:
 """
 
 
+# Scripts pdflatex (without a CJK/RTL toolchain) cannot typeset: Hebrew/Arabic through Indic and Thai,
+# Hangul jamo, CJK and its punctuation, Hangul syllables, compatibility and full-width forms.
+_UNTYPESETTABLE = re.compile(
+    "[\u0590-\u0dff\u0e00-\u0eff\u1100-\u11ff\u2e80-\ud7ff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef\U00020000-\U0002ffff]"
+)
+
 _LEADING_NUMBER = re.compile(r"^\s*\d+\s*[.):-]\s+")
 
 
@@ -429,11 +435,17 @@ async def _draft_section(
             material=material,
         )
         provider, model = get_provider()
-        raw = ""
-        async for event in provider.stream_chat([ChatTurn(role="user", content=prompt)], model):
-            if isinstance(event, TextDelta):
-                raw += event.text
-        prose, sources = parse_section_response(raw)
+        # A model occasionally slips a stray CJK/Arabic/etc. character into English prose, which
+        # pdflatex cannot typeset and which fails the WHOLE compile. Draft again once; if it
+        # happens again, drop just those characters rather than lose the paper.
+        for attempt in range(2):
+            raw = ""
+            async for event in provider.stream_chat([ChatTurn(role="user", content=prompt)], model):
+                if isinstance(event, TextDelta):
+                    raw += event.text
+            if not _UNTYPESETTABLE.search(raw):
+                break
+        prose, sources = parse_section_response(_UNTYPESETTABLE.sub("", raw))
         grounding = check_section_grounding(prose, sources, url_fetched_text)
         return SectionDraft(
             heading=heading, prose=prose, sources=sources, url_metadata=url_metadata, grounding=grounding
