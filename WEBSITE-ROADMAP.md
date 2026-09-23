@@ -589,6 +589,83 @@ This phase replaces them with real screenshots of the real, unmodified app compo
     and floating-window composite all render correctly and without overflow at both
     sizes.
 
+## Phase 3.10.3 — Actual screen-recorded video, not a screenshot with a fake cursor
+Product owner, verbatim: "THIS 'LIVE DEMO' IS JUST A FUCKING PICTURE... IT SHOULD BE
+LIKE A REMOTION VIDEO OF THE PROMPT RUNNING, LIKE A PROMOTIONAL ADVERTISEMENT... SHOW
+OFF TYPING IN... NEWTON NOTEPAD, THEN HIGHLIGHTING AND CLICK EXPLAIN." The CSS-animated
+traveling-cursor-over-a-static-screenshot from 3.10.2 was still fundamentally a picture.
+This phase replaces it with real screen-recorded video of the real app being used.
+- [x] **The marketing harness gained a second mode**: `?scene=study|notepad|artifact`
+  renders one scripted, autoplaying-once scene full-bleed instead of the static prop-fed
+  scenes from 3.10/3.10.1. Every string typed or revealed is the same real, previously-
+  captured content this whole initiative has used throughout (the "math-catches-mistake"
+  transcript, the hysteresis note) — this phase only adds the TIMING of a typewriter
+  effect, real tool-activity chips revealed one at a time, and a real progressive reply
+  reveal; see the harness file's own header comment for the one deliberately-generic
+  moment (an "Explaining…" shimmer instead of a fabricated AI answer, since no real
+  captured example of that specific annotation response exists to reuse).
+- [x] **The Notepad scene's selection is a real browser `Selection`/`Range`**, grown
+  incrementally over the real DOM text node (not a CSS-only highlight class) so a
+  recording shows an actual native selection sweep, then the real Explain/Define/
+  Summarize toolbar positioned from that Range's own real `getBoundingClientRect()`
+  (more accurate than 3.10's hand-eyeballed pixel guess).
+- [x] **Recorded with Playwright's own video capture** (`context.recordVideo`) against
+  the real running harness — a real screen recording of real rendered React/CSS, not a
+  hand-animated substitute. Converted `.webm` → `.mp4` (H.264, `libx264`/`faststart`) via
+  a real `ffmpeg` install (`winget install Gyan.FFmpeg`) for broad browser/Safari
+  compatibility; poster JPGs extracted from a representative in-progress frame of each
+  clip. Final sizes: study.mp4 450KB, notepad.mp4 77KB, artifact.mp4 282KB.
+- [x] **`AppWalkthrough.tsx` rebuilt around real `<video>` elements**: autoplay/pause now
+  call the video's own real `play()`/`pause()` (gated on real scroll-into-view via
+  `useInView`, and on real mouse hover), the step rail's progress bar is driven by the
+  video's own real `timeupdate` event (`currentTime/duration`), and advancing to the
+  next scene fires on the video's own real `ended` event — no more `SCENE_DURATIONS_MS`/
+  `setInterval` simulating a duration that had to be kept in sync by hand.
+- [x] **Scene 3 still hands off to the real live artifact**: the clip plays (typing the
+  real prompt, the real `ArtifactBlock` component's own real "Loading artifact…" state
+  — reused via a short real delay in the fetch mock, not a fabricated chip — then the
+  artifact appearing), and on `ended` swaps to the SAME real, unmodified, sandboxed
+  `<iframe>` a visitor can actually drag. Re-confirmed after this whole rewrite: dragging
+  the real embedded artifact to 135° post-video still reads the mathematically exact
+  `-0.707`/`0.707`.
+- [x] **`prefers-reduced-motion` never autoplays video**: scenes 1/2 render their real
+  poster JPG as a plain `<img>` instead of a `<video>` element at all (not just a paused
+  video), and scene 3 skips straight to the real live iframe (no motion concern with a
+  static diagram sitting still until dragged).
+- [x] **The old CSS traveling-cursor/click-ring, the Notepad floating-window-over-
+  blurred-backdrop composite, and the static PNG screenshots it all depended on are
+  deleted** — fully superseded, not left as dead code alongside the video path.
+- [x] **Verification, all real.** `apps/desktop`: `tsc` clean, real `vite build` clean,
+  **699/699 tests passing** (this phase's harness edit also fixed a real bug found via
+  this same verification pass — see below). `apps/website`: `tsc` clean, real `next
+  build` clean, **59/59 tests passing** (`AppWalkthrough.test.tsx` rewritten around real
+  `fireEvent.ended`/spied `play`/`pause` calls instead of fake timers; a global
+  `HTMLMediaElement.prototype.play/pause/load` stub added to `src/test/setup.ts`, since
+  jsdom implements no real media playback at all). Real Playwright verification against
+  a real `next start` server: confirmed the video's own `currentTime` genuinely advances
+  over real wall-clock time (not just that the element exists); zero console/page
+  errors; the post-video live-artifact handoff re-verified with a real drag; a
+  `reducedMotion: "reduce"` browser context confirmed zero `<video>` elements render;
+  mobile (390×844) confirmed the video plays and scales correctly.
+- **A real bug found and fixed during this phase's own verification, worth recording
+  honestly**: the Study Mode scene's progressive reply reveal was silently dropping
+  paragraph 0 and duplicating paragraph 1 on every run. Root-caused (not worked around)
+  to a classic React pitfall: the `setState(prev => ...)` functional updater closed over
+  a mutable outer `p` variable by reference rather than by value, and `p += 1` ran
+  synchronously immediately after the `setState` call — by the time React actually
+  invoked the updater, `p` had already advanced, so every update silently used the
+  NEXT paragraph's text instead of the current one. Confirmed via `console.log`
+  instrumentation showing the call sequence was correct while the rendered DOM
+  (inspected directly, not just screenshotted) showed the wrong content, isolating the
+  bug to the updater's stale-by-reference closure specifically. Fixed by snapshotting
+  the paragraph text into a local `const` before incrementing `p`. A second, unrelated
+  React 18 `StrictMode` issue was found the same way: `StrictMode`'s deliberate dev-only
+  double-invocation of effects raced two independent copies of this same sequential-
+  state-accumulation logic against each other, which is a real hazard specific to
+  scripted-playback code (most components don't accumulate state across a chain of
+  timeouts) — fixed by rendering this dev-only recording harness without `StrictMode`,
+  documented inline as a deliberate, scoped exception rather than a silent removal.
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).

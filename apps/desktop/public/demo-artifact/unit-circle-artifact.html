@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unit Circle: Discover sin, cos, tan</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f6f7fb;
+    color: #1a2233;
+    line-height: 1.4;
+  }
+  .wrap {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 16px 14px 28px;
+  }
+  h1 {
+    font-size: 1.35rem;
+    text-align: center;
+    margin: 6px 0 2px;
+  }
+  .sub {
+    text-align: center;
+    font-size: 0.9rem;
+    color: #4a5672;
+    margin: 0 0 12px;
+  }
+  .stage {
+    background: #fff;
+    border: 1px solid #dde3ef;
+    border-radius: 14px;
+    padding: 10px 8px 6px;
+    box-shadow: 0 2px 10px rgba(30,50,100,.06);
+  }
+  svg {
+    display: block;
+    margin: 0 auto;
+    width: min(82vw, 320px);
+    height: auto;
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  svg:active { cursor: grabbing; }
+  #notice {
+    min-height: 2.2em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    background: #eef4ff;
+    border: 1px solid #c9dbff;
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin: 8px 6px 12px;
+  }
+  #notice.warn {
+    background: #fff3e2;
+    border-color: #f0b45a;
+    color: #7a3f00;
+  }
+  .readouts {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 0 2px 6px;
+  }
+  @media (max-width: 460px) {
+    .readouts { grid-template-columns: repeat(2, 1fr); }
+  }
+  .box {
+    background: #fff;
+    border: 1px solid #dde3ef;
+    border-radius: 10px;
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .box .k { font-size: 0.78rem; color: #5a6a8a; font-weight: 700; letter-spacing: .02em; }
+  .box .v { font-size: 1.02rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .box.cos .v { color: #0b5cad; }
+  .box.sin .v { color: #b03211; }
+  .box.tan .v { color: #0a7a3d; }
+  .sliderRow {
+    background: #fff;
+    border: 1px solid #dde3ef;
+    border-radius: 10px;
+    padding: 10px 12px 12px;
+    margin-top: 8px;
+  }
+  .sliderRow label { font-weight: 800; font-size: 0.95rem; display: block; margin-bottom: 6px; }
+  .sliderRow label span { font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; height: 32px; }
+  .ticks { display: flex; justify-content: space-between; font-size: 0.75rem; color: #68768f; }
+  .help { font-size: 0.85rem; color: #4a5672; margin: 10px 4px 0; }
+  .legend { font-size: 0.82rem; color: #33405c; margin: 8px 4px 0; }
+  .legend b.dash-cos { border-bottom: 3px dashed #0b5cad; padding-bottom: 1px; }
+  .legend b.dash-sin { border-bottom: 3px dotted #b03211; padding-bottom: 1px; }
+  .legend b.dash-tan { border-bottom: 3px solid #0a7a3d; padding-bottom: 1px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>The Unit Circle: Drag to Discover</h1>
+  <p class="sub">Drag the point <b>P</b> around the circle. Watch how cos&theta;, sin&theta; and tan&theta; change.</p>
+
+  <div class="stage">
+    <svg id="svg" viewBox="0 0 360 360" role="img" aria-label="Unit circle with draggable point P">
+      <!-- axes -->
+      <line x1="10" y1="180" x2="350" y2="180" stroke="#9aa7c2" stroke-width="1.5"/>
+      <line x1="180" y1="352" x2="180" y2="8" stroke="#9aa7c2" stroke-width="1.5"/>
+      <!-- axis arrows + labels -->
+      <polygon points="350,180 340,176 340,184" fill="#9aa7c2"/>
+      <polygon points="180,8 176,18 184,18" fill="#9aa7c2"/>
+      <text x="336" y="172" font-size="13" fill="#5a6a8a" font-style="italic">x</text>
+      <text x="188" y="24" font-size="13" fill="#5a6a8a" font-style="italic">y</text>
+
+      <!-- tangent guide line x=1 -->
+      <line id="tanGuide" x1="290" y1="8" x2="290" y2="352" stroke="#b9c4da" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text id="tanGuideLabel" x="293" y="22" font-size="12" fill="#0a7a3d" font-weight="700">x = 1</text>
+
+      <!-- unit circle -->
+      <circle cx="180" cy="180" r="110" fill="none" stroke="#1a2233" stroke-width="2.5"/>
+      <text x="180" y="178" font-size="11" fill="#68768f">O (0,0)</text>
+
+      <!-- angle arc -->
+      <path id="arc" fill="none" stroke="#6b7a99" stroke-width="2"/>
+
+      <!-- extension of radius to x=1 (thin) -->
+      <line id="extLine" stroke="#0a7a3d" stroke-width="1.2" stroke-dasharray="3 3" opacity="0.7"/>
+
+      <!-- projections -->
+      <line id="cosSeg" stroke="#0b5cad" stroke-width="3" stroke-dasharray="7 4"/>
+      <line id="sinSeg" stroke="#b03211" stroke-width="3" stroke-dasharray="2 4" stroke-linecap="round"/>
+      <text id="cosLabel" font-size="13" font-weight="800" fill="#0b5cad" text-anchor="middle">cos</text>
+      <text id="sinLabel" font-size="13" font-weight="800" fill="#b03211" text-anchor="middle">sin</text>
+
+      <!-- tangent segment on x=1 -->
+      <line id="tanSeg" stroke="#0a7a3d" stroke-width="4"/>
+      <text id="tanLabel" font-size="13" font-weight="800" fill="#0a7a3d" text-anchor="start">tan</text>
+
+      <!-- foot points -->
+      <circle id="footX" r="3.5" fill="#b03211"/>
+      <circle id="footY" r="3.5" fill="#0b5cad"/>
+
+      <!-- radius -->
+      <line id="radius" x1="180" y1="180" stroke="#1a2233" stroke-width="3"/>
+      <!-- base point (1,0) -->
+      <circle cx="290" cy="180" r="3.5" fill="#0a7a3d"/>
+      <text x="292" y="195" font-size="11" fill="#0a7a3d">(1,0)</text>
+
+      <!-- point P (big hit area + visible dot) -->
+      <circle id="hitP" r="22" fill="rgba(0,0,0,0)" pointer-events="all"/>
+      <circle id="ptP" r="9" fill="#e8b400" stroke="#1a2233" stroke-width="2.5"/>
+      <text id="ptLabel" font-size="15" font-weight="800" fill="#1a2233">P</text>
+      <text id="angleText" font-size="12" fill="#1a2233" font-weight="700"></text>
+    </svg>
+
+    <div id="notice" aria-live="polite"></div>
+
+    <div class="readouts">
+      <div class="box"><div class="k">Angle &theta; (&deg;)</div><div class="v" id="roTheta">30.000</div></div>
+      <div class="box cos"><div class="k">cos &theta; = x</div><div class="v" id="roCos">0.866</div></div>
+      <div class="box sin"><div class="k">sin &theta; = y</div><div class="v" id="roSin">0.500</div></div>
+      <div class="box tan"><div class="k">tan &theta;</div><div class="v" id="roTan">0.577</div></div>
+    </div>
+  </div>
+
+  <div class="sliderRow">
+    <label for="slider">Angle &theta; (&deg;): <span id="sliderVal">30&deg;</span></label>
+    <input id="slider" type="range" min="0" max="360" step="1" value="30" aria-label="Angle theta in degrees">
+    <div class="ticks"><span>0&deg;</span><span>90&deg;</span><span>180&deg;</span><span>270&deg;</span><span>360&deg;</span></div>
+  </div>
+
+  <p class="legend"><b class="dash-cos">cos</b> is the horizontal (x) reach &mdash; dashed line &nbsp;&bull;&nbsp; <b class="dash-sin">sin</b> is the vertical (y) reach &mdash; dotted line &nbsp;&bull;&nbsp; <b class="dash-tan">tan</b> is the height on line x=1 &mdash; solid line.</p>
+  <p class="help">Tip: drag anywhere on the circle picture &mdash; the angle snaps to your pointer (counter-clockwise from +x). Try quadrants I&ndash;IV, then creep up to 90&deg; and 270&deg; and watch tan explode. Math used: rad = deg&middot;&pi;/180, x = cos(rad), y = sin(rad), tan = sin/cos.</p>
+</div>
+
+<script>
+(function(){
+  var CX = 180, CY = 180, R = 110;
+  var TAN_LINE_X = 290; // screen x of math x=1
+  var deg = 30;
+
+  var svg = document.getElementById('svg');
+  var radiusEl = document.getElementById('radius');
+  var ptP = document.getElementById('ptP');
+  var hitP = document.getElementById('hitP');
+  var ptLabel = document.getElementById('ptLabel');
+  var cosSeg = document.getElementById('cosSeg');
+  var sinSeg = document.getElementById('sinSeg');
+  var cosLabel = document.getElementById('cosLabel');
+  var sinLabel = document.getElementById('sinLabel');
+  var tanSeg = document.getElementById('tanSeg');
+  var tanLabel = document.getElementById('tanLabel');
+  var extLine = document.getElementById('extLine');
+  var arc = document.getElementById('arc');
+  var angleText = document.getElementById('angleText');
+  var footX = document.getElementById('footX');
+  var footY = document.getElementById('footY');
+  var notice = document.getElementById('notice');
+  var roTheta = document.getElementById('roTheta');
+  var roCos = document.getElementById('roCos');
+  var roSin = document.getElementById('roSin');
+  var roTan = document.getElementById('roTan');
+  var slider = document.getElementById('slider');
+  var sliderVal = document.getElementById('sliderVal');
+
+  function norm360(d){
+    d = d % 360;
+    if (d < 0) d += 360;
+    // keep 360 as 360 for slider max display? use 0..360; map 360->0 math but show 360
+    return d;
+  }
+  function distTo(a, b){
+    var d = Math.abs(a - b) % 360;
+    if (d > 180) d = 360 - d;
+    return d;
+  }
+  function fmt(n){
+    if (Object.is(n, -0)) n = 0;
+    return n.toFixed(3);
+  }
+
+  function update(newDeg){
+    deg = norm360(newDeg);
+    // keep slider in sync (slider 0..360; if deg is ~360 show 360 only when user set 360)
+    var rad = deg * Math.PI / 180;
+    var x = Math.cos(rad); // = cos, +x right
+    var y = Math.sin(rad); // = sin, +y up
+    var t = y / x;
+    var tanUndef = Math.abs(x) < 0.08;
+
+    var px = CX + x * R;
+    var py = CY - y * R; // screen-y inversion corrected: +y up
+
+    // radius
+    radiusEl.setAttribute('x2', px);
+    radiusEl.setAttribute('y2', py);
+    ptP.setAttribute('cx', px);
+    ptP.setAttribute('cy', py);
+    hitP.setAttribute('cx', px);
+    hitP.setAttribute('cy', py);
+    ptLabel.setAttribute('x', px + 12);
+    ptLabel.setAttribute('y', py - 8);
+
+    // cos: horizontal segment P -> y-axis point (0, y)
+    var qx = CX, qy = py;
+    cosSeg.setAttribute('x1', px); cosSeg.setAttribute('y1', py);
+    cosSeg.setAttribute('x2', qx); cosSeg.setAttribute('y2', qy);
+    footY.setAttribute('cx', qx); footY.setAttribute('cy', qy);
+    var cosMidX = (px + qx) / 2, cosMidY = qy - 8;
+    cosLabel.setAttribute('x', cosMidX);
+    cosLabel.setAttribute('y', cosMidY);
+
+    // sin: vertical segment P -> x-axis point (x, 0)
+    var sx = px, sy = CY;
+    sinSeg.setAttribute('x1', px); sinSeg.setAttribute('y1', py);
+    sinSeg.setAttribute('x2', sx); sinSeg.setAttribute('y2', sy);
+    footX.setAttribute('cx', sx); footX.setAttribute('cy', sy);
+    var sinMidX = sx + 8, sinMidY = (py + sy) / 2;
+    // keep label inside view
+    if (sinMidX > 330) sinMidX = sx - 10;
+    sinLabel.setAttribute('x', sinMidX);
+    sinLabel.setAttribute('y', sinMidY);
+
+    // hide zero-length projections (avoid dot clutter) but keep labels sensible
+    cosSeg.style.display = (Math.abs(x) < 0.015) ? 'none' : '';
+    sinSeg.style.display = (Math.abs(y) < 0.015) ? 'none' : '';
+
+    // tangent: segment on x=1 from (1,0) to (1,tan), clipped to view (y in [-1.62,1.62])
+    var CLIP = 1.62;
+    var tClip = Math.max(-CLIP, Math.min(CLIP, t));
+    var tanTopY = CY - tClip * R;
+    tanSeg.setAttribute('x1', TAN_LINE_X); tanSeg.setAttribute('y1', CY);
+    tanSeg.setAttribute('x2', TAN_LINE_X); tanSeg.setAttribute('y2', tanTopY);
+    tanLabel.setAttribute('x', TAN_LINE_X + 6);
+    tanLabel.setAttribute('y', (CY + tanTopY) / 2);
+    if (Math.abs(t) < 0.03) { tanSeg.style.display = 'none'; tanLabel.style.display = 'none'; }
+    else { tanSeg.style.display = ''; tanLabel.style.display = ''; }
+
+    // extension line from origin through P toward x=1 line (to show where tan comes from)
+    // direction (x,y) math; param s with origin + s*(x,y), meet x=1 => s = 1/x (if x != 0)
+    if (Math.abs(x) < 0.02) {
+      extLine.style.display = 'none';
+    } else {
+      extLine.style.display = '';
+      var s = 1 / x;
+      var ex = CX + 1 * R; // x=1 point
+      var ey = CY - s * y * R;
+      // clip ey to view
+      ey = Math.max(10, Math.min(350, ey));
+      extLine.setAttribute('x1', CX); extLine.setAttribute('y1', CY);
+      extLine.setAttribute('x2', ex); extLine.setAttribute('y2', ey);
+    }
+
+    // angle arc from +x axis to radius, radius 30px
+    var arcR = 30;
+    var a0x = CX + arcR, a0y = CY;
+    var a1x = CX + arcR * Math.cos(rad), a1y = CY - arcR * Math.sin(rad);
+    var large = (deg > 180) ? 1 : 0;
+    if (deg < 0.5 || deg > 359.5) {
+      arc.setAttribute('d', '');
+    } else {
+      arc.setAttribute('d', 'M ' + a0x + ' ' + a0y + ' A ' + arcR + ' ' + arcR + ' 0 ' + large + ' 0 ' + a1x + ' ' + a1y);
+    }
+    angleText.setAttribute('x', CX + 36);
+    angleText.setAttribute('y', CY - 8);
+    angleText.textContent = deg.toFixed(0) + '°';
+
+    // readouts
+    roTheta.textContent = deg.toFixed(3);
+    roCos.textContent = fmt(x);
+    roSin.textContent = fmt(y);
+    roTan.textContent = tanUndef ? 'undefined' : fmt(t);
+    if (String(slider.value) !== String(Math.round(deg))) {
+      // avoid fighting while sliding: set to rounded deg; special-case 360
+      slider.value = String(Math.round(deg) % 361);
+      if (deg > 359.5 && deg <= 360) slider.value = '360';
+    }
+    sliderVal.textContent = Math.round(deg) + '°';
+
+    // notice line
+    var near90 = distTo(deg, 90) <= 5;
+    var near270 = distTo(deg, 270) <= 5;
+    var msg = '', warn = false;
+    if (near90 || near270) {
+      warn = true;
+      var target = near90 ? '90°' : '270°';
+      msg = 'Near ' + target + ': tan blows up — cos near 0 (' + fmt(x) + ').';
+      // add sign context
+      if (deg > 90 && deg < 270) msg += ' Here cos is negative.';
+      else msg += ' Here cos is near zero crossing.';
+    } else if (deg === 0 || deg === 360) {
+      msg = 'On +x axis: cos = +1, sin = 0, tan = 0.';
+    } else if (deg === 90) {
+      msg = 'At 90°: cos = 0 so tan is undefined.';
+      warn = true;
+    } else if (deg === 180) {
+      msg = 'On −x axis: cos = −1, sin = 0, tan = 0.';
+    } else if (deg === 270) {
+      msg = 'At 270°: cos = 0 so tan is undefined.';
+      warn = true;
+    } else if (deg > 0 && deg < 90) {
+      msg = 'QI: cos positive, sin positive — P is up and right.';
+    } else if (deg > 90 && deg < 180) {
+      msg = 'QII: cos negative, sin positive — x flips sign.';
+    } else if (deg > 180 && deg < 270) {
+      msg = 'QIII: cos negative, sin negative — both negative.';
+    } else {
+      msg = 'QIV: cos positive, sin negative — y flips sign.';
+    }
+    notice.textContent = msg;
+    notice.classList.toggle('warn', warn);
+  }
+
+  slider.addEventListener('input', function(){
+    var v = parseFloat(slider.value);
+    if (v >= 360) v = 360; // 360 behaves as 0 mathematically
+    update(v >= 360 ? 0 : v);
+    // show 360 in readout if slider at max
+    if (String(slider.value) === '360') {
+      roTheta.textContent = (360).toFixed(3);
+      sliderVal.textContent = '360°';
+    }
+  });
+
+  // drag anywhere on svg snaps angle via atan2 with y-up correction
+  var dragging = false;
+  function angleFromEvent(e){
+    var rect = svg.getBoundingClientRect();
+    // map client coords to viewBox coords (viewBox 0..360, preserveAspectRatio default meet)
+    // Because svg may letterbox, compute scale/uniform offset properly:
+    var vb = 360;
+    var scale = Math.min(rect.width / vb, rect.height / vb);
+    var offX = rect.left + (rect.width - vb * scale) / 2;
+    var offY = rect.top + (rect.height - vb * scale) / 2;
+    var vx = (e.clientX - offX) / scale;
+    var vy = (e.clientY - offY) / scale;
+    var dx = vx - CX;
+    var dyUp = CY - vy; // y-up correction
+    if (Math.hypot(dx, dyUp) < 5) return null; // too close to origin, ignore
+    var a = Math.atan2(dyUp, dx) * 180 / Math.PI;
+    if (a < 0) a += 360;
+    return a;
+  }
+  svg.addEventListener('pointerdown', function(e){
+    dragging = true;
+    svg.setPointerCapture && svg.setPointerCapture(e.pointerId);
+    var a = angleFromEvent(e);
+    if (a !== null) update(a);
+    e.preventDefault();
+  });
+  svg.addEventListener('pointermove', function(e){
+    if (!dragging) return;
+    var a = angleFromEvent(e);
+    if (a !== null) update(a);
+    e.preventDefault();
+  });
+  function endDrag(){ dragging = false; }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  update(30);
+})();
+</script>
+</body>
+</html>

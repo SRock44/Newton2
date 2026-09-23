@@ -6,79 +6,61 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import pageStyles from "@/app/page.module.css";
 import styles from "./AppWalkthrough.module.css";
 
-// Supademo-style product walkthrough. Product owner, verbatim, after the previous
-// (recreated-visuals) version: "THE 'demo' LOOKS NOTHING LIKE OUR APP... I'D RATHER
-// HAVE IT BE LIKE A VIDEO (SUPADEMO STYLE) OF THE APP IN USE." Every screenshot here is
-// a REAL capture of the REAL app components (Sidebar, TitleBar, ChatPane, MessageBubble,
-// MessageContent, ArtifactBlock, unmodified) rendered with real captured backend content
-// — see apps/desktop/src/marketing-harness.tsx (a dev-only, unshipped Vite entry) for
-// exactly how each screenshot was produced and marketing-harness.tsx's own header
-// comment for what's genuinely live vs. reproduced. Scene 3's artifact is not a static
-// picture of the real thing — it's the actual live artifact, embedded the same
-// sandboxed way the real app renders it, still draggable here.
-const SCENE_DURATIONS_MS = [6500, 6000]; // scenes 0 and 1 only — scene 2 is terminal
+// Supademo-style product walkthrough — now an actual VIDEO of the real app being used,
+// not a screenshot. Product owner, verbatim, after the screenshot-based version: "THIS
+// 'LIVE DEMO' IS JUST A FUCKING PICTURE... IT SHOULD BE LIKE A REMOTION VIDEO OF THE
+// PROMPT RUNNING, LIKE A PROMOTIONAL ADVERTISEMENT." Each clip is a REAL screen
+// recording (Playwright's own video capture, not an edited/staged recording of
+// something else) of the real, unmodified Sidebar/TitleBar/ChatPane/MessageBubble/
+// NotepadWindow-classnames/ArtifactBlock components, driven by a SCRIPTED but entirely
+// real sequence: a real prompt typed character by character, a real browser text
+// Selection grown over real note content, real tool-activity chips and a real reply
+// revealed progressively. See apps/desktop/src/marketing-harness.tsx (a dev-only,
+// unshipped Vite entry, `?scene=study|notepad|artifact`) for exactly how each clip was
+// produced, and its own header comment for the one deliberately-non-committal moment
+// (a generic "Explaining…" shimmer instead of a fabricated AI answer).
+//
+// Scene 3 specifically: the video shows the prompt being typed and the artifact being
+// built, then hands off to the ACTUAL live embedded artifact once the clip ends — a
+// visitor can keep dragging it themselves. Never a picture of "live"; still genuinely
+// live.
 const FINAL_SCENE = 2;
 
 interface SceneConfig {
   title: string;
   caption: string;
-  /** Percentage-position callout — a silent pulsing ring pointing at the one real UI
-   * element the caption is talking about, in place of an annotation label (product
-   * owner: "LESS TEXT, LESS THINGS TO CLICK, MORE VISUALS"). Coordinates are eyeballed
-   * against the real screenshot pixel content once, not computed. */
-  callout: { left: string; top: string };
+  video: string;
+  poster: string;
+  alt: string;
 }
 
 const SCENES: SceneConfig[] = [
   {
     title: "Newton catches the mistake",
     caption: "Wrong answer, real symbolic math, then a guiding question — not the fix.",
-    callout: { left: "46%", top: "26%" },
+    video: "/demo/videos/study.mp4",
+    poster: "/demo/videos/study-poster.jpg",
+    alt: "Screen recording: a student types a factoring question into Newton, real symbolic-math tool activity runs, and Newton's reply points out the middle term is wrong with a guiding question instead of the fix.",
   },
   {
     title: "Highlight to understand",
     caption: "Select any phrase in your notes for an explanation grounded in your own material.",
-    callout: { left: "67%", top: "40%" },
+    video: "/demo/videos/notepad.mp4",
+    poster: "/demo/videos/notepad-poster.jpg",
+    alt: "Screen recording: a student writes a lecture note in Newton Notepad, selects a phrase, and clicks Explain.",
   },
   {
     title: "Newton builds the visual",
-    caption: "A real interactive artifact — drag the point below, it's genuinely live.",
-    callout: { left: "66%", top: "50%" },
+    caption: "Newton builds a real interactive artifact — then you can drag it yourself.",
+    video: "/demo/videos/artifact.mp4",
+    poster: "/demo/videos/artifact-poster.jpg",
+    alt: "Screen recording: a student asks Newton to build an interactive artifact teaching the unit circle, and it builds one live.",
   },
 ];
 
-/** A traveling cursor arrow + click-pulse, animated in on scene mount — Supademo's own
- * signature move, and the direct fix for "it's just a picture": a static screenshot
- * that a cursor visibly moves across and clicks on reads as a captured interaction, not
- * a photo. CSS-only (no JS animation loop): the destination is passed as CSS custom
- * properties the `@keyframes` in AppWalkthrough.module.css interpolate toward. Reduced
- * motion: the cursor renders already at rest on the target, mid-click, no travel. */
-function Cursor({ left, top }: { left: string; top: string }) {
-  return (
-    <span
-      className={styles.cursor}
-      style={{ "--dest-left": left, "--dest-top": top } as React.CSSProperties}
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 24 24" className={styles.cursorArrow} fill="none">
-        <path
-          d="M4 2 L4 19 L8.5 15.2 L11.3 21.5 L14 20.3 L11.2 14 L17 14 Z"
-          fill="#1a1a1a"
-          stroke="#fff"
-          strokeWidth="1.2"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span className={styles.cursorClickRing} />
-    </span>
-  );
-}
-
-/** The "desktop" the app window sits on — a wallpaper-toned backdrop behind the
- * screenshot/iframe, with a thin taskbar sliver at the bottom. Product owner: "MAKE IT
- * LOOK LIKE A DESKTOP, a user using the app" — a screenshot filling the frame edge to
- * edge reads as a cropped picture; a window with visible desktop around it reads as a
- * real machine. */
+/** The "desktop" the app window sits on — a wallpaper-toned backdrop behind the video/
+ * iframe, with a thin taskbar sliver at the bottom. Product owner: "MAKE IT LOOK LIKE A
+ * DESKTOP, a user using the app." */
 function Desktop({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.desktop}>
@@ -94,69 +76,12 @@ function Desktop({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SceneStudyMode() {
-  return (
-    <Desktop>
-      {/* eslint-disable-next-line @next/next/no-img-element -- real static screenshot asset, not an optimizable remote/content image */}
-      <img
-        src="/demo/screens/study-mode.png"
-        alt="Newton's desktop app: a factoring question, real symbolic-math tool activity, and a guiding question pointing out the middle term is wrong."
-        className={styles.windowImage}
-      />
-      <Cursor {...SCENES[0].callout} />
-    </Desktop>
-  );
-}
-
-function SceneNotepad() {
-  return (
-    <Desktop>
-      {/* The main app window, dimmed into the background — real usage: the Notepad is
-          an always-on-top companion window that floats OVER the main window, never
-          alone on a blank desktop. Reusing the real study-mode capture as that backdrop
-          (blurred/dimmed) instead of empty space fixes both "so much blank space" and
-          "doesn't look like a desktop, a user using the app" in one move. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/demo/screens/study-mode.png"
-        alt=""
-        aria-hidden="true"
-        className={styles.notepadBackdrop}
-      />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/demo/screens/notepad.png"
-        alt="Newton Notepad, floating over the main chat window: a highlighted phrase in a lecture note with Explain, Define, and Summarize buttons above it."
-        className={styles.notepadWindow}
-      />
-      <Cursor {...SCENES[1].callout} />
-    </Desktop>
-  );
-}
-
-function SceneArtifact() {
-  return (
-    <Desktop>
-      <iframe
-        src="/demo/unit-circle-artifact.html"
-        sandbox="allow-scripts"
-        title="Live artifact: the unit circle, built by Newton — drag the point"
-        className={styles.windowIframe}
-        loading="lazy"
-      />
-      <Cursor {...SCENES[2].callout} />
-    </Desktop>
-  );
-}
-
-const SCENE_COMPONENTS = [SceneStudyMode, SceneNotepad, SceneArtifact];
-
 export default function AppWalkthrough() {
   const [active, setActive] = useState(0);
   const [playToken, setPlayToken] = useState(0);
-  const [paused, setPaused] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
-  const remainingRef = useRef(SCENE_DURATIONS_MS[0]);
+  const [showLiveArtifact, setShowLiveArtifact] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const reducedMotion = useReducedMotion();
   const { ref: sectionRef, inView } = useInView<HTMLDivElement>({
     threshold: 0.3,
@@ -176,28 +101,40 @@ export default function AppWalkthrough() {
     setPlayToken((t) => t + 1);
   }
 
+  // A fresh clip every time the active scene (or a manual replay) changes.
   useEffect(() => {
-    remainingRef.current = SCENE_DURATIONS_MS[active] ?? 0;
-    setProgressPct(reducedMotion ? 100 : 0);
-  }, [active, playToken, reducedMotion]);
+    setProgressPct(0);
+    setShowLiveArtifact(false);
+  }, [active, playToken]);
 
+  // Autoplay only while actually scrolled into view — the same "don't burn a visitor's
+  // battery/bandwidth on an offscreen clip" rule the old interval-based version
+  // followed, now expressed as real play()/pause() calls on the real <video> instead of
+  // gating a fake timer.
   useEffect(() => {
-    if (reducedMotion || !inView || paused) return;
-    if (active >= SCENE_DURATIONS_MS.length) return; // scene 2 is terminal — no timer, ever
-    const duration = SCENE_DURATIONS_MS[active];
-    const id = setInterval(() => {
-      remainingRef.current -= 100;
-      setProgressPct(Math.min(100, Math.max(0, 100 - (remainingRef.current / duration) * 100)));
-      if (remainingRef.current <= 0) {
-        clearInterval(id);
-        goNext();
-      }
-    }, 100);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, paused, reducedMotion, inView, playToken]);
+    const v = videoRef.current;
+    if (!v || reducedMotion) return;
+    if (inView) v.play().catch(() => {});
+    else v.pause();
+  }, [inView, active, playToken, reducedMotion]);
 
-  const Scene = SCENE_COMPONENTS[active];
+  function handleTimeUpdate() {
+    const v = videoRef.current;
+    if (!v || !Number.isFinite(v.duration) || v.duration === 0) return;
+    setProgressPct((v.currentTime / v.duration) * 100);
+  }
+
+  function handleEnded() {
+    setProgressPct(100);
+    if (active === FINAL_SCENE) {
+      setShowLiveArtifact(true);
+      return;
+    }
+    goNext();
+  }
+
+  const scene = SCENES[active];
+  const isLiveArtifactScene = active === FINAL_SCENE && showLiveArtifact;
 
   return (
     <section
@@ -217,35 +154,32 @@ export default function AppWalkthrough() {
       <div
         ref={sectionRef}
         className={styles.stage}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
+        onMouseEnter={() => videoRef.current?.pause()}
+        onMouseLeave={() => {
+          if (!reducedMotion && inView) videoRef.current?.play().catch(() => {});
+        }}
       >
         <div className={styles.rail} role="tablist" aria-label="Walkthrough steps">
-          {SCENES.map((scene, i) => (
+          {SCENES.map((s, i) => (
             <button
-              key={scene.title}
+              key={s.title}
               type="button"
               role="tab"
               aria-selected={i === active}
-              aria-label={`Step ${i + 1}: ${scene.title}`}
+              aria-label={`Step ${i + 1}: ${s.title}`}
               className={i === active ? styles.railItemActive : styles.railItem}
               onClick={() => goTo(i)}
             >
               <span className={styles.railIndex}>{i + 1}</span>
               <span className={styles.railText}>
-                <span className={styles.railTitle}>{scene.title}</span>
-                <span className={styles.railCaption}>{scene.caption}</span>
+                <span className={styles.railTitle}>{s.title}</span>
+                <span className={styles.railCaption}>{s.caption}</span>
               </span>
               <span className={styles.railProgressTrack}>
                 <span
                   className={styles.railProgressFill}
                   style={{
-                    width:
-                      i < active
-                        ? "100%"
-                        : i === active
-                          ? `${active >= SCENE_DURATIONS_MS.length ? 100 : progressPct}%`
-                          : "0%",
+                    width: i < active ? "100%" : i === active ? `${progressPct}%` : "0%",
                   }}
                 />
               </span>
@@ -254,8 +188,46 @@ export default function AppWalkthrough() {
         </div>
 
         <div className={styles.frameCol}>
-          <div className={styles.deviceFrame} key={`${active}-${playToken}`}>
-            <Scene />
+          <div className={styles.deviceFrame}>
+            <Desktop>
+              {isLiveArtifactScene ? (
+                <iframe
+                  src="/demo/unit-circle-artifact.html"
+                  sandbox="allow-scripts"
+                  title="Live artifact: the unit circle, built by Newton — drag the point"
+                  className={styles.windowIframe}
+                  loading="lazy"
+                />
+              ) : reducedMotion ? (
+                active === FINAL_SCENE ? (
+                  <iframe
+                    src="/demo/unit-circle-artifact.html"
+                    sandbox="allow-scripts"
+                    title="Live artifact: the unit circle, built by Newton — drag the point"
+                    className={styles.windowIframe}
+                    loading="lazy"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element -- a static
+                  // poster frame, not an optimizable remote/content image
+                  <img src={scene.poster} alt={scene.alt} className={styles.windowImage} />
+                )
+              ) : (
+                <video
+                  key={`${active}-${playToken}`}
+                  ref={videoRef}
+                  src={scene.video}
+                  poster={scene.poster}
+                  aria-label={scene.alt}
+                  className={styles.windowImage}
+                  muted
+                  playsInline
+                  autoPlay
+                  onTimeUpdate={handleTimeUpdate}
+                  onEnded={handleEnded}
+                />
+              )}
+            </Desktop>
           </div>
           <div className={styles.controls}>
             <button

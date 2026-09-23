@@ -119,16 +119,15 @@ describe("Home", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows a real screenshot of the app's Study Mode scene by default", () => {
+    it("shows a real screen recording of the app's Study Mode scene by default", () => {
       render(<Home />);
-      expect(
-        screen.getByAltText(/factoring question, real symbolic-math tool activity/i)
-      ).toHaveAttribute("src", "/demo/screens/study-mode.png");
+      expect(document.querySelector("video")).toHaveAttribute("src", "/demo/videos/study.mp4");
     });
 
-    it("lets a visitor jump straight to the artifact scene via the step tabs", () => {
+    it("lets a visitor jump straight to the artifact scene via the step tabs, then hands off to the real live artifact once the clip ends", () => {
       render(<Home />);
       fireEvent.click(screen.getByRole("tab", { name: /step 3: newton builds the visual/i }));
+      fireEvent.ended(document.querySelector("video")!);
 
       const frame = screen.getByTitle(/live artifact: the unit circle/i);
       expect(frame).toHaveAttribute("src", "/demo/unit-circle-artifact.html");
