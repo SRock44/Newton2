@@ -15,6 +15,7 @@ from app.services.paper_templates import (
     STYLE_LABELS,
     escape_latex_text,
     render_apa7,
+    render_arxiv,
     render_chicago,
     render_ieee,
     render_mla,
@@ -291,7 +292,7 @@ def test_humanities_styles_omit_the_abstract_block_entirely_when_there_is_none()
 
 
 def test_every_registered_style_has_a_label_and_a_renderer():
-    assert set(RENDERERS) == {"ieee", "apa7", "mla", "chicago"}
+    assert set(RENDERERS) == {"ieee", "arxiv", "apa7", "mla", "chicago"}
     assert set(STYLE_LABELS) == set(RENDERERS)
     assert RENDERERS["mla"] is render_mla
     assert RENDERERS["chicago"] is render_chicago
@@ -308,3 +309,53 @@ def test_every_registered_renderer_produces_a_complete_compilable_shell():
         assert tex.rstrip().endswith("\\end{document}")
         assert "\\addbibresource{refs.bib}" in tex
         assert "\\printbibliography" in tex
+
+
+# ---------------------------------------------------------------------------
+# arXiv preprint style
+# ---------------------------------------------------------------------------
+
+
+def test_render_arxiv_produces_a_complete_single_column_article():
+    tex = render_arxiv("My Paper", _SECTIONS, has_bibliography=False, abstract="A short summary.", author="Priya Nair")
+    assert tex.startswith("\\documentclass[11pt]{article}")
+    # the packages a math/physics/CS preprint needs so the drafted prose can use them
+    for package in ("amsmath,amssymb,mathtools", "booktabs", "hyperref"):
+        assert package in tex
+    assert "\\title{My Paper}" in tex
+    assert "\\author{Priya Nair}" in tex
+    assert "\\maketitle" in tex
+    assert "\\begin{abstract}" in tex and "A short summary." in tex
+    assert "\\section{Introduction}" in tex
+    assert "\\end{document}" in tex
+    assert "biblatex" not in tex
+
+
+def test_render_arxiv_uses_a_numeric_biblatex_bibliography_when_requested():
+    tex = render_arxiv("My Paper", _SECTIONS, has_bibliography=True)
+    assert "\\usepackage[backend=biber,style=numeric,sortcites=true]{biblatex}" in tex
+    assert "\\addbibresource{refs.bib}" in tex
+    assert "\\printbibliography[title={References}]" in tex
+
+
+def test_render_arxiv_escapes_plain_text_fields_but_not_model_authored_bodies():
+    tex = render_arxiv(
+        "50% of $n$ & more",
+        [{"heading": "Results & Discussion", "body": "We find $\\rho<1$ \\cite{young1950}."}],
+        has_bibliography=True,
+        author="A_B",
+    )
+    assert "\\title{50\\% of $n$ \\& more}" in tex
+    assert "\\section{Results \\& Discussion}" in tex
+    assert "\\author{A\\_B}" in tex
+    assert "We find $\\rho<1$ \\cite{young1950}." in tex
+
+
+def test_arxiv_is_registered_and_labelled():
+    assert RENDERERS["arxiv"] is render_arxiv
+    assert STYLE_LABELS["arxiv"] == "arXiv preprint"
+
+
+def test_ieee_uses_the_given_author_and_keeps_the_default():
+    assert "\\author{Student Author}" in render_ieee("T", _SECTIONS, has_bibliography=False)
+    assert "\\author{Priya Nair}" in render_ieee("T", _SECTIONS, has_bibliography=False, author="Priya Nair")

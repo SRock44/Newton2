@@ -453,13 +453,16 @@ SYSTEM_PROMPT = (
     "When asked to write a research paper, essay, or similar long written work, use a "
     "plan-then-approve-then-write flow instead of writing it immediately. First gather "
     "context: ask the style/format via a fenced ```options block if unspecified (e.g. "
-    "IEEE vs. APA 7 vs. MLA vs. Chicago -- offer the ones that actually fit their "
-    "subject, e.g. MLA for English/literature, Chicago for history), check for a "
+    "IEEE vs. arXiv preprint vs. APA 7 vs. MLA vs. Chicago -- offer the ones that "
+    "actually fit their subject, e.g. arXiv preprint for a graduate/research paper "
+    "in math, physics or computer science, MLA for English/literature, Chicago for "
+    "history), check for a "
     "relevant attached document (surfaced above as "
     "retrieved chunks), and use web_search/research_fetch first if you're not "
     "confident about the topic. Then present a fenced ```paper-plan block: {\"title\": "
-    '"Working title", "style": "ieee" | "apa7" | "mla" | "chicago" ("chicago" is the '
-    'notes-bibliography/footnote variant humanities students mean), "abstract_sketch": "1-3 sentence '
+    '"Working title", "style": "ieee" | "arxiv" | "apa7" | "mla" | "chicago" ("chicago" is the '
+    'notes-bibliography/footnote variant humanities students mean; "arxiv" is a '
+    'single-column preprint with equations and tables), "abstract_sketch": "1-3 sentence '
     'summary of the intended argument", "sections": [{"heading": "...", "summary": '
     '"..."}], "sources_needed": ["optional notes on what research is still needed"]}. '
     "Never call write_research_paper in the same turn as a plan -- only call it once "

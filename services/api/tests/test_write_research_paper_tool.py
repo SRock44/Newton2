@@ -725,7 +725,8 @@ async def test_failed_compile_creates_no_document_rows(paper_user, db_session, m
 
 async def test_mla_and_chicago_are_offered_and_described_in_the_tool_schema():
     schema = WriteResearchPaperTool().parameters["properties"]["style"]
-    assert set(schema["enum"]) == {"ieee", "apa7", "mla", "chicago"}
+    assert set(schema["enum"]) == {"ieee", "arxiv", "apa7", "mla", "chicago"}
+    assert "preprint" in schema["description"].lower()
     # The model can only pick these deliberately if the description says what they are.
     assert "mla" in schema["description"].lower()
     assert "works cited" in schema["description"].lower()
@@ -870,3 +871,77 @@ async def test_run_tool_threads_user_id_through_to_write_research_paper(paper_us
         user_id=str(paper_user.id),
     )
     assert result.startswith("Done —")
+
+
+# ---------------------------------------------------------------------------
+# Several source documents (notes + a synopsis) and the author's name
+# ---------------------------------------------------------------------------
+
+
+async def _upload_text_document(db_session, user, filename: str, text: str):
+    return await documents_service.upload_document_bytes(
+        db_session, user.id, filename, "text/plain", text.encode("utf-8")
+    )
+
+
+async def test_run_draws_on_every_named_document_and_labels_each(paper_user, db_session, monkeypatch):
+    await _upload_text_document(db_session, paper_user, "lab_notes.txt", "NOTE-ALPHA: Jacobi took 1064 iterations.")
+    await _upload_text_document(db_session, paper_user, "project_synopsis.txt", "SYNOPSIS-BETA: compare solvers.")
+    seen: list[str | None] = []
+
+    async def spy_material(heading, summary, document_text, **kwargs):
+        seen.append(document_text)
+        return "(stub)", {}, {}
+
+    fake_provider = _FakeSectionProvider({"Introduction": '{"prose": "Body.", "sources": []}'})
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", spy_material)
+    _success_compile(monkeypatch)
+
+    result = await WriteResearchPaperTool().run(
+        title="Solvers",
+        style="arxiv",
+        abstract_sketch="A comparison.",
+        sections=[{"heading": "Introduction", "summary": "Set the stage."}],
+        document_filenames=["lab_notes", "project_synopsis"],
+        user_id=str(paper_user.id),
+    )
+
+    assert result.startswith("Done —")
+    text = seen[0] or ""
+    assert "NOTE-ALPHA" in text and "SYNOPSIS-BETA" in text
+    # each document is labelled so the model can tell scratch notes from a synopsis
+    assert "[lab_notes.txt]" in text and "[project_synopsis.txt]" in text
+
+
+async def test_run_rejects_a_missing_document_in_the_list(paper_user, db_session):
+    await _upload_text_document(db_session, paper_user, "lab_notes.txt", "notes")
+    result = await WriteResearchPaperTool().run(
+        title="T",
+        style="arxiv",
+        abstract_sketch="A",
+        sections=[{"heading": "Intro", "summary": "s"}],
+        document_filenames=["lab_notes", "missing-synopsis"],
+        user_id=str(paper_user.id),
+    )
+    assert result.startswith("Error:")
+    assert "missing-synopsis" in result
+
+
+async def test_run_puts_the_users_display_name_on_the_title_page(paper_user, db_session, monkeypatch):
+    paper_user.display_name = "Priya Nair"
+    await db_session.commit()
+    fake_provider = _FakeSectionProvider({"Introduction": '{"prose": "Body.", "sources": []}'})
+    monkeypatch.setattr(wrp, "get_provider", lambda **kwargs: (fake_provider, "fake-model"))
+    monkeypatch.setattr(wrp, "_gather_section_material", _no_op_material)
+    capture: list = []
+    _success_compile(monkeypatch, capture)
+
+    await WriteResearchPaperTool().run(
+        title="Solvers",
+        style="arxiv",
+        abstract_sketch="A comparison.",
+        sections=[{"heading": "Introduction", "summary": "Set the stage."}],
+        user_id=str(paper_user.id),
+    )
+    assert "\\author{Priya Nair}" in capture[0]["tex"]

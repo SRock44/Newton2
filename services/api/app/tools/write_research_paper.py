@@ -171,7 +171,11 @@ FOCUS_MODE_MESSAGE = (
 
 # Bounded like every other "read a document into a prompt" call site in this codebase
 # (study_planner.MAX_SYLLABUS_CHARS, flashcards.MAX_MATERIAL_CHARS use the same figure).
-MAX_DOCUMENT_EXCERPT_CHARS = 6000
+MAX_DOCUMENT_EXCERPT_CHARS = 6000  # per document
+# A research paper is typically written from several documents (scratch notes AND a synopsis);
+# how many the tool will read, and the most it hands each section in total.
+MAX_DOCUMENTS = 4
+MAX_TOTAL_DOCUMENT_CHARS = 14000
 MAX_FETCH_EXCERPT_CHARS = 4000
 MAX_RETRY_LOG_CHARS = 3000
 
@@ -201,7 +205,9 @@ This section:
 
 Write ONLY the section's body prose -- no \\section{{}} command, no title, the \
 surrounding document template adds that structure. You may use inline LaTeX math \
-($...$) where genuinely appropriate.
+($...$) where genuinely appropriate, and display equations (equation/align), itemize \
+lists, and booktabs tables (\\toprule, \\midrule, \\bottomrule) when they genuinely help; never \
+\\includegraphics or \\input.
 
 Academic integrity, non-negotiable: NEVER invent a statistic, quotation, experimental \
 result, or specific factual claim that doesn't trace back to something in the material \
@@ -684,7 +690,9 @@ class WriteResearchPaperTool(Tool):
                 "type": "string",
                 "enum": sorted(RENDERERS),
                 "description": (
-                    "Exactly as approved. 'ieee' = numbered references (engineering/CS); "
+                    "Exactly as approved. 'ieee' = numbered references (engineering/CS); 'arxiv' = a "
+                    "single-column preprint with numeric references, equations and tables "
+                    "(graduate/research papers in math, physics, CS); "
                     "'apa7' = author-date (psychology/social sciences); 'mla' = "
                     "parenthetical (Author page) with a Works Cited list (English/"
                     "literature/languages); 'chicago' = notes-bibliography, i.e. "
@@ -716,6 +724,16 @@ class WriteResearchPaperTool(Tool):
                     "documents to draw on. Omit if the plan didn't rely on one."
                 ),
             },
+            "document_filenames": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": MAX_DOCUMENTS,
+                "description": (
+                    "When the paper draws on SEVERAL of the student's uploaded documents "
+                    "(e.g. their lab notes AND a project synopsis), list a filename/"
+                    "substring for each. Use this instead of document_filename."
+                ),
+            },
         },
         "required": ["title", "style", "abstract_sketch", "sections"],
     }
@@ -727,6 +745,7 @@ class WriteResearchPaperTool(Tool):
         abstract_sketch: str,
         sections: list[dict[str, Any]],
         document_filename: str | None = None,
+        document_filenames: list[str] | None = None,
         session_id: str | None = None,
         user_id: str | None = None,
     ) -> str:
@@ -743,6 +762,7 @@ class WriteResearchPaperTool(Tool):
                 return PRO_ONLY_MESSAGE
             if user.focus_mode_enabled:
                 return FOCUS_MODE_MESSAGE
+            author_name = (user.display_name or "").strip() or None
 
         style_key = (style or "").strip().lower()
         if style_key not in RENDERERS:
@@ -761,13 +781,20 @@ class WriteResearchPaperTool(Tool):
                 return "Error: each section needs a non-empty 'heading'."
             clean_sections.append({"heading": str(s["heading"]), "summary": str(s.get("summary") or "")})
 
+        wanted = [f for f in ([document_filename] if document_filename else []) + list(document_filenames or []) if f]
         document_text: str | None = None
-        if document_filename:
-            async with SessionLocal() as db:
-                document = await resolve_document(db, uid, document_filename)
-                if document is None:
-                    return f"Error: no uploaded document matching '{document_filename}' found."
-            document_text = (await get_document_text(document))[:MAX_DOCUMENT_EXCERPT_CHARS]
+        if wanted:
+            wanted = list(dict.fromkeys(wanted))[:MAX_DOCUMENTS]
+            excerpts: list[str] = []
+            for name in wanted:
+                async with SessionLocal() as db:
+                    document = await resolve_document(db, uid, name)
+                    if document is None:
+                        return f"Error: no uploaded document matching '{name}' found."
+                text = (await get_document_text(document))[:MAX_DOCUMENT_EXCERPT_CHARS]
+                # several documents are labelled so the model can tell notes from a synopsis
+                excerpts.append(f"[{document.filename}]\n{text}" if len(wanted) > 1 else text)
+            document_text = "\n\n".join(excerpts)[:MAX_TOTAL_DOCUMENT_CHARS]
 
         semaphore = asyncio.Semaphore(SECTION_CONCURRENCY)
         style_label = STYLE_LABELS[style_key]
@@ -815,7 +842,7 @@ class WriteResearchPaperTool(Tool):
         bib_text = assemble_bib(final_sources) if has_bibliography else None
 
         render = RENDERERS[style_key]
-        tex = render(title, rendered_sections, has_bibliography, abstract=abstract_sketch)
+        tex = render(title, rendered_sections, has_bibliography, abstract=abstract_sketch, author=author_name)
 
         result = await compile_latex(tex, bib=bib_text)
         if not result.success:

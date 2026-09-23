@@ -1,4 +1,4 @@
-"""Builds complete, compilable IEEE/APA7/MLA/Chicago LaTeX documents for
+"""Builds complete, compilable IEEE/arXiv/APA7/MLA/Chicago LaTeX documents for
 app/tools/write_research_paper.py, mirroring the exact working shapes already proven
 live against the real sandbox-runner compiler in
 services/sandbox-runner/tests/test_latex_compile_integration.py (`_IEEE_DOC`,
@@ -164,6 +164,7 @@ def render_ieee(
     sections: list[RenderSection],
     has_bibliography: bool,
     abstract: str | None = None,
+    author: str | None = None,
 ) -> str:
     """A complete, minimal IEEEtran document -- same class/structure as
     test_latex_compile_integration.py's `_IEEE_DOC`, extended with an optional
@@ -173,7 +174,7 @@ def render_ieee(
     lines.extend(_bib_preamble("ieee", has_bibliography))
     lines.append("\\begin{document}")
     lines.append(f"\\title{{{escape_latex_text(title)}}}")
-    lines.append("\\author{Student Author}")
+    lines.append(f"\\author{{{escape_latex_text(author) if author else 'Student Author'}}}")
     lines.append("\\maketitle")
     if abstract:
         lines.append("\\begin{abstract}")
@@ -186,11 +187,54 @@ def render_ieee(
     return "\n".join(lines) + "\n"
 
 
+def render_arxiv(
+    title: str,
+    sections: list[RenderSection],
+    has_bibliography: bool,
+    abstract: str | None = None,
+    author: str | None = None,
+) -> str:
+    """An arXiv-preprint-style document: the plain single-column `article` layout most
+    preprints on arXiv are actually posted in (11pt, 1in margins, numbered sections, a
+    numeric bibliography), with the amsmath/booktabs/hyperref set a mathematics, physics or
+    computer-science paper needs so the section-drafting model can write real equations,
+    professional tables (\\toprule/\\midrule/\\bottomrule), and clickable references.
+    Every package here is in the sandbox-runner image (checked with kpsewhich); citations go
+    through biblatex/biber like every other style (see the module docstring)."""
+    lines = [
+        "\\documentclass[11pt]{article}",
+        "\\usepackage[T1]{fontenc}",
+        "\\usepackage{lmodern}",
+        "\\usepackage[margin=1in]{geometry}",
+        "\\usepackage{amsmath,amssymb,mathtools}",
+        "\\usepackage{booktabs}",
+        "\\usepackage{microtype}",
+        "\\usepackage[dvipsnames]{xcolor}",
+        "\\usepackage[colorlinks=true,linkcolor=NavyBlue,citecolor=NavyBlue,urlcolor=NavyBlue]{hyperref}",
+    ]
+    lines.extend(_bib_preamble("numeric", has_bibliography))
+    lines.append(f"\\title{{{escape_latex_text(title)}}}")
+    lines.append(f"\\author{{{escape_latex_text(author) if author else 'Author'}}}")
+    lines.append("\\date{\\today}")
+    lines.append("\\begin{document}")
+    lines.append("\\maketitle")
+    if abstract:
+        lines.append("\\begin{abstract}")
+        lines.append(escape_latex_text(abstract))
+        lines.append("\\end{abstract}")
+    lines.extend(_render_sections(sections))
+    if has_bibliography:
+        lines.append("\\printbibliography[title={References}]")
+    lines.append("\\end{document}")
+    return "\n".join(lines) + "\n"
+
+
 def render_apa7(
     title: str,
     sections: list[RenderSection],
     has_bibliography: bool,
     abstract: str | None = None,
+    author: str | None = None,
 ) -> str:
     """A complete, minimal apa7-class document -- same class/preamble shape as
     test_latex_compile_integration.py's `_APA7_DOC`/`_APA7_WITH_CITATION_DOC`
@@ -223,6 +267,7 @@ def render_mla(
     sections: list[RenderSection],
     has_bibliography: bool,
     abstract: str | None = None,
+    author: str | None = None,
 ) -> str:
     """A complete MLA 9 paper: 12pt Times-equivalent, 1in margins, double-spaced, the
     standard four-line MLA header block (name / instructor / course / date) flush left on
@@ -284,6 +329,7 @@ def render_chicago(
     sections: list[RenderSection],
     has_bibliography: bool,
     abstract: str | None = None,
+    author: str | None = None,
 ) -> str:
     """A complete Chicago NOTES-BIBLIOGRAPHY paper (CMOS 17's humanities variant, the
     one a History or English student means by "Chicago" -- deliberately NOT the
@@ -352,6 +398,7 @@ def render_chicago(
 # Keyed by the `style` value write_research_paper.py's tool parameters accept.
 RENDERERS = {
     "ieee": render_ieee,
+    "arxiv": render_arxiv,
     "apa7": render_apa7,
     "mla": render_mla,
     "chicago": render_chicago,
@@ -361,6 +408,7 @@ RENDERERS = {
 # for a notes-bibliography paper should not be reaching for author-date parentheticals.
 STYLE_LABELS = {
     "ieee": "IEEE",
+    "arxiv": "arXiv preprint",
     "apa7": "APA 7",
     "mla": "MLA 9",
     "chicago": "Chicago (notes-bibliography)",
