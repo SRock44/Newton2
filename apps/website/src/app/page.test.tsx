@@ -127,13 +127,17 @@ describe("Home", () => {
       expect(screen.queryAllByRole("tab")).toHaveLength(0);
     });
 
-    it("is the ONLY film on the page — one product video, not a bunch of separate ones", () => {
+    it("has exactly two films: the product film, and a separate one for research-level work", () => {
       render(<Home />);
-      expect(document.querySelectorAll("video")).toHaveLength(1);
+      expect(document.querySelectorAll("video")).toHaveLength(2);
       expect(document.querySelector("#demo-engineering")).toBeNull();
       expect(document.querySelector("#demo video")).toHaveAttribute(
         "poster",
         "/demo/newton-showcase-poster.jpg"
+      );
+      expect(document.querySelector("#demo-research video")).toHaveAttribute(
+        "src",
+        "/demo/newton-research.mp4"
       );
     });
   });

@@ -5,6 +5,7 @@ import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
 import AppWalkthrough from "@/components/AppWalkthrough";
+import ResearchFilmSection from "@/components/ResearchFilmSection";
 import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
@@ -252,6 +253,9 @@ export default function Home() {
         {/* AppWalkthrough.tsx's own header comment.                        */}
         {/* ---------------------------------------------------------------- */}
         <AppWalkthrough />
+
+        {/* A separate film for higher-level work: notes + synopsis -> an arXiv-style paper. */}
+        <ResearchFilmSection />
 
         {/* ---------------------------------------------------------------- */}
         {/* Capability list — a tight, single-line-per-item list replacing   */}

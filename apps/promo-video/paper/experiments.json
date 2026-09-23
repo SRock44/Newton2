@@ -1,0 +1,47 @@
+[
+ {
+  "n": 16,
+  "unknowns": 256,
+  "rho_jacobi": 0.98297,
+  "rho_gs": 0.96624,
+  "omega_opt": 1.6895,
+  "rho_sor": 0.68955,
+  "iters_jacobi": 1064,
+  "iters_gs": 543,
+  "iters_sor": 65,
+  "predicted_jacobi": 1073,
+  "predicted_gs": 537,
+  "predicted_sor": 50,
+  "seconds": 0.0
+ },
+ {
+  "n": 32,
+  "unknowns": 1024,
+  "rho_jacobi": 0.99547,
+  "rho_gs": 0.99096,
+  "omega_opt": 1.8264,
+  "rho_sor": 0.82639,
+  "iters_jacobi": 4020,
+  "iters_gs": 2048,
+  "iters_sor": 129,
+  "predicted_jacobi": 4059,
+  "predicted_gs": 2030,
+  "predicted_sor": 97,
+  "seconds": 0.2
+ },
+ {
+  "n": 64,
+  "unknowns": 4096,
+  "rho_jacobi": 0.99883,
+  "rho_gs": 0.99767,
+  "omega_opt": 1.9078,
+  "rho_sor": 0.90783,
+  "iters_jacobi": 15599,
+  "iters_gs": 7948,
+  "iters_sor": 261,
+  "predicted_jacobi": 15765,
+  "predicted_gs": 7883,
+  "predicted_sor": 191,
+  "seconds": 1.5
+ }
+]

@@ -1,0 +1,150 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,citecolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
+\usepackage[backend=biber,style=numeric,sortcites=true]{biblatex}
+\addbibresource{refs.bib}
+\title{What the Optimal Relaxation Parameter Really Buys: Classical Stationary Iterations on the 2D Poisson Problem, Predicted versus Measured}
+\author{Priya Nair}
+\date{\today}
+\begin{document}
+\maketitle
+\begin{abstract}
+We solve \(-\Delta u = 1\) on the unit square with homogeneous Dirichlet conditions discretized by the five-point stencil, comparing Jacobi, Gauss-Seidel, and SOR with optimal \(\omega^*\) to a relative-residual tolerance of \(10^{-8}\). Measured iteration counts for Jacobi and Gauss-Seidel match the classical spectral-radius predictions closely at \(n=16\), \(32\), \(64\), while SOR with \(\omega^*\) takes modestly more iterations than the asymptotic prediction. We present this as a short, reproducible teaching reference on how far asymptotics can be trusted at moderate \(n\).
+\end{abstract}
+\section{Introduction}
+Textbook treatments of classical stationary iterations often quote the asymptotic convergence factor and stop there; they rarely show how many iterations are actually required to reach a fixed tolerance. The motivation for this note is exactly that gap. Asymptotic analysis is a statement about the growth of a function as its argument tends to infinity; it typically ignores small values of the argument and constant factors, and therefore an asymptotically better algorithm is not guaranteed to be better in the moderate-$n$ regime \cite{2004lecture}. The same caution applies to the spectral-radius predictions used here: we interpret a smaller spectral radius as an asymptotic prediction about the eventual rate of convergence, not as a promise about the number of iterations needed to reach a relative-residual tolerance of \(10^{-8}\) at \(n=16\) or \(n=64\).
+
+This paper provides a direct predicted-versus-measured test of that promise. We solve \(-\Delta u=1\) on the unit square with homogeneous Dirichlet boundary conditions, discretized by the five-point stencil, and compare Jacobi, Gauss-Seidel, and SOR with the optimal parameter \(\omega^*\). For the grid sizes \(n=16,32,64\), we count iterations to reach a relative-residual tolerance of \(10^{-8}\). We then compare those measured counts with the counts predicted from the classical spectral radii. The results are simple to state: at \(n=16,32,64\), Jacobi and Gauss-Seidel match the asymptotic predictions closely, while SOR with \(\omega^*\) takes modestly more iterations than the asymptotic prediction. We present the complete setup as a reproducible teaching reference, so that students can see both how well and how imperfectly classical asymptotic rates predict measured behavior at moderate grid sizes.
+\section{Related Work}
+The successive over-relaxation (SOR) method is a classical stationary iterative method for solving large sparse linear systems \cite{hocking2025convergence}. It was devised simultaneously by David M. Young Jr. and Stanley P. Frankel in 1950 for the purpose of automatically solving linear systems on digital computers; earlier over-relaxation methods, such as those of Richardson and Southwell, had been designed for human calculators and required expertise to ensure convergence \cite{contributorssuccessive}. The convergence theory used in this paper is the classical analysis for consistently ordered 2-cyclic matrices. For Jacobi spectra that are real and contained in an interval centered at the origin, the asymptotic rates of optimal SOR have been extensively studied, and it is well known that optimal SOR converges an order of magnitude faster than Jacobi as the right endpoint of the interval approaches \(1\) \cite{hocking2025convergence}. We adopt the standard splitting \(A=D-E-F\) and the SOR iteration matrix \(\mathcal{L}_\omega=(D-\omega E)^{-1}(\omega F+(1-\omega)D)\) \cite{hocking2025convergence}; this is the setting in which the optimal relaxation parameter \(\omega^*\) for the model problem is derived.
+\section{Model problem and discretization}
+We consider the two-dimensional Poisson equation
+\[
+-\Delta u = 1 \quad \text{in } \Omega=(0,1)^2, \qquad u=0 \quad \text{on } \partial\Omega,
+\]
+where \(\Delta=\partial_x^2+\partial_y^2\). This is the standard model problem for comparing classical stationary iterations \cite{bindel2012matrix}. Following the finite-difference approach \cite{chen2025finite}, we place a uniform grid over \([0,1]^2\) with \(n\) interior points in each coordinate direction. With \(h=1/(n+1)\) \cite{bindel2012matrix}, the grid points are \(x_i=i h\) and \(y_j=j h\) for \(i,j=0,\dots,n+1\); the homogeneous Dirichlet boundary condition fixes \(u_{0,j}=u_{n+1,j}=u_{i,0}=u_{i,n+1}=0\). The unknown approximate solution values at the interior points are denoted \(u_{i,j}\approx u(x_i,y_j)\), \(1\le i,j\le n\).
+
+Using the second central difference for the second derivative in each coordinate direction \cite{chen2025finite} yields the five-point stencil
+\[
+\frac{4u_{i,j}-u_{i-1,j}-u_{i+1,j}-u_{i,j-1}-u_{i,j+1}}{h^2}=1,
+\qquad 1\le i,j\le n.
+\]
+Multiplying by \(h^2\), the discrete equations become
+\[
+4u_{i,j}-u_{i-1,j}-u_{i+1,j}-u_{i,j-1}-u_{i,j+1}=h^2.
+\]
+Because the one-dimensional central difference has \(O(h^2)\) truncation error \cite{chen2025finite}, the five-point discretization is second-order accurate for smooth solutions.
+
+Collecting the \(N=n^2\) interior unknowns into a vector in the usual lexicographic ordering yields a linear system \(A\mathbf{u}=\mathbf{b}\) of size \(N\times N\), where \(\mathbf{b}=h^2\mathbf{1}\) and \(\mathbf{1}\) is the all-ones vector. In this ordering, \(A\) is the two-dimensional discrete Laplacian. For the grid sizes used in this study, \(n=16,32,64\), the number of unknowns is \(N=256,1024,4096\), respectively. Finer grids, such as \(n=128\), were not included because the pure-NumPy implementation used for the stationary-iteration sweeps proved too slow.
+\section{Methods and classical theory}
+Let the unit square be discretized with \(n\) interior points in each direction, so \(h=1/(n+1)\), and let \(A\) be the five-point Laplacian matrix. We write the linear system as \(Au=f\) and, following \cite{buchanan2022jacobi}, use the splitting \(A=D-L-U\) with \(D\) diagonal and \(L,U\) strictly lower and upper triangular, respectively. The Jacobi iteration matrix is
+\[ T_J=D^{-1}(L+U),\qquad x^{(k+1)}=T_Jx^{(k)}+D^{-1}f. \]
+Gauss-Seidel uses
+\[ T_{GS}=(D-L)^{-1}U,\qquad x^{(k+1)}=T_{GS}x^{(k)}+(D-L)^{-1}f. \]
+SOR with relaxation parameter \(\omega\) \cite{contributorssuccessive} uses
+\[ T_\omega=(D-\omega L)^{-1}\big((1-\omega)D+\omega U\big),\qquad x^{(k+1)}=T_\omega x^{(k)}+\omega(D-\omega L)^{-1}f, \]
+which reduces to Gauss-Seidel when \(\omega=1\). Over-relaxation corresponds to \(\omega>1\) \cite{contributorssuccessive}, and the SOR method was introduced by Young and Frankel \cite{contributorssuccessive}.
+
+For the five-point model problem, Young's classical theory gives the spectral radii
+\[ \rho(T_J)=\cos(\pi h),\qquad \rho(T_{GS})=\rho(T_J)^2=\cos^2(\pi h),\qquad \rho(T_{\omega_\ast})=\omega_\ast-1, \]
+where the optimal SOR parameter is
+\[ \omega_\ast=\frac{2}{1+\sin(\pi h)}. \]
+These are the predictions to be checked in the numerical comparison below. The corresponding asymptotic estimate for the number of iterations required to reduce the initial residual by a factor \(10^{-8}\) is \(k\approx -8\ln 10/\ln\rho(T)\); because this is an asymptotic statement, it need not describe the measured counts exactly at moderate \(n\).
+
+All iterations start from \(u^{(0)}=0\) and stop when \(\|r^{(k)}\|_2/\|r^{(0)}\|_2<10^{-8}\). We use red-black ordering of the unknowns for vectorized stencil updates. In Young's theory, the SOR formulas rely on the matrix being consistently ordered in the chosen ordering. Since red-black ordering is a permutation of the natural ordering, the consistently ordered property should hold here; we record it as a checkable claim rather than assuming it, and the numerical comparison below provides the check.
+
+Table~\ref{tab:omega} lists the rounded optimal SOR parameters used for the three grid sizes.
+\begin{table}[h]
+\centering
+\begin{tabular}{ccc}
+\toprule
+\(n\) & \(h\) & \(\omega_\ast\) \\
+\midrule
+16 & \(1/17\) & 1.6895 \\
+32 & \(1/33\) & 1.8264 \\
+64 & \(1/65\) & 1.9078 \\
+\bottomrule
+\end{tabular}
+\caption{Optimal SOR parameters \(\omega_\ast\) from \(\omega_\ast=2/(1+\sin(\pi h))\).}
+\label{tab:omega}
+\end{table}
+\section{Experimental setup}
+We solve the five-point discretization of \(-\Delta u=1\) on the unit square with homogeneous Dirichlet boundary conditions. Let \(n\) denote the number of interior points in each direction, so that \(h=1/(n+1)\) and the unknown vector has \(n^2\) entries. The initial guess is \(u_0=0\), and the forcing term is the constant \(f\equiv 1\) at all interior grid points.
+
+At iteration \(k\), the residual is \(r_k=b-Au_k\), and the iteration is stopped when
+\[
+\|r_k\|_2/\|r_0\|_2 < 10^{-8}.
+\]
+Because \(u_0=0\), the initial residual is simply \(r_0=b\), so the denominator is the \(2\)-norm of the discretized right-hand side.
+
+The classical asymptotic prediction assumes that the residual norm contracts by the spectral radius \(\rho\) of the iteration matrix. Therefore, for a tolerance of \(10^{-8}\), the predicted number of iterations is
+\[
+k_{\mathrm{pred}}=\frac{\ln(10^{-8})}{\ln\rho},
+\]
+rounded up to the nearest integer. Table~\ref{tab:pred} lists these predicted counts for \(n=16\), \(32\), and \(64\) for Jacobi, Gauss-Seidel, and SOR with the optimal relaxation parameter \(\omega^*\). These are the reference values against which the measured iteration counts are compared in the next section.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\(n\) & Jacobi & Gauss-Seidel & SOR(\(\omega^*\)) \\
+\midrule
+16 & 1073 & 537 & 50 \\
+32 & 4059 & 2030 & 97 \\
+64 & 15765 & 7883 & 191 \\
+\bottomrule
+\end{tabular}
+\caption{Predicted iteration counts from the spectral-radius estimate \(k=\ln(10^{-8})/\ln\rho\), rounded up to the nearest integer.}
+\label{tab:pred}
+\end{table}
+
+All three iterations are implemented in NumPy only; no other numerical libraries or external solvers are used.
+\section{Results: predicted versus measured}
+The measured iteration counts are summarized in Table~\ref{tab:measured}. For Jacobi and Gauss--Seidel, the measured counts track the classical spectral-radius predictions closely at all three grid sizes. For SOR with the optimal relaxation parameter \(\omega_*\), the measured counts are consistently larger than the asymptotic prediction: 65 versus 50 at \(n=16\), 129 versus 97 at \(n=32\), and 261 versus 191 at \(n=64\). The excess is roughly 30--37\% in these runs. We present this gap as an observed finite-\(n\) finding: at these moderate grid sizes, the asymptotic SOR estimate is optimistic, while the classical predictions for Jacobi and Gauss--Seidel remain accurate.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\(n\) & Jacobi & Gauss--Seidel & SOR (\(\omega_*\)) \\
+\midrule
+16 & 1064 & 543 & 65 \\
+32 & 4020 & 2048 & 129 \\
+64 & 15599 & 7948 & 261 \\
+\bottomrule
+\end{tabular}
+\caption{Measured iteration counts to reduce the relative residual below \(10^{-8}\).}
+\label{tab:measured}
+\end{table}
+\section{Discussion and limitations}
+Taken at face value, the experiments confirm the classical spectral-radius predictions for Jacobi and Gauss-Seidel on the five-point discretization of \(-\Delta u=1\) on the unit square with homogeneous Dirichlet conditions and a zero initial guess. The SOR runs using the theoretically optimal relaxation parameter \(\omega_* = 2/(1+\sin(\pi h))\) took modestly more iterations than the asymptotic spectral-radius estimate at all three tested grid sizes. We deliberately leave this SOR gap as an open question; it is not explained by the data collected here. Several mechanisms could in principle contribute: the SOR iteration matrix is non-normal, so the asymptotic spectral radius need not control the early iteration transient; the tested values \(n=16,32,64\) may still be in a preasymptotic regime for SOR; and the iteration count may be sensitive to small perturbations of \(\omega\) near \(\omega_*\). These are hypotheses only, not conclusions, and we did not run the additional experiments needed to test them.
+
+The following limitations bound the scope of the conclusions:
+
+\begin{itemize}
+  \item The experiments use only the constant source \(f=1\), homogeneous Dirichlet boundary conditions, and a zero initial guess. Other right-hand sides, boundary conditions, or initial guesses could lead to different convergence behavior.
+  \item Only a single convergence criterion was used: relative residual tolerance \(10^{-8}\). The observed counts are tied to this stopping rule.
+  \item No grid finer than \(n=64\) was tested; in particular, no \(n=128\) run is included. Whether the trends persist at larger \(n\) remains unmeasured.
+  \item Only the theoretically optimal SOR parameter was evaluated. No sweep of nearby \(\omega\) values was performed, so sensitivity near \(\omega_*\) was not empirically mapped.
+  \item The comparisons are based solely on iteration counts; no wall-clock time, floating-point operation counts, or memory measurements are reported.
+\end{itemize}
+
+Within these limits, the Jacobi and Gauss-Seidel results support the classical asymptotic predictions, while the SOR gap remains an open question for future work.
+\section{Reproducibility note and conclusion}
+Reproducibility note.
+
+To make these experiments independently verifiable, an arXiv release would include the solver code, driver scripts, and the full residual histories for the runs reported here. Long non-text material of this kind is better placed in ancillary files than in the article body, and the arXiv format policy encourages that practice \cite{arxivpolicies}; it also asks that submissions have complete references, be machine readable, and provide links to code or data that resolve to a publicly available repository \cite{arxivpolicies}. We would therefore provide a small public repository (e.g., on GitHub) containing the code, a manifest of software and hardware versions, and a README with the exact commands for reproducing each iteration count.
+
+The full residual histories matter more than a final count: a count alone can hide early transients, near-tolerance plateaus, and the point at which the asymptotic convergence rate becomes visible. Standard reproducible-research guidance similarly emphasizes documenting experiments and capturing environment and artifact information \cite{institutereproducible}. For the present runs this means reporting at least the operating system, CPU model, the BLAS/LAPACK implementation, the Python/NumPy or Julia version, and the floating-point precision used. These details are not pedantic; the stopping criterion is a relative-residual tolerance of \(10^{-8}\), and tiny floating-point differences can shift the final iteration count near the tolerance.
+
+Conclusion.
+
+At the grid sizes considered here, \(n = 16, 32, 64\), the measured Jacobi and Gauss--Seidel counts track their classical spectral-radius predictions closely, while SOR with the optimal parameter \(\omega_*\) takes modestly more iterations than the asymptotic prediction. This is the right lesson for a teaching reference: the classical formulas are excellent qualitative guides, but they are asymptotic limits rather than exact finite-\(n\) equalities. The optimal SOR parameter still buys a clear advantage at moderate \(n\), but the precise finite-grid count should not be expected to equal the infinite-grid prediction. We offer this study as a compact, reproducible teaching reference on how far one can trust the classical spectral-radius analysis of Jacobi, Gauss--Seidel, and SOR on a simple 2D Poisson problem.
+\printbibliography[title={References}]
+\end{document}

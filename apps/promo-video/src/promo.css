@@ -23,6 +23,10 @@ html, body { margin: 0; background: #0b1120; }
   transform: rotate(var(--promo-spin, 0deg));
 }
 
+/* the app previews a PDF in an <iframe>, which a headless renderer can't draw; films lay the real
+   pages over the pane instead */
+.doc-detail-pdf-frame { display: none !important; }
+
 .promo-pressed { transform: scale(0.94); filter: brightness(0.92); }
 
 .promo-caret {

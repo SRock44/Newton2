@@ -20,6 +20,7 @@ import type { ChatMessage, ChatSession, MainView, ToolActivityEntry } from "../.
 import { clamp01, easeInOut, easeOut, FPS, measure, prog, typed } from "../anim";
 import { cameraTransform, cursorAt, findTarget, installFrozenTime, WALLPAPER, type Pt } from "../engine";
 import { Caption, CursorArrow, ScriptedComposer } from "../ui";
+import { activeFilm } from "../filmId";
 import "./api";
 import { showState, type ShowDoc } from "./api";
 import { DEFAULT_NOTE_TITLE, DOC, NOTE, NOTE_LIST, NOTE_TAGS, NOTE_TITLE, OLD_DOCS, STUDENT, TURNS, noteState, safePrefix, typedText } from "./data";
@@ -606,6 +607,7 @@ function useFieldTyping(t: number, frame: number, replace: () => void) {
 
 // ------------------------------------------------------------------ composition
 export const ShowFilm: React.FC = () => {
+  activeFilm.id = "show";
   const frame = useCurrentFrame();
   const t = frame / FPS;
   const rootRef = useRef<HTMLDivElement>(null);

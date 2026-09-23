@@ -8,6 +8,10 @@
     "audio": "npm run cues && python make_audio.py out/cues-show.json out/show-audio.wav",
     "render:site": "remotion render src/index.ts ShowFilm ../website/public/demo/newton-showcase.mp4 --crf=22 --muted",
     "render:audio": "npm run audio && remotion render src/index.ts ShowFilm out/show-silent.mp4 --crf=22 --muted && remotion ffmpeg -y -i out/show-silent.mp4 -i out/show-audio.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest out/newton-showcase-audio.mp4",
+    "cues:paper": "tsx scripts/export-cues-paper.ts > out/cues-paper.json",
+    "audio:paper": "npm run cues:paper && python make_audio.py out/cues-paper.json out/paper-audio.wav",
+    "render:paper-site": "remotion render src/index.ts ResearchFilm ../website/public/demo/newton-research.mp4 --crf=22 --muted",
+    "render:paper-audio": "npm run audio:paper && remotion render src/index.ts ResearchFilm out/paper-silent.mp4 --crf=22 --muted && remotion ffmpeg -y -i out/paper-silent.mp4 -i out/paper-audio.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest out/newton-research-audio.mp4",
     "flicker": "python analyze_flicker.py"
   },
   "dependencies": {
