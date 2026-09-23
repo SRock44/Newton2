@@ -126,6 +126,22 @@ describe("Home", () => {
       expect(videos[0]).toHaveAttribute("src", "/demo/newton-promo.mp4");
       expect(screen.queryAllByRole("tab")).toHaveLength(0);
     });
+
+    it("has a second film, for the engineering student, directly under the first", () => {
+      render(<Home />);
+      const second = document.querySelector("#demo-engineering")!;
+      expect(second).not.toBeNull();
+      // right after the first film, before the capability list
+      expect(document.querySelector("#demo")!.nextElementSibling).toBe(second);
+      const videos = second.querySelectorAll("video");
+      expect(videos).toHaveLength(1);
+      expect(videos[0]).toHaveAttribute("src", "/demo/newton-engineering.mp4");
+      expect(videos[0]).toHaveAttribute("poster", "/demo/newton-engineering-poster.jpg");
+      expect(videos[0].muted).toBe(true);
+      expect(
+        screen.getByRole("heading", { name: /push back\. newton holds its ground/i })
+      ).toBeInTheDocument();
+    });
   });
 
   describe("capability list (Phase 3.8: replaces the old 13-card, 5-subgroup feature grid)", () => {
