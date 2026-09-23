@@ -123,24 +123,18 @@ describe("Home", () => {
       render(<Home />);
       const videos = document.querySelectorAll("#demo video");
       expect(videos).toHaveLength(1);
-      expect(videos[0]).toHaveAttribute("src", "/demo/newton-promo.mp4");
+      expect(videos[0]).toHaveAttribute("src", "/demo/newton-showcase.mp4");
       expect(screen.queryAllByRole("tab")).toHaveLength(0);
     });
 
-    it("has a second film, for the engineering student, directly under the first", () => {
+    it("is the ONLY film on the page — one product video, not a bunch of separate ones", () => {
       render(<Home />);
-      const second = document.querySelector("#demo-engineering")!;
-      expect(second).not.toBeNull();
-      // right after the first film, before the capability list
-      expect(document.querySelector("#demo")!.nextElementSibling).toBe(second);
-      const videos = second.querySelectorAll("video");
-      expect(videos).toHaveLength(1);
-      expect(videos[0]).toHaveAttribute("src", "/demo/newton-engineering.mp4");
-      expect(videos[0]).toHaveAttribute("poster", "/demo/newton-engineering-poster.jpg");
-      expect(videos[0].muted).toBe(true);
-      expect(
-        screen.getByRole("heading", { name: /push back\. newton holds its ground/i })
-      ).toBeInTheDocument();
+      expect(document.querySelectorAll("video")).toHaveLength(1);
+      expect(document.querySelector("#demo-engineering")).toBeNull();
+      expect(document.querySelector("#demo video")).toHaveAttribute(
+        "poster",
+        "/demo/newton-showcase-poster.jpg"
+      );
     });
   });
 

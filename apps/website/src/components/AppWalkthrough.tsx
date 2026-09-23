@@ -3,14 +3,17 @@
 import FilmPlayer from "./FilmPlayer";
 import pageStyles from "@/app/page.module.css";
 
-// One continuous product film, not a slideshow. Product owner, verbatim: "MAKE IT A
-// REMOTION VIDEO (ONE VIDEO, NOT MULTIPLE SLIDES) OF A USER USING NEWTON IN ALL OF ITS
-// CAPACITY." The film (apps/promo-video, a Remotion project) renders the REAL, unmodified
-// desktop-app components on one desktop: a student asks Newton to check factoring work,
-// types "Photosynthesis" into the Notepad and gets an instant definition, then asks for an
-// interactive artifact, approves the plan, and drags the finished result. Every string is
-// real captured Newton output (see WEBSITE-ROADMAP.md, Phase 3.11). The player itself
-// (autoplay in view, reduced motion, click to pause) lives in FilmPlayer.tsx.
+// ONE continuous product film that shows everything, not a slideshow and not a pile of
+// separate demos. Product owner, verbatim: "The end goal is to have ONE product video that
+// showcases everything, instead of a bunch of separate ones." The film (apps/promo-video's
+// ShowFilm, a Remotion project) renders the REAL, unmodified desktop-app components on one
+// desktop: a student takes notes in the Notepad (Write mode) and highlights a term to Define
+// and a formula to Explain, then Previews the finished note; uploads a lecture handout on the
+// Documents page and attaches it to a Learn Mode chat straight from Documents; is walked
+// through why integration by parts works — typing answers, getting pushed back on a sign error
+// and asked to explain it in his own words; and finally uses Newton Research for real sources.
+// Every word Newton says is real captured output (see WEBSITE-ROADMAP.md, Phase 3.13). The
+// player itself (autoplay in view, reduced motion, click to pause) lives in FilmPlayer.tsx.
 
 export default function AppWalkthrough() {
   return (
@@ -29,9 +32,9 @@ export default function AppWalkthrough() {
       </div>
 
       <FilmPlayer
-        src="/demo/newton-promo.mp4"
-        poster="/demo/newton-promo-poster.jpg"
-        ariaLabel="Screen film of a student using Newton: checking factoring work with real computation, defining a word from class notes in Notepad, and building and exploring an interactive unit-circle artifact."
+        src="/demo/newton-showcase.mp4"
+        poster="/demo/newton-showcase-poster.jpg"
+        ariaLabel="Screen film of a student using Newton: highlighting a term and a formula in the Notepad to define and explain them, uploading a lecture handout to Documents, attaching it to a Learn Mode chat, typing answers and getting pushed back on until integration by parts makes sense, and using Newton Research to find real sources."
       />
     </section>
   );

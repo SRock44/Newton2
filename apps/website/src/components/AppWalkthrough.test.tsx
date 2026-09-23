@@ -58,12 +58,12 @@ describe("AppWalkthrough", () => {
     expect(screen.queryByRole("button", { name: /next step|previous step/i })).not.toBeInTheDocument();
   });
 
-  it("plays the real promo film, muted and looping, with a poster", () => {
+  it("plays the one product film, muted and looping, with a poster", () => {
     mockInView();
     render(<AppWalkthrough />);
     const video = document.querySelector("video")!;
-    expect(video).toHaveAttribute("src", "/demo/newton-promo.mp4");
-    expect(video).toHaveAttribute("poster", "/demo/newton-promo-poster.jpg");
+    expect(video).toHaveAttribute("src", "/demo/newton-showcase.mp4");
+    expect(video).toHaveAttribute("poster", "/demo/newton-showcase-poster.jpg");
     expect(video.muted).toBe(true);
     expect(video.loop).toBe(true);
     expect(video).toHaveAttribute("playsinline");
