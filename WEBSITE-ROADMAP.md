@@ -739,7 +739,7 @@ back on Newton, and gains further understanding." Then: "I want you to ACTUALLY 
 PAGE, AND ADD THERE. THEN IN THE CHAT, CLICK THE + AND ADD FROM DOCUMENTS (NOT THIS PC)... Make
 sure you use the Artifact generation, and really show off how Newton is a real LEARNING tool, not
 a cheating tool or another ChatGPT/Claude."
-- [x] **`EngineerFilm` (second composition in `apps/promo-video`)**, 104.6 s, 1920x1080, 30 fps,
+- [x] **`EngineerFilm` (second composition in `apps/promo-video`)**, 73.8 s, 1920x1080, 30 fps,
   same real unmodified desktop components. One take: the student opens the REAL Documents page,
   uploads a real lecture deck (the page's own "Uploading..." state, then the card and preview),
   opens a new chat, turns on Learn Mode, clicks "+" -> "Attach an existing document" (not
@@ -771,15 +771,15 @@ a cheating tool or another ChatGPT/Claude."
   single frames through with a stale chat scroll — caught by `analyze_flicker.py`, 7 outlier
   frames -> 0), waits for the lazily-loaded MathLive field, and scroll-invariant cursor targets
   so the pointer follows controls inside the artifact while the chat pane and the artifact
-  scroll. Flicker check on the final render: 0 single-frame outliers over 3139 frames.
+  scroll. Flicker check on the final render: 0 single-frame outliers over 2214 frames.
 - [x] **Audio (standalone only; the site stays silent).** `scripts/export-cues-eng.ts` ->
   `make_audio.py out/cues-eng.json out/engineer-audio.wav` (same synth, generalized: optional
   cues, several drag tones for the two sliders, keystrokes for typed messages and math entry).
-  Measured -17.4 LUFS, -2.0 dBFS peak. The audio mp4 is a mux of the same video render.
+  Measured -17.2 LUFS, -1.8 dBFS peak. The audio mp4 is a mux of the same video render.
 - [x] **Website:** `FilmPlayer` extracted from `AppWalkthrough` (muted looping autoplay in view,
   click to pause, progress line, Play button, reduced motion never autoplays); new
   `EngineerWalkthrough` section ("Push back. Newton holds its ground.") directly under the first
-  film with `/demo/newton-engineering.mp4` (9.2 MB, no audio track) and its poster.
+  film with `/demo/newton-engineering.mp4` (8.4 MB, no audio track) and its poster.
   Verified: `tsc` and `next build` clean, 63/63 tests, real Playwright against the dev server
   (1920x1080 source plays, `currentTime` advances, muted, no error; reduced motion holds paused).
 

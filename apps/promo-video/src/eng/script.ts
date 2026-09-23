@@ -22,8 +22,8 @@ const click = (t: number, target: string, fb?: { x: number; y: number }) => {
 pt(T.cursorIn, 1500, 780);
 click(T.navClick, "nav-documents", { x: 300, y: 830 });
 click(T.uploadClick, "upload-btn", { x: 1450, y: 190 });
-at(T.uploadDone + 1.0, "doc-card", { x: 700, y: 330 });
-at(T.uploadDone + 2.8, "doc-detail", { x: 1100, y: 520 });
+at(T.uploadDone + 0.6, "doc-card", { x: 700, y: 330 });
+at(T.uploadDone + 1.7, "doc-detail", { x: 1100, y: 520 });
 click(T.newChatClick, "newchat", { x: 330, y: 270 });
 click(T.learnClick, "learn", { x: 700, y: 820 });
 click(T.plusClick, "plus", { x: 700, y: 880 });
@@ -65,7 +65,7 @@ export const Z: Keyframe<number>[] = [
   { t: 0, v: 1 },
   { t: T.uploadClick - 0.4, v: 1 },
   { t: T.uploadClick + 0.6, v: 1.07 },
-  { t: T.uploadDone + 4.2, v: 1.07 },
+  { t: T.uploadDone + 1.6, v: 1.07 },
   { t: T.newChatClick, v: 1 },
   { t: T.composerClick - 0.4, v: 1.03 },
   { t: A.expandClick - 0.5, v: 1.03 },

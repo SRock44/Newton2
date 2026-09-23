@@ -4,12 +4,12 @@ import { TURNS, attemptLatex, latexPrefixes, typedText, turn } from "./data";
 // what is typed and streamed), so if a capture is replaced the film re-times itself and the
 // soundtrack (which is exported from this same object) follows.
 
-export const TYPE_CPS = 100; // a fast, confident typist
-export const REVEAL_CPS = 520; // streamed replies, sped up like a promo would
-const TOOL_DUR = 0.55;
-const TOOL_GAP = 0.12;
-export const BUILD_DUR = 4.4; // a ~1-2 minute build, time-lapsed
-export const STEP_DELAY = 0.25; // per token typed into the math field
+export const TYPE_CPS = 150; // a fast, confident typist
+export const REVEAL_CPS = 850; // streamed replies, sped up like a promo would
+const TOOL_DUR = 0.4;
+const TOOL_GAP = 0.08;
+export const BUILD_DUR = 3.0; // a ~1-2 minute build, time-lapsed
+export const STEP_DELAY = 0.17; // per token typed into the math field
 
 export interface ToolMark {
   tool: string;
@@ -42,20 +42,20 @@ const marks: TurnMark[] = [];
 
 // ---------------------------------------------------------------- documents page
 const docs = {
-  windowIn: 2.0,
-  cursorIn: 2.7,
-  navClick: 3.7,
-  uploadClick: 5.6,
-  uploadDone: 7.1,
-  newChatClick: 10.6,
+  windowIn: 1.6,
+  cursorIn: 2.1,
+  navClick: 2.9,
+  uploadClick: 4.3,
+  uploadDone: 5.5,
+  newChatClick: 8.0,
 };
 // ---------------------------------------------------------------- attach from Documents
 const attach = {
-  learnClick: 11.5, // turn Learn Mode on (the real toggle)
-  plusClick: 12.8,
-  menuExistingClick: 14.0,
-  pickerDeckClick: 15.2,
-  composerClick: 15.9,
+  learnClick: 8.9, // turn Learn Mode on (the real toggle)
+  plusClick: 9.8,
+  menuExistingClick: 10.7,
+  pickerDeckClick: 11.6,
+  composerClick: 12.2,
 };
 
 let t = attach.composerClick;
@@ -69,23 +69,23 @@ for (let k = 0; k < 8; k++) {
 
   if (kind === "composer") {
     const text = typedText(user.content);
-    m.clickField = k === 0 ? t : t + 0.55;
-    m.typeStart = m.clickField + 0.3;
+    m.clickField = k === 0 ? t : t + 0.4;
+    m.typeStart = m.clickField + 0.2;
     m.typed = text;
     m.typeEnd = m.typeStart + text.length / TYPE_CPS;
-    m.sendClick = m.typeEnd + 0.5;
+    m.sendClick = m.typeEnd + 0.35;
   } else if (kind === "stepcheck") {
     const steps = latexPrefixes(latex!);
-    m.clickField = t + 0.6;
-    m.typeStart = m.clickField + 0.35;
+    m.clickField = t + 0.4;
+    m.typeStart = m.clickField + 0.25;
     m.latexSteps = steps;
     m.typeEnd = m.typeStart + steps.length * STEP_DELAY;
-    m.sendClick = m.typeEnd + 0.55;
+    m.sendClick = m.typeEnd + 0.4;
   } else {
-    m.sendClick = t + 1.3; // "Build it" is clicked after the plan card has been read
+    m.sendClick = t + 0.9; // "Build it" is clicked after the plan card has been read
   }
   m.userAppear = m.sendClick + 0.15;
-  m.asstAppear = m.userAppear + 0.5;
+  m.asstAppear = m.userAppear + 0.4;
 
   let cursor = m.asstAppear;
   const tools: ToolMark[] = [];
@@ -114,13 +114,13 @@ for (let k = 0; k < 8; k++) {
     m.revealEnd = m.revealStart + 1.0;
   } else {
     m.revealStart = cursor + 0.1;
-    m.revealEnd = m.revealStart + Math.max(1.4, contentLen / REVEAL_CPS);
+    m.revealEnd = m.revealStart + Math.max(0.9, contentLen / REVEAL_CPS);
   }
   m.end = m.revealEnd;
   marks.push(m as TurnMark);
 
   // hold before the next beat
-  const hold = k === 0 ? 1.2 : k === 2 ? 0.2 : k === 3 ? 0 : k === 4 || k === 5 ? 1.2 : k === 7 ? 2.0 : 0.9;
+  const hold = k === 0 ? 0.9 : k === 2 ? 0.2 : k === 3 ? 0 : k === 4 || k === 5 ? 0.8 : k === 7 ? 1.4 : 0.6;
   t = m.end + hold;
 }
 
@@ -128,15 +128,15 @@ for (let k = 0; k < 8; k++) {
 const build = marks[3];
 const artifact = (() => {
   const readyAt = build.blockAt!;
-  const expandClick = readyAt + 1.5;
-  const start = expandClick + 1.0;
-  const end = start + 9.2;
+  const expandClick = readyAt + 1.0;
+  const start = expandClick + 0.8;
+  const end = start + 6.6;
   return { readyAt, expandClick, start, end };
 })();
 
 // turns after the artifact wait for the interaction to finish
 {
-  const shift = artifact.end + 0.9 - marks[4].clickField!;
+  const shift = artifact.end + 0.6 - marks[4].clickField!;
   // (turn 3's reply streams while the artifact is being explored; turns >=4 start after)
   for (const mk of marks.slice(4)) {
     for (const key of ["clickField", "typeStart", "typeEnd", "sendClick", "userAppear", "asstAppear", "revealStart", "revealEnd", "end"] as const) {
@@ -155,8 +155,8 @@ export const T = {
   marks,
   artifact,
   introEnd: 1.6,
-  outroStart: marks[7].end + 3.4,
-  total: marks[7].end + 3.4 + 4.6,
+  outroStart: marks[7].end + 1.6,
+  total: marks[7].end + 1.6 + 3.9,
 };
 
 // ------------------------------------------------------------ artifact control script
@@ -175,16 +175,16 @@ const ease = (x: number) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) /
 const seg = (t_: number, a: number, b: number) => Math.min(1, Math.max(0, (t_ - a) / (b - a)));
 
 export const artifactTimes = {
-  cantClick: A0 + 0.9,
-  scrollDownStart: A0 + 1.7,
-  scrollDownEnd: A0 + 2.6,
-  lDragStart: A0 + 2.9,
-  lDragEnd: A0 + 4.2,
-  pDragStart: A0 + 4.6,
-  pDragEnd: A0 + 6.0,
-  scrollUpStart: A0 + 6.3,
-  scrollUpEnd: A0 + 7.1,
-  simplyClick: A0 + 7.6,
+  cantClick: A0 + 0.7,
+  scrollDownStart: A0 + 1.3,
+  scrollDownEnd: A0 + 1.9,
+  lDragStart: A0 + 2.1,
+  lDragEnd: A0 + 3.1,
+  pDragStart: A0 + 3.4,
+  pDragEnd: A0 + 4.4,
+  scrollUpStart: A0 + 4.6,
+  scrollUpEnd: A0 + 5.2,
+  simplyClick: A0 + 5.6,
 };
 
 export function artifactState(time: number): ArtifactState {
