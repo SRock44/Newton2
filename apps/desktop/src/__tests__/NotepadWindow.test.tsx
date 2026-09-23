@@ -5,6 +5,7 @@ import NotepadWindow from "../NotepadWindow";
 import * as api from "../api";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import type { Editor } from "@tiptap/react";
 
 const listeners: Record<string, Array<(event: { payload: unknown }) => void>> = {};
 
@@ -52,6 +53,31 @@ const NOTE_SUMMARY = {
   updated_at: "2026-09-15T00:00:00Z",
   tags: [] as string[],
 };
+
+/** The TipTap editor behind the note (TipTap hangs it on the contenteditable's DOM node). */
+function noteEditor(): Editor {
+  const dom = document.querySelector(".ProseMirror") as (HTMLElement & { editor: Editor }) | null;
+  expect(dom).not.toBeNull();
+  return dom!.editor;
+}
+
+/** Selects `needle` inside the note the way a mouse drag would, and releases the mouse. */
+async function highlight(needle: string) {
+  const ed = noteEditor();
+  let from = -1;
+  ed.state.doc.descendants((node, pos) => {
+    if (from === -1 && node.isText && node.text?.includes(needle)) from = pos + node.text.indexOf(needle);
+    return from === -1;
+  });
+  expect(from).toBeGreaterThan(-1);
+  act(() => {
+    ed.commands.setTextSelection({ from, to: from + needle.length });
+  });
+  await act(async () => {
+    fireEvent.mouseUp(document.querySelector(".ProseMirror")!);
+    await new Promise((r) => setTimeout(r, 5));
+  });
+}
 
 async function fireAuth(token: string | null) {
   await act(async () => {
@@ -160,7 +186,9 @@ describe("NotepadWindow", () => {
 
     await user.click(screen.getByRole("button", { name: "+ New Note" }));
 
-    expect(await screen.findByPlaceholderText("Start writing…")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector("[data-placeholder]")?.getAttribute("data-placeholder")).toBe("Start writing…"),
+    );
     expect(createNote).toHaveBeenCalledWith("tok");
   });
 
@@ -186,13 +214,16 @@ describe("NotepadWindow", () => {
     await fireAuth("tok");
     await user.click(await screen.findByText("Chemistry — Sept 15"));
 
-    const textarea = await screen.findByPlaceholderText("Start writing…");
-    await user.type(textarea, "New notes.");
+    await waitFor(() => expect(document.querySelector(".ProseMirror")).not.toBeNull());
+    act(() => {
+      noteEditor().commands.insertContent("New notes.");
+    });
 
     // A draft is written to localStorage immediately, before the debounce fires.
     expect(window.localStorage.getItem("newton:notepad:draft:n1")).toContain("New notes.");
+    expect(updateNote).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(3_000);
 
     await waitFor(() => expect(updateNote).toHaveBeenCalledWith("tok", "n1", "Chemistry — Sept 15", "New notes."));
     expect(window.localStorage.getItem("newton:notepad:draft:n1")).toBeNull();
@@ -227,7 +258,7 @@ describe("NotepadWindow", () => {
     expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();
   });
 
-  it("clicking the rendered text edits it as raw markdown; leaving it renders it again", async () => {
+  it("what you type keeps the note's look: a heading stays a heading as you keep writing", async () => {
     const user = userEvent.setup();
     listNotes.mockResolvedValue([NOTE_SUMMARY]);
     getNote.mockResolvedValue({ ...NOTE_SUMMARY, content: "# A heading" });
@@ -236,13 +267,14 @@ describe("NotepadWindow", () => {
     await fireAuth("tok");
     await user.click(await screen.findByText("Chemistry — Sept 15"));
 
-    await user.click(await screen.findByRole("heading", { name: "A heading" }));
-    const field = (await screen.findByDisplayValue("# A heading")) as HTMLTextAreaElement;
-    await user.type(field, "!");
-    expect(field.value).toBe("# A heading!");
-
-    await user.click(screen.getByDisplayValue("Chemistry — Sept 15"));
-    expect(await screen.findByRole("heading", { name: "A heading!" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "A heading" })).toBeInTheDocument();
+    act(() => {
+      noteEditor().commands.insertContentAt(noteEditor().state.doc.firstChild!.nodeSize - 1, " continues");
+    });
+    expect(await screen.findByRole("heading", { name: "A heading continues" })).toBeInTheDocument();
+    // one surface throughout: never a textarea with raw markers
+    expect(document.querySelector("textarea")).toBeNull();
+    expect(document.body.textContent).not.toContain("# A heading");
   });
 
   it("shows Newton's answers as cards, never as a raw ```newton-note fence", async () => {
@@ -286,7 +318,7 @@ describe("NotepadWindow", () => {
     expect(screen.getByText(/Outro line\./)).toBeInTheDocument();
   });
 
-  it("highlighting rendered text shows the Explain/Define/Summarize toolbar, and Explain inserts a card", async () => {
+  it("highlighting text shows the Explain/Define/Summarize toolbar, and Explain inserts a card", async () => {
     const user = userEvent.setup();
     listNotes.mockResolvedValue([NOTE_SUMMARY]);
     getNote.mockResolvedValue({ ...NOTE_SUMMARY, content: "The mitochondria is the powerhouse of the cell." });
@@ -295,25 +327,11 @@ describe("NotepadWindow", () => {
     render(<NotepadWindow />);
     await fireAuth("tok");
     await user.click(await screen.findByText("Chemistry — Sept 15"));
+    await screen.findByText(/the mitochondria is the powerhouse/i);
 
-    const paragraph = await screen.findByText(/the mitochondria is the powerhouse/i);
-    const range = document.createRange();
-    range.selectNodeContents(paragraph);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    // jsdom doesn't compute real layout, but getBoundingClientRect exists and the
-    // component only reads its numbers for positioning, not for correctness.
-    Object.defineProperty(range, "getBoundingClientRect", {
-      value: () => ({ top: 100, left: 50, bottom: 120, right: 200, width: 150, height: 20 }),
-    });
+    await highlight("The mitochondria is the powerhouse of the cell.");
 
-    await act(async () => {
-      paragraph.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    });
-
-    const explainBtn = await screen.findByRole("button", { name: "Explain" });
-    await user.click(explainBtn);
+    await user.click(await screen.findByRole("button", { name: "Explain" }));
 
     await waitFor(() =>
       expect(annotateNoteSelection).toHaveBeenCalledWith(
@@ -328,23 +346,21 @@ describe("NotepadWindow", () => {
     expect(await screen.findByText("A cell organelle that produces ATP.")).toBeInTheDocument();
   });
 
-  it("highlighting text while editing shows the same toolbar, and Define inserts a card right after the selection", async () => {
+  it("Define on a highlighted word puts the card right after that paragraph, in the stored markdown", async () => {
     const user = userEvent.setup();
     listNotes.mockResolvedValue([NOTE_SUMMARY]);
-    getNote.mockResolvedValue({ ...NOTE_SUMMARY, content: "Use LIATE to choose u. Then integrate." });
+    getNote.mockResolvedValue({
+      ...NOTE_SUMMARY,
+      content: "Use LIATE to choose u. Then integrate.\n\nSecond paragraph.",
+    });
     annotateNoteSelection.mockResolvedValue("A mnemonic for choosing u.");
     updateNote.mockResolvedValue(NOTE_SUMMARY);
     render(<NotepadWindow />);
     await fireAuth("tok");
     await user.click(await screen.findByText("Chemistry — Sept 15"));
+    await screen.findByText(/Use LIATE to choose u/);
 
-    await user.click(await screen.findByText("Use LIATE to choose u. Then integrate."));
-    const field = (await screen.findByDisplayValue("Use LIATE to choose u. Then integrate.")) as HTMLTextAreaElement;
-    field.setSelectionRange(4, 9); // "LIATE"
-    await act(async () => {
-      fireEvent.mouseUp(field, { clientX: 120, clientY: 90 });
-    });
-
+    await highlight("LIATE");
     await user.click(await screen.findByRole("button", { name: "Define" }));
 
     await waitFor(() =>
@@ -352,35 +368,39 @@ describe("NotepadWindow", () => {
         "tok",
         "n1",
         "LIATE",
-        "Use LIATE to choose u. Then integrate.",
+        "Use LIATE to choose u. Then integrate.\n\nSecond paragraph.",
         "define",
       ),
     );
-    // the answer appears as a card, with the student's text split around it
+    // the answer appears as a card in the note...
     expect(await screen.findByText("Newton defined")).toBeInTheDocument();
     expect(screen.getByText("A mnemonic for choosing u.")).toBeInTheDocument();
-    // ...and the stored markdown has the fence right after the highlighted word
-    const draft = JSON.parse(window.localStorage.getItem("newton:notepad:draft:n1")!);
-    expect(draft.content).toBe(
-      "Use LIATE\n\n```newton-note\n" +
-        JSON.stringify({ action: "define", text: "A mnemonic for choosing u." }) +
-        "\n```\n to choose u. Then integrate.",
-    );
+    // ...and the stored markdown has the fence after the paragraph (not mid-sentence)
+    await waitFor(() => {
+      const draft = JSON.parse(window.localStorage.getItem("newton:notepad:draft:n1")!);
+      expect(draft.content).toBe(
+        "Use LIATE to choose u. Then integrate.\n\n```newton-note\n" +
+          JSON.stringify({ action: "define", text: "A mnemonic for choosing u." }) +
+          "\n```\n\nSecond paragraph.",
+      );
+    });
   });
 
-  it("selecting nothing while editing shows no toolbar", async () => {
+  it("selecting nothing shows no toolbar", async () => {
     const user = userEvent.setup();
     listNotes.mockResolvedValue([NOTE_SUMMARY]);
     getNote.mockResolvedValue({ ...NOTE_SUMMARY, content: "Some words." });
     render(<NotepadWindow />);
     await fireAuth("tok");
     await user.click(await screen.findByText("Chemistry — Sept 15"));
+    await screen.findByText("Some words.");
 
-    await user.click(await screen.findByText("Some words."));
-    const field = (await screen.findByDisplayValue("Some words.")) as HTMLTextAreaElement;
-    field.setSelectionRange(3, 3);
+    act(() => {
+      noteEditor().commands.setTextSelection(3);
+    });
     await act(async () => {
-      fireEvent.mouseUp(field, { clientX: 10, clientY: 10 });
+      fireEvent.mouseUp(document.querySelector(".ProseMirror")!);
+      await new Promise((r) => setTimeout(r, 5));
     });
     expect(screen.queryByRole("button", { name: "Define" })).not.toBeInTheDocument();
   });
@@ -439,7 +459,7 @@ describe("NotepadWindow", () => {
     );
   });
 
-  it("right-clicking a selection while editing offers edit commands plus Explain/Define/Summarize", async () => {
+  it("right-clicking a selection offers edit commands plus Explain/Define/Summarize", async () => {
     const user = userEvent.setup();
     listNotes.mockResolvedValue([NOTE_SUMMARY]);
     getNote.mockResolvedValue({ ...NOTE_SUMMARY, content: "Mitochondria are the powerhouse of the cell." });
@@ -449,15 +469,18 @@ describe("NotepadWindow", () => {
     await fireAuth("tok");
     await user.click(await screen.findByText("Chemistry — Sept 15"));
 
-    await user.click(await screen.findByText(/Mitochondria are the powerhouse/));
-    const textarea = (await screen.findByDisplayValue(/Mitochondria are the powerhouse/)) as HTMLTextAreaElement;
-    textarea.setSelectionRange(0, "Mitochondria".length);
-    fireEvent.contextMenu(textarea);
+    const paragraph = await screen.findByText(/Mitochondria are the powerhouse/);
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild!, 0);
+    range.setEnd(paragraph.firstChild!, "Mitochondria".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.contextMenu(paragraph);
 
     expect(await screen.findByRole("menuitem", { name: "Cut" })).toBeInTheDocument();
     expect(await screen.findByRole("menuitem", { name: "Paste" })).toBeInTheDocument();
-    const explainItem = await screen.findByRole("menuitem", { name: "Explain" });
-    await user.click(explainItem);
+    await user.click(await screen.findByRole("menuitem", { name: "Explain" }));
 
     await waitFor(() =>
       expect(annotateNoteSelection).toHaveBeenCalledWith(

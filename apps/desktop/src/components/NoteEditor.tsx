@@ -1,55 +1,25 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
-import MessageContent from "./MessageContent";
-import NewtonNoteBlockView from "./NewtonNoteBlock";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { InputRule } from "@tiptap/core";
+import { EditorContent, useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Markdown } from "@tiptap/markdown";
+import Placeholder from "@tiptap/extension-placeholder";
+import { BlockMath, InlineMath } from "@tiptap/extension-mathematics";
+import NewtonNote from "../lib/newtonNoteExtension";
+import type { NewtonNoteAction } from "../lib/newtonNoteExtension";
 
 /**
- * The Notepad's single, live editor — there is no separate Write and Preview mode.
+ * The Notepad's single, live editor: what you type IS what you see. There is no Write/Preview
+ * split and no switch between a raw-markdown look and a rendered look — headings, bold, lists and
+ * math are shown formatted as you write them (typing "# " makes a heading, "**x**" makes bold,
+ * "$x^2$" makes math), in the same font and styling the whole time.
  *
- * The note is still stored as ONE raw markdown string (the backend, autosave, and drafts are
- * unchanged). What changed is how it is shown: the string is split into
- *
- *   - text segments — the student's own writing, and
- *   - Newton cards — the ```newton-note fenced blocks that Explain/Define/Summarize insert.
- *
- * Newton cards are always shown as cards (label, markdown, math), never as raw fence + JSON.
- * A text segment reads as rendered markdown (headings, math, lists) until the student clicks
- * into it, when it becomes an editable text field showing the raw markdown; leaving it renders
- * it again. Highlighting text in either state offers the same Explain/Define/Summarize toolbar.
+ * Under the hood the note is still ONE markdown string (the backend, autosave, and local drafts
+ * are unchanged): the editor parses it on the way in and serializes it on the way out. Newton's
+ * answers (the ```newton-note fences Explain/Define/Summarize insert) are cards inside the note,
+ * never a raw fence — see lib/newtonNoteExtension.tsx.
  */
-
-export interface NoteSegment {
-  kind: "text" | "note";
-  raw: string;
-}
-
-const FENCE_RE = /(```newton-note\n[\s\S]*?\n```)/;
-
-/** Splits a note into alternating text / Newton-card segments. Always starts and ends with a
- * text segment (possibly empty), and `joinNote(splitNote(x)) === x` exactly. */
-export function splitNote(content: string): NoteSegment[] {
-  return content.split(FENCE_RE).map((raw, i) => ({ kind: i % 2 === 1 ? "note" : "text", raw }));
-}
-
-export function joinNote(segments: NoteSegment[]): string {
-  return segments.map((s) => s.raw).join("");
-}
-
-/** The JSON inside a ```newton-note fence. */
-function fenceJson(raw: string): string {
-  return raw.replace(/^```newton-note\n/, "").replace(/\n```$/, "");
-}
-
-/** For a text segment: the newlines that only pad it away from a neighbouring card (never shown
- * in the editor) and the visible part. The first segment's leading text and the last segment's
- * trailing text belong to the student, so nothing is stripped there — which also keeps a typed
- * trailing newline from vanishing. */
-function padding(raw: string, hasCardBefore: boolean, hasCardAfter: boolean) {
-  const lead = hasCardBefore ? (raw.match(/^\n*/) as RegExpMatchArray)[0] : "";
-  const rest = raw.slice(lead.length);
-  const trail = hasCardAfter ? (rest.match(/\n*$/) as RegExpMatchArray)[0] : "";
-  return { lead, core: rest.slice(0, rest.length - trail.length), trail };
-}
 
 export interface NoteSelection {
   text: string;
@@ -57,173 +27,193 @@ export interface NoteSelection {
   left: number;
 }
 
+export interface NoteEditorHandle {
+  /** Inserts a Newton card right after the paragraph containing `selectedText` (the last text
+   * the student highlighted, or the first place it appears), or at the end of the note. */
+  insertCard: (selectedText: string, action: NewtonNoteAction, text: string) => void;
+  focus: () => void;
+}
+
 interface NoteEditorProps {
+  /** The note's markdown. */
   value: string;
-  onChange: (next: string) => void;
+  onChange: (markdown: string) => void;
   /** Called with the highlighted text (and where to put the toolbar), or null when nothing is
    * highlighted any more. */
   onSelection?: (selection: NoteSelection | null) => void;
-  /** Which text segment is being edited. Uncontrolled unless given (a frame-driven render passes
-   * it in; the app leaves it out). */
-  editingIndex?: number | null;
   readOnly?: boolean;
 }
 
-export default function NoteEditor({ value, onChange, onSelection, editingIndex, readOnly }: NoteEditorProps) {
-  const [ownEditing, setOwnEditing] = useState<number | null>(null);
-  const controlled = editingIndex !== undefined;
-  const editing = controlled ? editingIndex : ownEditing;
-  const setEditing = (i: number | null) => {
-    if (!controlled) setOwnEditing(i);
+const KATEX = { throwOnError: false };
+
+/** Math stays editable as source: clicking a rendered formula turns it back into its `$…$` text
+ * (typing the closing `$` again re-renders it), so no separate dialog is needed. */
+function mathExtensions(editorRef: { current: Editor | null }) {
+  const toSource = (kind: "inline" | "block") => (node: { attrs: { latex?: string }; nodeSize: number }, pos: number) => {
+    const ed = editorRef.current;
+    if (!ed || !ed.isEditable) return;
+    const latex = node.attrs.latex ?? "";
+    const source = kind === "inline" ? `$${latex}$` : `$$${latex}$$`;
+    ed.chain().focus().insertContentAt({ from: pos, to: pos + node.nodeSize }, source).run();
   };
+  return [
+    InlineMath.extend({
+      addInputRules() {
+        // typing the closing "$" of $…$ turns it into a rendered formula
+        return [
+          new InputRule({
+            find: /(?<!\$)\$([^$\n]+?)\$$/,
+            handler: ({ state, range, match }) => {
+              state.tr.replaceWith(range.from, range.to, this.type.create({ latex: match[1] }));
+            },
+          }),
+        ];
+      },
+    }).configure({ katexOptions: KATEX, onClick: toSource("inline") }),
+    BlockMath.configure({ katexOptions: { ...KATEX, displayMode: true }, onClick: toSource("block") }),
+  ];
+}
 
-  const segments = splitNote(value);
-  const lastIdx = segments.length - 1;
-  const onlyOne = segments.length === 1;
+const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEditor(
+  { value, onChange, onSelection, readOnly },
+  ref,
+) {
+  const editorRef = useRef<Editor | null>(null);
+  // The last markdown this editor produced (or was given): a `value` prop equal to it is just our
+  // own change coming back around and must not reset the document under the student's cursor.
+  const lastMarkdown = useRef(value);
+  const onChangeRef = useRef(onChange);
+  const onSelectionRef = useRef(onSelection);
+  onChangeRef.current = onChange;
+  onSelectionRef.current = onSelection;
+  const lastSelected = useRef<{ from: number; to: number; text: string } | null>(null);
 
-  function replaceSegment(idx: number, raw: string) {
-    onChange(joinNote(segments.map((s, i) => (i === idx ? { ...s, raw } : s))));
-  }
-
-  function editText(idx: number, next: string) {
-    setEditing(idx); // typing into the empty end of the note makes it the segment being edited
-    const { lead, trail } = padding(segments[idx].raw, idx > 0, idx < lastIdx);
-    // a segment that just started (or ended) next to a card needs the blank line that keeps
-    // the markdown parser from gluing it to the fence
-    const nextLead = idx > 0 ? lead || "\n\n" : "";
-    const nextTrail = idx < lastIdx ? trail || "\n\n" : "";
-    replaceSegment(idx, nextLead + next + nextTrail);
-  }
-
-  function removeCard(idx: number) {
-    onChange(joinNote(segments.filter((_, i) => i !== idx)));
-    setEditing(null);
-  }
-
-  function handleTextMouseUp(event: ReactMouseEvent<HTMLTextAreaElement>) {
-    const field = event.currentTarget;
-    const text = field.value.slice(field.selectionStart, field.selectionEnd).trim();
-    // a textarea has no per-character rects, so the pointer position stands in
-    onSelection?.(text ? { text, top: event.clientY, left: event.clientX } : null);
-  }
-
-  function handleRenderedMouseUp(idx: number, event: ReactMouseEvent<HTMLDivElement>) {
-    const selection = window.getSelection();
-    const text = selection && !selection.isCollapsed ? selection.toString().trim() : "";
-    if (text && selection && selection.rangeCount > 0 && event.currentTarget.contains(selection.anchorNode)) {
-      const rect = selection.getRangeAt(0).getBoundingClientRect();
-      onSelection?.({ text, top: rect.top, left: rect.left });
+  const reportSelection = () => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const { from, to, empty } = ed.state.selection;
+    const text = empty ? "" : ed.state.doc.textBetween(from, to, " ").trim();
+    if (!text) {
+      lastSelected.current = null;
+      onSelectionRef.current?.(null);
       return;
     }
-    onSelection?.(null);
-    if (!readOnly) setEditing(idx);
-  }
+    lastSelected.current = { from, to, text };
+    // where the toolbar goes: just above the start of the selection
+    let top = 0;
+    let left = 0;
+    try {
+      const c = ed.view.coordsAtPos(from);
+      top = c.top;
+      left = c.left;
+    } catch {
+      /* no layout (tests): the numbers only position the toolbar */
+    }
+    onSelectionRef.current?.({ text, top, left });
+  };
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      Markdown,
+      Placeholder.configure({
+        placeholder: ({ editor: ed }) => (ed.isEmpty ? "Start writing…" : "Keep writing…"),
+      }),
+      ...mathExtensions(editorRef),
+      NewtonNote,
+    ],
+    content: value,
+    contentType: "markdown",
+    editable: !readOnly,
+    editorProps: {
+      attributes: {
+        // the same typography as Newton's rendered text everywhere else in the app
+        class: "message-content note-editor__prose",
+        "data-context-menu": "note-editable",
+        role: "textbox",
+        "aria-label": "Note",
+        "aria-multiline": "true",
+      },
+      handleDOMEvents: {
+        mouseup: () => {
+          window.setTimeout(reportSelection, 0);
+          return false;
+        },
+        keyup: () => {
+          reportSelection();
+          return false;
+        },
+      },
+    },
+    onUpdate: ({ editor: ed }) => {
+      // the editor always keeps an empty paragraph at the end to write into; it isn't content
+      const markdown = ed.getMarkdown().replace(/\s+$/, "");
+      if (markdown === lastMarkdown.current) return; // e.g. the empty end paragraph being added
+      lastMarkdown.current = markdown;
+      onChangeRef.current(markdown);
+    },
+  });
+  editorRef.current = editor;
+
+  // An externally-changed note (another note opened, a draft restored, a lecture transcript
+  // appended) replaces the document; our own edits coming back through `value` do not.
+  useEffect(() => {
+    if (!editor || value === lastMarkdown.current) return;
+    lastMarkdown.current = value;
+    editor.commands.setContent(value, { contentType: "markdown", emitUpdate: false });
+  }, [editor, value]);
+
+  useEffect(() => {
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => editorRef.current?.commands.focus("end"),
+      insertCard: (selectedText, action, text) => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        const { doc } = ed.state;
+        let target: number | null = null;
+        const hint = lastSelected.current;
+        if (
+          hint &&
+          hint.text === selectedText &&
+          hint.to <= doc.content.size &&
+          doc.textBetween(hint.from, hint.to, " ").trim() === selectedText
+        ) {
+          target = hint.to;
+        } else {
+          doc.descendants((node, pos) => {
+            if (target !== null) return false;
+            if (node.isText && node.text) {
+              const i = node.text.indexOf(selectedText);
+              if (i >= 0) target = pos + i + selectedText.length;
+            }
+            return true;
+          });
+        }
+        // the card goes after the whole paragraph (or list) the highlight is in — never in the
+        // middle of a sentence
+        const at = target === null ? doc.content.size : doc.resolve(target).depth >= 1 ? doc.resolve(target).after(1) : target;
+        ed.chain().insertContentAt(at, { type: "newtonNote", attrs: { action, text } }).run();
+      },
+    }),
+    [],
+  );
 
   return (
     <div
       className="note-editor"
       onClick={(e) => {
         // the empty space around the text: keep writing at the end of the note
-        if (e.target === e.currentTarget && !readOnly) setEditing(lastIdx);
+        if (e.target === e.currentTarget && !readOnly) editorRef.current?.commands.focus("end");
       }}
     >
-      {segments.map((seg, idx) => {
-        if (seg.kind === "note") {
-          return (
-            <div className="note-editor__card" key={idx}>
-              <NewtonNoteBlockView json={fenceJson(seg.raw)} />
-              {!readOnly && (
-                <button
-                  type="button"
-                  className="note-editor__card-remove"
-                  aria-label="Remove Newton's note"
-                  title="Remove this note"
-                  onClick={() => removeCard(idx)}
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          );
-        }
-        const { core } = padding(seg.raw, idx > 0, idx < lastIdx);
-        // The end of the note is always writable: an empty last segment (a new note, or the
-        // space after a card) is a live field, not a click target you have to find.
-        const isTail = idx === lastIdx && !core.trim();
-        if (editing === idx || isTail) {
-          return (
-            <AutoTextarea
-              key={idx}
-              value={core}
-              placeholder={onlyOne ? "Start writing…" : "Keep writing…"}
-              readOnly={readOnly}
-              autoFocus={editing === idx && !controlled}
-              onChange={(v) => editText(idx, v)}
-              onBlur={() => setEditing(null)}
-              onMouseUp={handleTextMouseUp}
-            />
-          );
-        }
-        if (!core.trim()) return <div className="note-editor__gap" key={idx} onClick={() => !readOnly && setEditing(idx)} />;
-        return (
-          <div
-            key={idx}
-            className="note-editor__rendered"
-            data-context-menu="note-text"
-            onMouseUp={(e) => handleRenderedMouseUp(idx, e)}
-          >
-            <MessageContent content={core} />
-          </div>
-        );
-      })}
+      <EditorContent editor={editor} />
     </div>
   );
-}
+});
 
-function AutoTextarea({
-  value,
-  onChange,
-  placeholder,
-  readOnly,
-  autoFocus,
-  onBlur,
-  onMouseUp,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  readOnly?: boolean;
-  autoFocus?: boolean;
-  onBlur: () => void;
-  onMouseUp: (e: ReactMouseEvent<HTMLTextAreaElement>) => void;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  // grow with the text instead of scrolling inside a box
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (el && autoFocus) {
-      el.focus();
-      el.setSelectionRange(el.value.length, el.value.length);
-    }
-  }, [autoFocus]);
-  return (
-    <textarea
-      ref={ref}
-      className="notepad-window__textarea note-editor__textarea"
-      value={value}
-      placeholder={placeholder}
-      readOnly={readOnly}
-      rows={1}
-      data-context-menu="note-editable"
-      onChange={(e) => onChange(e.target.value)}
-      onBlur={onBlur}
-      onMouseUp={onMouseUp}
-    />
-  );
-}
+export default NoteEditor;

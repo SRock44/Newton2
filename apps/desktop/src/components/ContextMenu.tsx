@@ -158,9 +158,19 @@ function ContextMenu({
         // active selection, Explain/Define/Summarize on that selection -- combined in
         // one menu since it's still a plain editable field (see onAnnotateNoteSelection
         // doc comment above for why this is a separate kind from plain "editable").
+        // The editor is either a plain textarea (selection in the field itself) or the
+        // Notepad's rich text editor (a contenteditable: selection in the window).
         const field = menuTarget as HTMLTextAreaElement;
-        const hasSelection = field.selectionStart !== field.selectionEnd;
-        const selectedText = hasSelection ? field.value.slice(field.selectionStart, field.selectionEnd).trim() : "";
+        const isTextarea = field.tagName === "TEXTAREA";
+        const domSelection = window.getSelection();
+        const hasSelection = isTextarea
+          ? field.selectionStart !== field.selectionEnd
+          : Boolean(domSelection && !domSelection.isCollapsed && menuTarget?.contains(domSelection.anchorNode));
+        const selectedText = !hasSelection
+          ? ""
+          : isTextarea
+            ? field.value.slice(field.selectionStart, field.selectionEnd).trim()
+            : (domSelection?.toString() ?? "").trim();
         items = [
           { label: "Cut", disabled: !hasSelection, onSelect: () => document.execCommand("cut") },
           { label: "Copy", disabled: !hasSelection, onSelect: () => document.execCommand("copy") },

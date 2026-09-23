@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import ContextMenu from "./components/ContextMenu";
 import NoteEditor from "./components/NoteEditor";
+import type { NoteEditorHandle } from "./components/NoteEditor";
 import {
   ApiError,
   annotateNoteSelection,
@@ -63,9 +64,10 @@ interface SelectionToolbarState {
  * (label "notepad", see src-tauri/src/lib.rs's `show_notepad_window`) loading this same
  * bundle, branched to here instead of <App /> by main.tsx based on window label.
  *
- * A real mini-app: a compact note picker (GET/POST /notes), a single live editor for
- * the selected note's raw markdown (NoteEditor.tsx: rendered until you click into it, Newton's
- * answers always shown as cards; autosaved via a debounced PATCH /notes/{id}), and a
+ * A real mini-app: a compact note picker (GET/POST /notes), a single live WYSIWYG editor for
+ * the selected note (NoteEditor.tsx: what you type is what you see, in one font and style; the
+ * note is stored as markdown and Newton's answers are cards; autosaved via a debounced
+ * PATCH /notes/{id}), and a
  * highlight-to-act toolbar (Explain/Define/Summarize) that inserts
  * Newton's response inline into the note itself — see app/routers/notes.py for the
  * backend side of all of this. Gets its auth token from the main window via a
@@ -99,6 +101,7 @@ function NotepadWindow() {
   const [tagDraft, setTagDraft] = useState("");
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteEditorRef = useRef<NoteEditorHandle>(null);
   // Latest title/content, readable from the debounced-save callback without making it
   // (or the effect that (re)schedules it) depend on every keystroke.
   const latestRef = useRef({ title, content });
@@ -312,19 +315,16 @@ function NotepadWindow() {
         currentContent.slice(0, ANNOTATE_CONTEXT_CHARS),
         action,
       );
-      const insertion = "\n\n```newton-note\n" + JSON.stringify({ action, text: generated }) + "\n```\n";
-      // Insert right after the highlighted passage in the RAW markdown source. If the
-      // exact selected text can't be found verbatim (e.g. it spanned rendered
-      // formatting that doesn't match the raw source 1:1), fall back to appending at
-      // the end rather than silently dropping the response.
-      const index = currentContent.indexOf(selectedText);
-      const next =
-        index === -1
-          ? currentContent + insertion
-          : currentContent.slice(0, index + selectedText.length) +
-            insertion +
-            currentContent.slice(index + selectedText.length);
-      handleContentChange(next);
+      // The editor puts the card right after the paragraph the highlight is in (falling back
+      // to the end of the note if the text can't be found), and its change flows back
+      // through handleContentChange like any other edit.
+      if (noteEditorRef.current) {
+        noteEditorRef.current.insertCard(selectedText, action, generated);
+      } else {
+        handleContentChange(
+          currentContent + "\n\n```newton-note\n" + JSON.stringify({ action, text: generated }) + "\n```\n",
+        );
+      }
     } catch {
       setListError("Couldn't get a response for that selection.");
     } finally {
@@ -623,7 +623,12 @@ function NotepadWindow() {
               {loadingNote ? (
                 <div className="notepad-window__empty">Loading…</div>
               ) : (
-                <NoteEditor value={content} onChange={handleContentChange} onSelection={setSelectionToolbar} />
+                <NoteEditor
+                  ref={noteEditorRef}
+                  value={content}
+                  onChange={handleContentChange}
+                  onSelection={setSelectionToolbar}
+                />
               )}
             </div>
             {selectionToolbar && (

@@ -5207,31 +5207,43 @@ body.is-resizing-panel * {
   margin-left: auto;
 }
 
-/* ---------- The single live note editor (NoteEditor.tsx; replaced Write/Preview) ---------- */
+/* ---------- The single live WYSIWYG note editor (NoteEditor.tsx; replaced Write/Preview) ----------
+ * The editable surface carries the `message-content` class, so what you type is styled exactly
+ * like Newton's rendered text everywhere else — same font, size, headings, lists — always. */
 
 .note-editor {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   min-height: 100%;
-}
-
-.note-editor__textarea {
-  display: block;
-  min-height: 0;
-  height: auto;
-  overflow: hidden;
-  padding: 0;
   cursor: text;
 }
 
-.note-editor__rendered {
-  cursor: text;
+.note-editor__prose {
+  outline: none;
+  min-height: 160px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
-.note-editor__gap {
-  min-height: var(--space-2);
-  cursor: text;
+.note-editor__prose:focus-visible {
+  /* the caret is the focus indicator; the global [tabindex] ring would box the whole note */
+  box-shadow: none;
+  outline: none;
+}
+
+.note-editor__prose p.is-empty:first-child::before,
+.note-editor__prose p.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--color-text-faint);
+  pointer-events: none;
+}
+
+.note-editor__prose .tiptap-mathematics-render {
+  cursor: pointer;
+}
+
+.note-editor__prose .inline-math-error {
+  color: var(--color-danger);
 }
 
 .note-editor__card {
