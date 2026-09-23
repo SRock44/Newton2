@@ -1,0 +1,26 @@
+{
+  "name": "promo-video",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "studio": "remotion studio",
+    "cues": "tsx scripts/export-cues.ts > cues.json",
+    "audio": "npm run cues && python make_audio.py",
+    "render:site": "npm run audio && remotion render src/index.ts NewtonPromo ../website/public/demo/newton-promo.mp4 --crf=20 --muted",
+    "render:audio": "npm run audio && remotion render src/index.ts NewtonPromo out/newton-promo-audio.mp4 --crf=20",
+    "flicker": "python analyze_flicker.py"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.527",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.527"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,54 @@
+/* Remotion renders frame by frame, so wall-clock CSS animations/transitions would be
+   captured at arbitrary phases. Everything animated in this video is a pure function of
+   the frame instead. */
+*, *::before, *::after {
+  animation: none !important;
+  transition: none !important;
+}
+html, body { margin: 0; background: #0b1120; }
+
+.promo-win {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--color-bg);
+  box-shadow: 0 50px 110px -24px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transform-origin: 0 0;
+}
+.promo-win .app-root { height: 100% !important; width: 100% !important; }
+.promo-win .notepad-window { flex: 1; min-height: 0; }
+
+/* in-progress tool chip spinner, driven by the frame instead of a CSS animation */
+.tool-activity-chip:not(.tool-activity-chip--done) .tool-activity-icon {
+  transform: rotate(var(--promo-spin, 0deg));
+}
+
+.promo-pressed { transform: scale(0.94); filter: brightness(0.92); }
+
+.promo-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--color-accent);
+}
+.promo-typed { white-space: pre-wrap; font-family: var(--font-sans); display: flex; align-items: center; min-height: 20px; }
+
+.promo-cursor { position: absolute; left: 0; top: 0; width: 26px; height: 26px; pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,0.45)); z-index: 60; will-change: transform; }
+.promo-ripple { position: absolute; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  border-radius: 50%; border: 3px solid rgba(255,255,255,0.9); background: rgba(255,255,255,0.25);
+  pointer-events: none; opacity: 0; z-index: 59; }
+
+.promo-caption {
+  position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
+  padding: 12px 26px; border-radius: 999px; white-space: nowrap;
+  background: rgba(8, 12, 24, 0.72); border: 1px solid rgba(255,255,255,0.14);
+  color: #f5efe3; font-family: var(--font-sans); font-weight: 600; font-size: 25px; letter-spacing: 0.01em;
+  backdrop-filter: blur(8px);
+}
+.promo-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 18px; text-align: center; color: #f5efe3; }
+.promo-wordmark { font-family: var(--font-serif); font-size: 92px; font-weight: 600; letter-spacing: -0.01em; }
+.promo-tagline { font-family: var(--font-sans); font-size: 30px; font-weight: 500; opacity: 0.85; }

@@ -666,6 +666,71 @@ This phase replaces it with real screen-recorded video of the real app being use
   timeouts) — fixed by rendering this dev-only recording harness without `StrictMode`,
   documented inline as a deliberate, scoped exception rather than a silent removal.
 
+## Phase 3.11 — One Remotion film of Newton in use (replaces the multi-step walkthrough)
+Product owner, verbatim: "make it a REMOTION video (ONE VIDEO, NOT MULTIPLE SLIDES, of a
+user using Newton in all of its capacity)... the notepad in the class, types the word
+'PHOTOSYNTHESIS', highlights and clicks DEFINE — instant definition... show generating an
+artifact in the chat box from clicking yes build it, to watching it generate, to interacting
+with the artifact in the Newton application ON THE DESKTOP... the live demo has a box on the
+bottom of it, remove that." Then: "at 36.2s to 46.21s the artifact is flickering... this will
+kill an epileptic person." And: "add AUDIO to the video — not on the website."
+- [x] **`apps/promo-video/` (new Remotion project)** renders one 49.5 s, 1920x1080, 30 fps
+  film. It imports the REAL, unmodified desktop components (TitleBar, Sidebar, ChatPane,
+  MessageBubble/MessageContent, ArtifactPlanCard, ArtifactBlock, NewtonNoteBlock, Toggle)
+  through a webpack override (single shared React, `import.meta.env` stubbed). Story, one
+  continuous take on one desktop: intro -> Study Mode (real typed prompt, real verified
+  tool chips, real streamed reply) -> the Notepad companion window slides over the dimmed
+  main window, the student types "Photosynthesis", clicks Preview, drags a selection, clicks
+  Define, and Newton's real definition appears instantly in the note (the real
+  `NEWTON DEFINED` card) -> a new chat: prompt, Newton's real plan reply with the real
+  "Build it / Change it" plan card, click Build it, the card locks, a sped-up build, the
+  real artifact appears, the student clicks the app's real Expand button and drags the point
+  around the circle while the readouts update live -> outro.
+- [x] **All AI text is real captured output, none invented.** Captured tonight against the
+  live backend: the real `annotate_selection("define")` output for "Photosynthesis" (the
+  exact function `POST /notes/{id}/annotate` runs), and Newton's real plan-stage reply to the
+  artifact prompt over the real WS protocol (plan never approved, so no build ran; student1's
+  plan/Focus Mode flipped for the capture and restored afterward — confirmed `free True`).
+- [x] **Deterministic frame-by-frame rendering.** Remotion screenshots each frame, so
+  everything animated is a pure function of the frame: CSS animations/transitions disabled
+  globally, "now" frozen (the sidebar's live clock), cursor/ripples/selection/toolbar positioned
+  by measuring the real DOM per frame, the chat pane pinned with instant (not smooth) scroll.
+  The real artifact iframe is driven per frame through an in-memory postMessage bridge that
+  each frame's render waits on (`delayRender`), so every frame shows exactly what the
+  artifact's own code drew for that angle; the shipped artifact file is untouched.
+- [x] **The flicker (36.2-46.2 s), root-caused and fixed.** Expand was driven by clicking the
+  real button whenever the DOM said it was collapsed; the artifact-polling loop calls the
+  positioning routine several times per frame and React applies the click asynchronously, so
+  the button was clicked again in the same frame and the block toggled between expanded and
+  collapsed. Fixed by recording the requested state on the element and clicking once per
+  desired state. Verified numerically, not by eye (`apps/promo-video/analyze_flicker.py`):
+  zero single-frame outlier frames across the whole film; over the artifact interaction
+  (38.5-45.5 s) the largest frame-to-frame luminance swing is 0.26 / 255. The only large
+  changes anywhere are smooth fades/zooms spread over ~10 frames. Two latent bugs of the same
+  family were fixed on the way (the app's CSS `scroll-behavior: smooth` racing the screenshot,
+  and the artifact iframe's `loading="lazy"` never loading in a headless frame).
+- [x] **Audio (standalone file only — the website stays silent).** `make_audio.py`
+  synthesizes the whole soundtrack from a cue sheet exported from the same timeline
+  (`scripts/export-cues.ts`): a soft pad + quiet kalimba arpeggio, key clicks for all 165
+  typed characters, mouse clicks, message pops, tool-chip ticks/dings, window whooshes, a
+  selection sweep, an "instant definition" chime, a build hum, a "ready" arpeggio, and a drag
+  tone whose pitch follows the point's angle. No samples or licensed music. Measured
+  -17.1 LUFS, -3.9 dBTP. `npm run render:audio` -> AAC stereo mp4; `npm run render:site`
+  renders the silent (`--muted`) copy the site uses.
+- [x] **Website:** `AppWalkthrough` is now one `<video>` (`/demo/newton-promo.mp4`, 7.9 MB,
+  poster JPG) in a plain rounded frame — no rail, tabs, arrows, live-iframe hand-off, desktop
+  backdrop or taskbar (the "box on the bottom" is gone). Muted looping autoplay only while
+  scrolled into view, click to pause, thin progress line, explicit Play button when paused;
+  `prefers-reduced-motion` never autoplays. The old three clips, their posters, the website
+  copy of the artifact HTML, and the desktop `marketing-harness` (superseded by Remotion)
+  are deleted.
+- [x] **Verification.** `apps/website`: `tsc` clean, `next build` clean, 57/57 tests (the
+  walkthrough suite rewritten: exactly one video, no tabs, autoplay only in view, click
+  toggles, Play button, reduced motion never autoplays). Real Playwright against `next start`:
+  the video's `currentTime` advances in real time (2.5 s -> 5.5 s), 1920x1080 source rendered
+  at 1294x727, 0 tabs / 1 video / 0 iframes, zero console errors, reduced motion holds paused
+  on the poster with a Play button.
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).

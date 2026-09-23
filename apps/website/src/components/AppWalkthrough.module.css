@@ -1,296 +1,80 @@
-/* ---------------------------------------------------------------------
- * Supademo-style stepped walkthrough: a left-hand step rail next to a
- * "device frame" holding a REAL screen-recorded video of the real app (or,
- * once a clip ends on the artifact step, the real live artifact itself).
- * See AppWalkthrough.tsx's header comment for where the recordings come
- * from.
- * ------------------------------------------------------------------- */
+/* One film in one frame: no rail, no tabs, no arrows, no taskbar. The video already
+ * contains its own desktop, so the frame is just a rounded, shadowed player. */
 
-.stage {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+.frame {
+  position: relative;
   width: 100%;
-  margin: 0 auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background-color: #101828;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--color-border);
 }
 
-/* ---------- Step rail (a horizontal strip above the frame, so the frame itself
-   gets the full section width instead of sharing it with a side column) ---------- */
-
-.rail {
-  display: flex;
-  gap: 10px;
-}
-
-.railItem,
-.railItemActive {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  flex: 1;
-  padding: 12px 16px;
-  border: none;
-  border-bottom: 3px solid transparent;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: none;
-  text-align: left;
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.railItem:hover {
-  background-color: var(--color-surface-2);
-}
-
-.railItemActive {
-  background-color: var(--color-accent-tint);
-  border-bottom-color: var(--color-accent);
-}
-
-.railIndex {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+.playButton {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 84px;
+  height: 84px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-full);
-  background-color: var(--color-surface-2);
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
+  border: none;
+  border-radius: 50%;
+  background-color: rgba(245, 239, 227, 0.94);
+  color: var(--color-accent);
+  cursor: pointer;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
 }
 
-.railItemActive .railIndex {
-  background-color: var(--color-accent);
-  color: var(--color-accent-contrast, #fff);
+.playButton:hover {
+  transform: scale(1.06);
 }
 
-.railText {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
+.playButton svg {
+  width: 34px;
+  height: 34px;
+  margin-left: 4px;
 }
 
-.railTitle {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text);
-}
-
-.railCaption {
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  line-height: 1.45;
-}
-
-.railItem .railCaption {
-  display: none;
-}
-
-.railItemActive .railCaption {
-  display: block;
-}
-
-.railProgressTrack {
-  display: none;
-}
-
-.railItemActive .railProgressTrack {
-  display: block;
-  margin-top: 8px;
-  width: 100%;
+.progressTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 3px;
-  border-radius: var(--radius-full);
-  background-color: var(--color-border-2);
-  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.18);
 }
 
-.railProgressFill {
-  display: block;
+.progressFill {
   height: 100%;
-  background-color: var(--color-accent);
-  border-radius: inherit;
-  transition: width 0.15s linear;
+  background-color: var(--color-accent-2, #c8a046);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .railProgressFill {
+  .playButton {
     transition: none;
   }
 }
 
-/* ---------- Device frame ---------- */
-
-@keyframes walkthrough-frame-in {
-  from {
-    opacity: 0;
-    transform: scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.frameCol {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.deviceFrame {
-  position: relative;
-  height: min(78vh, 760px);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background-color: var(--color-surface-2);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  animation: walkthrough-frame-in 0.35s ease both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .deviceFrame {
-    animation: none;
-  }
-}
-
-/* ---------- The "desktop" the app window sits on ---------- */
-
-.desktop {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-}
-
-.desktopSurface {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(16px, 3vw, 36px);
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 18% 15%, rgba(255, 255, 255, 0.08), transparent 55%),
-    linear-gradient(150deg, #2a3752 0%, #202c44 45%, #171f33 100%);
-}
-
-.taskbar {
-  flex-shrink: 0;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  background-color: rgba(11, 15, 26, 0.92);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.taskbarDot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.28);
-}
-
-.taskbarSpacer {
-  flex: 1;
-}
-
-.taskbarClock {
-  width: 46px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background-color: rgba(255, 255, 255, 0.22);
-}
-
-/* ---------- The window itself, floating on the desktop above ---------- */
-
-.windowImage {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 8px;
-  box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.windowIframe {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: none;
-  border-radius: 8px;
-  background-color: #fff;
-  box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.55);
-}
-
-/* ---------- Controls ---------- */
-
-.controls {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-}
-
-.navButton {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  background-color: var(--color-surface);
-  color: var(--color-text);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.navButton:hover:not(:disabled) {
-  background-color: var(--color-accent-tint);
-  color: var(--color-accent);
-}
-
-.navButton:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-/* ---------- Responsive ---------- */
-
-@media (max-width: 860px) {
-  .rail {
-    overflow-x: auto;
-    padding-bottom: 4px;
-  }
-
-  .railItem,
-  .railItemActive {
-    flex: 1 0 auto;
-    min-width: 180px;
-  }
-
-  .deviceFrame {
-    height: min(65vh, 520px);
-  }
-}
-
 @media (max-width: 640px) {
-  .deviceFrame {
-    height: min(58vh, 420px);
+  .frame {
+    border-radius: var(--radius-md);
   }
 
-  .railItem .railCaption,
-  .railItemActive .railCaption {
-    display: none;
+  .playButton {
+    width: 64px;
+    height: 64px;
   }
 }
