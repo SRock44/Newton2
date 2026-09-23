@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import MathInput from "../MathInput";
+import MathInput, { placeholderLatex } from "../MathInput";
 
 // jsdom has no real support for MathLive's <math-field> custom element (canvas/
 // ResizeObserver-dependent internals) — same reasoning PlotlyFigure.test.tsx mocks
@@ -34,6 +34,17 @@ describe("MathInput", () => {
     const field = (await getField(container)) as HTMLElement & { value: string };
     expect(field.value).toBe("x^2");
     expect(field.getAttribute("aria-label")).toBe("Your attempt");
+  });
+
+  it("sets the placeholder as text, so MathLive doesn't run its words together", async () => {
+    const { container } = render(<MathInput value="" onChange={vi.fn()} placeholder="Type your attempt…" />);
+    const field = await getField(container);
+    expect(field.getAttribute("placeholder")).toBe("\\text{Type your attempt…}");
+  });
+
+  it("escapes LaTeX-special characters in a placeholder", () => {
+    expect(placeholderLatex("50% of $x_1$ & {y}")).toBe("\\text{50\\% of \\$x\\_1\\$ \\& \\{y\\}}");
+    expect(placeholderLatex("")).toBe("");
   });
 
   it("reports the field's LaTeX value on a MathLive input event", async () => {

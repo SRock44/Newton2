@@ -59,6 +59,19 @@ export interface MathInputProps {
  * for Plotly — and listens for MathLive's own `input`/`keydown` events rather than
  * relying on a React synthetic-event prop the custom element wouldn't fire correctly.
  */
+/** MathLive treats the `placeholder` attribute as LaTeX and lays it out in MATH mode, where
+ * spaces are dropped and letters are set as italic variables — so "Type your attempt…" came out
+ * as one word, "Typeyourattempt…". Wrapping it in `\text{…}` sets it as ordinary text. */
+export function placeholderLatex(text: string): string {
+  if (!text) return "";
+  const escaped = text
+    .replace(/\\/g, "\\textbackslash ")
+    .replace(/[{}$%&#_]/g, (c) => `\\${c}`)
+    .replace(/\^/g, "\\^{}")
+    .replace(/~/g, "\\~{}");
+  return `\\text{${escaped}}`;
+}
+
 function MathInput({ value, onChange, onSubmit, placeholder, disabled, ariaLabel, className }: MathInputProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<MathFieldEl | null>(null);
@@ -112,7 +125,7 @@ function MathInput({ value, onChange, onSubmit, placeholder, disabled, ariaLabel
       // explicit host-level role keeps this field reachable the same way as every
       // other plain-text field in this app (`getByRole("textbox", { name: ... })`).
       field.setAttribute("role", "textbox");
-      field.setAttribute("placeholder", placeholderRef.current ?? "");
+      field.setAttribute("placeholder", placeholderLatex(placeholderRef.current ?? ""));
       field.value = valueRef.current;
       field.disabled = Boolean(disabledRef.current);
 
@@ -153,7 +166,7 @@ function MathInput({ value, onChange, onSubmit, placeholder, disabled, ariaLabel
   }, [value]);
 
   useEffect(() => {
-    fieldRef.current?.setAttribute("placeholder", placeholder ?? "");
+    fieldRef.current?.setAttribute("placeholder", placeholderLatex(placeholder ?? ""));
   }, [placeholder]);
 
   useEffect(() => {
