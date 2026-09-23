@@ -17,8 +17,11 @@
  * Read-only by design (it's inserted content, not something to interact with further)
  * — no onSend/answeredWith plumbing needed, unlike options/step-check/checkpoint.
  * Visually distinct via its own accent color (--color-success, unused by any other
- * fenced-block card — see App.css's `.newton-note` rules).
+ * fenced-block card — see App.css's `.newton-note` rules). The text itself is rendered as
+ * markdown + KaTeX (see the component below).
  */
+import MessageContent from "./MessageContent";
+
 interface NewtonNoteBlock {
   action: "explain" | "define" | "summarize";
   text: string;
@@ -51,7 +54,11 @@ function NewtonNoteBlockView({ json }: { json: string }) {
   return (
     <div className="newton-note">
       <div className="newton-note__label">{ACTION_LABELS[block.action]}</div>
-      <div className="newton-note__text">{block.text}</div>
+      <div className="newton-note__text">
+        {/* The model's answer routinely carries markdown (**bold**) and math ($x^2$): render it
+            like any other Newton text instead of showing the raw markers. */}
+        <MessageContent content={block.text} />
+      </div>
     </div>
   );
 }

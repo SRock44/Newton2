@@ -67,7 +67,7 @@ interface SelectionToolbarState {
  *
  * A real mini-app: a compact note picker (GET/POST /notes), a Write/Preview editor for
  * the selected note's raw markdown (autosaved via a debounced PATCH /notes/{id}), and,
- * in Preview mode, a highlight-to-act toolbar (Explain/Define/Summarize) that inserts
+ * in Write and Preview modes, a highlight-to-act toolbar (Explain/Define/Summarize) that inserts
  * Newton's response inline into the note itself — see app/routers/notes.py for the
  * backend side of all of this. Gets its auth token from the main window via a
  * `notepad-auth` event (App.tsx emits it once per sign-in and again on every background
@@ -288,6 +288,9 @@ function NotepadWindow() {
 
   function handleContentChange(value: string) {
     setContent(value);
+    // Typing (or an inserted annotation) replaces whatever was highlighted, so a floating
+    // toolbar for the old selection would be stale.
+    setSelectionToolbar(null);
     if (!activeNoteId) return;
     saveNoteDraft(activeNoteId, { title, content: value });
     scheduleSave(activeNoteId);
@@ -308,6 +311,21 @@ function NotepadWindow() {
     }
     const rect = selection.getRangeAt(0).getBoundingClientRect();
     setSelectionToolbar({ text, top: rect.top, left: rect.left });
+  }
+
+  // The same highlight-to-act toolbar in Write mode: selecting text in the `<textarea>`
+  // (`.selectionStart`/`.selectionEnd`) offers Explain/Define/Summarize right where the
+  // mouse was released, so a student can annotate while still writing — no need to flip to
+  // Preview first. A textarea has no per-character rects, so the pointer position stands in
+  // for the selection's.
+  function handleWriteMouseUp(event: ReactMouseEvent<HTMLTextAreaElement>) {
+    const field = event.currentTarget;
+    const text = field.value.slice(field.selectionStart, field.selectionEnd).trim();
+    if (!text) {
+      setSelectionToolbar(null);
+      return;
+    }
+    setSelectionToolbar({ text, top: event.clientY, left: event.clientX });
   }
 
   // Shared by BOTH the Preview-mode floating toolbar (handleAnnotate below) and
@@ -622,14 +640,20 @@ function NotepadWindow() {
                 <button
                   type="button"
                   className={mode === "write" ? "notepad-window__mode-btn--active" : "notepad-window__mode-btn"}
-                  onClick={() => setMode("write")}
+                  onClick={() => {
+                    setSelectionToolbar(null);
+                    setMode("write");
+                  }}
                 >
                   Write
                 </button>
                 <button
                   type="button"
                   className={mode === "preview" ? "notepad-window__mode-btn--active" : "notepad-window__mode-btn"}
-                  onClick={() => setMode("preview")}
+                  onClick={() => {
+                    setSelectionToolbar(null);
+                    setMode("preview");
+                  }}
                 >
                   Preview
                 </button>
@@ -661,6 +685,7 @@ function NotepadWindow() {
                   className="notepad-window__textarea"
                   value={content}
                   onChange={(e) => handleContentChange(e.target.value)}
+                  onMouseUp={handleWriteMouseUp}
                   placeholder="Start writing…"
                   data-context-menu="note-editable"
                 />

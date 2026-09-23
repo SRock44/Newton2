@@ -3819,8 +3819,12 @@ body.is-resizing-panel * {
   color: var(--color-success);
 }
 
-.newton-note__text {
-  white-space: pre-wrap;
+.newton-note__text > :first-child {
+  margin-top: 0;
+}
+
+.newton-note__text > :last-child {
+  margin-bottom: 0;
 }
 
 /* ---------- Plot slider (Learn Mode — manipulable parameter on a plotly-figure) ---------- */

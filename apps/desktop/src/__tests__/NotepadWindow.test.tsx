@@ -270,6 +270,58 @@ describe("NotepadWindow", () => {
     expect(await screen.findByText("A cell organelle that produces ATP.")).toBeInTheDocument();
   });
 
+  it("highlighting text in Write mode shows the same toolbar, and Define inserts a newton-note block after the selection", async () => {
+    const user = userEvent.setup();
+    listNotes.mockResolvedValue([NOTE_SUMMARY]);
+    getNote.mockResolvedValue({ ...NOTE_SUMMARY, content: "Use LIATE to choose u. Then integrate." });
+    annotateNoteSelection.mockResolvedValue("A mnemonic for choosing u.");
+    updateNote.mockResolvedValue(NOTE_SUMMARY);
+    render(<NotepadWindow />);
+    await fireAuth("tok");
+    await user.click(await screen.findByText("Chemistry — Sept 15"));
+
+    const field = (await screen.findByPlaceholderText("Start writing…")) as HTMLTextAreaElement;
+    field.focus();
+    field.setSelectionRange(4, 9); // "LIATE"
+    await act(async () => {
+      fireEvent.mouseUp(field, { clientX: 120, clientY: 90 });
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Define" }));
+
+    await waitFor(() =>
+      expect(annotateNoteSelection).toHaveBeenCalledWith(
+        "tok",
+        "n1",
+        "LIATE",
+        "Use LIATE to choose u. Then integrate.",
+        "define",
+      ),
+    );
+    // inserted right after the highlighted word, in the raw markdown the textarea shows
+    const expected =
+      "Use LIATE\n\n```newton-note\n" +
+      JSON.stringify({ action: "define", text: "A mnemonic for choosing u." }) +
+      "\n```\n to choose u. Then integrate.";
+    await waitFor(() => expect(field.value).toBe(expected));
+  });
+
+  it("selecting nothing in Write mode shows no toolbar", async () => {
+    const user = userEvent.setup();
+    listNotes.mockResolvedValue([NOTE_SUMMARY]);
+    getNote.mockResolvedValue({ ...NOTE_SUMMARY, content: "Some words." });
+    render(<NotepadWindow />);
+    await fireAuth("tok");
+    await user.click(await screen.findByText("Chemistry — Sept 15"));
+
+    const field = (await screen.findByPlaceholderText("Start writing…")) as HTMLTextAreaElement;
+    field.setSelectionRange(3, 3);
+    await act(async () => {
+      fireEvent.mouseUp(field, { clientX: 10, clientY: 10 });
+    });
+    expect(screen.queryByRole("button", { name: "Define" })).not.toBeInTheDocument();
+  });
+
   it("right-clicking a note in the picker offers Rename and Delete, and Delete removes it after confirming", async () => {
     const user = userEvent.setup();
     listNotes.mockResolvedValue([NOTE_SUMMARY]);
