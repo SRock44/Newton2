@@ -1,6 +1,7 @@
 import { continueRender, delayRender, staticFile, useCurrentFrame } from "remotion";
 import { useEffect } from "react";
 import { ARTIFACT_DOCUMENT_ID } from "./data";
+import { activeFilm } from "./filmId";
 
 // The artifact is the REAL generated HTML (see apps/website/public/demo/) rendered by the
 // REAL ArtifactBlock component in its real sandboxed iframe. Remotion renders frame by
@@ -35,6 +36,7 @@ export const artifactReady = loadArtifact();
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  if (activeFilm.id !== "promo") return realFetch(input, init);
   if (url.includes(`/documents/${ARTIFACT_DOCUMENT_ID}/raw`)) {
     await artifactReady;
     return new Response((artifactBytes as Uint8Array).slice().buffer, { status: 200, headers: { "content-type": "text/html" } });

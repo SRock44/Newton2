@@ -1,15 +1,13 @@
 import { continueRender, delayRender } from "remotion";
-import { ARTIFACT_DOCUMENT_ID, DOC, DOC_CONTENT, OLD_DOCS } from "./data";
-import { beamArtifactBytes } from "./artifact";
+import { DOC, DOC_CONTENT, OLD_DOCS } from "./data";
 import { activeFilm } from "../filmId";
 
-// The Documents page and the chat's artifact block fetch from the API on mount. This film
-// renders frame by frame, so every request holds the frame's render open (delayRender) until
-// the response has been consumed and React has committed it -- otherwise a frame could be
-// screenshotted before its data arrived.
+// The Documents page fetches from the API on mount. This film renders frame by frame, so every
+// request holds the frame's render open (delayRender) until the response has been consumed and
+// React has committed it -- otherwise a frame could be screenshotted before its data arrived.
 const API_BASE = "http://127.0.0.1:58001";
 
-export interface EngineDoc {
+export interface ShowDoc {
   id: string;
   filename: string;
   mime_type: string | null;
@@ -18,7 +16,7 @@ export interface EngineDoc {
 }
 
 /** Set (synchronously, during render) by the film before the Documents page mounts. */
-export const engineState: { docs: EngineDoc[] } = { docs: [] };
+export const showState: { docs: ShowDoc[] } = { docs: [] };
 
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -26,7 +24,7 @@ const json = (body: unknown) =>
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  if (activeFilm.id !== "eng" || !url.startsWith(API_BASE)) return realFetch(input, init);
+  if (activeFilm.id !== "show" || !url.startsWith(API_BASE)) return realFetch(input, init);
   const method = (init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET")).toUpperCase();
   const path = url.slice(API_BASE.length).split("?")[0];
 
@@ -42,7 +40,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 
   let res: Response;
   if (method === "GET" && path === "/documents") {
-    res = json(engineState.docs);
+    res = json(showState.docs);
   } else if (method === "GET" && /^\/documents\/[^/]+\/content$/.test(path)) {
     const id = path.split("/")[2];
     if (id === DOC.id) res = json({ content: DOC_CONTENT, editable: false });
@@ -50,9 +48,6 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const old = OLD_DOCS.find((d) => d.id === id);
       res = json({ content: old?.text ?? "", editable: !!old && !old.mime_type.includes("pdf") });
     }
-  } else if (method === "GET" && path === `/documents/${ARTIFACT_DOCUMENT_ID}/raw`) {
-    const bytes = await beamArtifactBytes();
-    res = new Response(bytes.slice().buffer as ArrayBuffer, { status: 200, headers: { "content-type": "text/html" } });
   } else if (method === "GET" && path === "/billing/status") {
     res = json({
       plan: "pro",

@@ -133,9 +133,72 @@ def sweep(dur):
     return np.sin(phase) * np.sin(np.pi * ti) ** 2
 
 
+def note_key(space=False):
+    """A softer, woodier tick for writing in the Notepad (vs. the chat composer's key click)."""
+    n = int(0.07 * SR)
+    ti = np.arange(n) / SR
+    scratch = bp(rng.standard_normal(n), 900, 3200) * env_exp(n, 0.007)
+    f = rng.uniform(310, 380) * (0.75 if space else 1.0)
+    knock = np.sin(2 * np.pi * f * ti) * env_exp(n, 0.02)
+    return scratch * 0.7 + knock * 0.55
+
+
+def switch_click():
+    """Learn Mode toggle: a low click then a higher one, like a physical switch."""
+    n = int(0.16 * SR)
+    out = np.zeros(n)
+    for off, f, g in ((0.0, 260, 1.0), (0.055, 720, 0.7)):
+        m = int(0.05 * SR)
+        ti = np.arange(m) / SR
+        blip = (bp(rng.standard_normal(m), 1500, 6000) * 0.7 + np.sin(2 * np.pi * f * ti)) * env_exp(m, 0.012) * g
+        i = int(off * SR)
+        out[i : i + m] += blip
+    return out
+
+
+def snap():
+    """Attaching a document: a short bright pluck."""
+    n = int(0.35 * SR)
+    ti = np.arange(n) / SR
+    body = (np.sin(2 * np.pi * 392 * ti) + 0.5 * np.sin(2 * np.pi * 784 * ti)) * env_exp(n, 0.07)
+    click = bp(rng.standard_normal(n), 2500, 7000) * env_exp(n, 0.004)
+    return body * 0.8 + click * 0.6
+
+
+def upload_rise(dur):
+    """Uploading: a rising shimmer that resolves when the document lands."""
+    n = int(dur * SR)
+    ti = np.linspace(0, 1, n)
+    f = 300 + 1300 * ti**2
+    phase = 2 * np.pi * np.cumsum(f) / SR
+    return (np.sin(phase) + 0.35 * np.sin(2 * phase)) * np.sin(np.pi * np.minimum(1, ti * 1.15)) ** 2 * ti
+
+
+def ping():
+    """Research: a sonar ping with a soft echo."""
+    n = int(1.6 * SR)
+    ti = np.arange(n) / SR
+    tone = np.sin(2 * np.pi * 1046 * ti) * env_exp(n, 0.22)
+    out = tone.copy()
+    e = int(0.36 * SR)
+    out[e:] += 0.4 * tone[: n - e]
+    return out
+
+
+def blip():
+    """A source being read: a tiny rising blip."""
+    n = int(0.09 * SR)
+    ti = np.arange(n) / SR
+    f = 700 + 900 * (ti / 0.09)
+    return np.sin(2 * np.pi * np.cumsum(f) / SR) * env_exp(n, 0.03)
+
+
 # place UI sounds
 for k in cues["keys"]:
-    place(fx, key_click(k["space"]), k["t"], pan=rng.uniform(-0.18, 0.18), gain=0.16 * rng.uniform(0.7, 1.0))
+    if k.get("kind") == "note":
+        place(fx, note_key(k["space"]), k["t"], pan=rng.uniform(-0.12, 0.12), gain=0.15 * rng.uniform(0.7, 1.0))
+    else:
+        place(fx, key_click(k["space"]), k["t"], pan=rng.uniform(-0.18, 0.18), gain=0.16 * rng.uniform(0.7, 1.0))
 for c in cues["clicks"]:
     place(fx, mouse_click(True), c, gain=0.30)
     place(fx, mouse_click(False), c + 0.075, gain=0.16)
@@ -147,23 +210,44 @@ for k, d in enumerate(cues["dings"]):
     place(fx, ding([880, 988, 1175][k % 3]), d, gain=0.10)
 for w in cues["whooshes"]:
     place(fx, whoosh(w["dur"] + 0.25, w["dir"]), w["t"] - 0.1, gain=0.20)
-if "selection" in cues:
-    s = cues["selection"]
-    place(fx, sweep(s["dur"]), s["t"], gain=0.045)
-if "defineChime" in cues:
-    place(fx, chime([880, 1319, 1760], gap=0.07, tail=1.3), cues["defineChime"], gain=0.15)
-place(fx, chime([523, 659, 784, 1047, 1319], gap=0.11, tail=1.8, tau=0.45), cues["readyChime"], gain=0.15)
+for s_ in ([cues["selection"]] if "selection" in cues else []) + cues.get("selections", []):
+    place(fx, sweep(s_["dur"]), s_["t"], gain=0.045)
+for d_ in ([cues["defineChime"]] if "defineChime" in cues else []) + cues.get("defineChimes", []):
+    place(fx, chime([880, 1319, 1760], gap=0.07, tail=1.3), d_, gain=0.15)
+for e_ in cues.get("explainChimes", []):
+    place(fx, chime([659, 988, 1319], gap=0.12, tail=1.5, tau=0.5), e_, gain=0.13)
+for t_ in cues.get("pageTurns", []):
+    place(fx, whoosh(0.55, "in"), t_ - 0.05, gain=0.16)
+for t_ in cues.get("switches", []):
+    place(fx, switch_click(), t_, gain=0.32)
+for t_ in cues.get("snaps", []):
+    place(fx, snap(), t_, gain=0.24)
+for u_ in cues.get("uploadRises", []):
+    place(fx, upload_rise(u_["dur"]), u_["t"], gain=0.09)
+for t_ in cues.get("uploadDones", []):
+    place(fx, chime([660, 880, 1320], gap=0.08, tail=1.2, tau=0.4), t_, gain=0.15)
+for t_ in cues.get("correct", []):
+    place(fx, chime([784, 1175, 1568], gap=0.09, tail=1.1, tau=0.3), t_, gain=0.13)
+for t_ in cues.get("nudges", []):
+    place(fx, chime([587, 494], gap=0.14, tail=0.9, tau=0.22), t_, gain=0.11)
+for t_ in cues.get("pings", []):
+    place(fx, ping(), t_, pan=rng.uniform(-0.3, 0.3), gain=0.08)
+for t_ in cues.get("blips", []):
+    place(fx, blip(), t_, pan=rng.uniform(-0.35, 0.35), gain=0.16)
+if "readyChime" in cues:
+    place(fx, chime([523, 659, 784, 1047, 1319], gap=0.11, tail=1.8, tau=0.45), cues["readyChime"], gain=0.15)
 
 # building hum: soft pulsing pad + ticks while the (sped-up) build runs
-b0, b1 = cues["building"]["start"], cues["building"]["end"]
-i0, i1 = int(b0 * SR), int(b1 * SR)
-tb = t_all[i0:i1] - b0
-fade = np.minimum(1, tb / 0.5) * np.minimum(1, (b1 - b0 - tb) / 0.6)
-hum = (np.sin(2 * np.pi * 110 * tb) + 0.6 * np.sin(2 * np.pi * 165 * tb)) * (0.55 + 0.45 * np.sin(2 * np.pi * 3.2 * tb)) * fade
-fx[0, i0:i1] += hum * 0.05
-fx[1, i0:i1] += hum * 0.05
-for k in np.arange(b0 + 0.3, b1 - 0.2, 0.3):
-    place(fx, tick(), float(k), pan=rng.uniform(-0.3, 0.3), gain=0.10)
+if "building" in cues:
+    b0, b1 = cues["building"]["start"], cues["building"]["end"]
+    i0, i1 = int(b0 * SR), int(b1 * SR)
+    tb = t_all[i0:i1] - b0
+    fade = np.minimum(1, tb / 0.5) * np.minimum(1, (b1 - b0 - tb) / 0.6)
+    hum = (np.sin(2 * np.pi * 110 * tb) + 0.6 * np.sin(2 * np.pi * 165 * tb)) * (0.55 + 0.45 * np.sin(2 * np.pi * 3.2 * tb)) * fade
+    fx[0, i0:i1] += hum * 0.05
+    fx[1, i0:i1] += hum * 0.05
+    for k in np.arange(b0 + 0.3, b1 - 0.2, 0.3):
+        place(fx, tick(), float(k), pan=rng.uniform(-0.3, 0.3), gain=0.10)
 
 # drag tone: pitch follows the angle (one octave per full turn)
 for seg_ in cues.get("dragSegments") or ([cues["drag"]] if "drag" in cues else []):
@@ -180,9 +264,10 @@ for seg_ in cues.get("dragSegments") or ([cues["drag"]] if "drag" in cues else [
     fx[1, i0:i1] += tone * edge * 0.055
 
 # ------------------------------------------------------------------ music bed
-BPM = 92
+BPM = cues.get("bpm", 92)
+TRANSPOSE = cues.get("transpose", 0)
 beat = 60.0 / BPM
-midi = lambda m: 440.0 * 2 ** ((m - 69) / 12)
+midi = lambda m: 440.0 * 2 ** ((m + TRANSPOSE - 69) / 12)
 CHORDS = [  # (bass, chord tones) — Cmaj7, Am7, Fmaj7, G6
     (36, [60, 64, 67, 71]),
     (33, [57, 60, 64, 67]),

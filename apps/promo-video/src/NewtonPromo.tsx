@@ -24,6 +24,8 @@ import * as D from "./data";
 import { T } from "./timeline";
 import { dragAngle } from "./drag";
 
+import { activeFilm } from "./filmId";
+
 installFrozenTime("2026-02-03T10:24:00");
 
 const MAIN = { left: 190, top: 30, w: 1400, h: 860, scale: 1.1 };
@@ -366,6 +368,7 @@ const CAPTIONS = [
 ];
 
 export const NewtonPromo: React.FC = () => {
+  activeFilm.id = "promo";
   const frame = useCurrentFrame();
   const t = frame / FPS;
   const rootRef = useRef<HTMLDivElement>(null);
