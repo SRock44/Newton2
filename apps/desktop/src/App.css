@@ -5200,35 +5200,68 @@ body.is-resizing-panel * {
   border-bottom: 1px solid var(--color-border);
 }
 
-.notepad-window__mode-toggle {
-  display: flex;
-  gap: 2px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  padding: 2px;
-}
-
-.notepad-window__mode-btn,
-.notepad-window__mode-btn--active {
-  border: none;
-  border-radius: var(--radius-full);
-  background: none;
-  color: var(--color-text-muted);
-  font-family: inherit;
-  font-size: var(--font-size-xs);
-  padding: 3px var(--space-3);
-  cursor: pointer;
-}
-
-.notepad-window__mode-btn--active {
-  background-color: var(--color-accent);
-  color: var(--color-accent-contrast);
-}
-
 .notepad-window__toolbar-right {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* ---------- The single live note editor (NoteEditor.tsx; replaced Write/Preview) ---------- */
+
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 100%;
+}
+
+.note-editor__textarea {
+  display: block;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+  padding: 0;
+  cursor: text;
+}
+
+.note-editor__rendered {
+  cursor: text;
+}
+
+.note-editor__gap {
+  min-height: var(--space-2);
+  cursor: text;
+}
+
+.note-editor__card {
+  position: relative;
+}
+
+.note-editor__card-remove {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-text-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.note-editor__card:hover .note-editor__card-remove,
+.note-editor__card-remove:focus-visible {
+  opacity: 1;
+}
+
+.note-editor__card-remove:hover {
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
 }
 
 .notepad-window__save-status {
