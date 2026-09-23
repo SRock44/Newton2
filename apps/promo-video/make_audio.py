@@ -9,9 +9,12 @@
 
 Everything is placed from cues.json, which is exported from the SAME timeline the video is
 rendered from (scripts/export-cues.ts), so sound cannot drift from picture.
-Writes public/promo-audio.wav (44.1 kHz stereo).
+Usage: python make_audio.py [cues.json] [out.wav]   (defaults: cues.json, public/promo-audio.wav)
+Writes a 44.1 kHz stereo WAV. Cue keys other than the basics are optional, so the same synth
+serves every film.
 """
 import json
+import sys
 import wave
 
 import numpy as np
@@ -19,7 +22,9 @@ from scipy.signal import butter, fftconvolve, lfilter
 
 SR = 44100
 rng = np.random.default_rng(7)
-cues = json.load(open("cues.json"))
+CUES_PATH = sys.argv[1] if len(sys.argv) > 1 else "cues.json"
+OUT_PATH = sys.argv[2] if len(sys.argv) > 2 else "public/promo-audio.wav"
+cues = json.load(open(CUES_PATH))
 DUR = cues["duration"]
 N = int(DUR * SR) + SR  # tail room for reverb
 t_all = np.arange(N) / SR
@@ -142,9 +147,11 @@ for k, d in enumerate(cues["dings"]):
     place(fx, ding([880, 988, 1175][k % 3]), d, gain=0.10)
 for w in cues["whooshes"]:
     place(fx, whoosh(w["dur"] + 0.25, w["dir"]), w["t"] - 0.1, gain=0.20)
-s = cues["selection"]
-place(fx, sweep(s["dur"]), s["t"], gain=0.045)
-place(fx, chime([880, 1319, 1760], gap=0.07, tail=1.3), cues["defineChime"], gain=0.15)
+if "selection" in cues:
+    s = cues["selection"]
+    place(fx, sweep(s["dur"]), s["t"], gain=0.045)
+if "defineChime" in cues:
+    place(fx, chime([880, 1319, 1760], gap=0.07, tail=1.3), cues["defineChime"], gain=0.15)
 place(fx, chime([523, 659, 784, 1047, 1319], gap=0.11, tail=1.8, tau=0.45), cues["readyChime"], gain=0.15)
 
 # building hum: soft pulsing pad + ticks while the (sped-up) build runs
@@ -159,17 +166,18 @@ for k in np.arange(b0 + 0.3, b1 - 0.2, 0.3):
     place(fx, tick(), float(k), pan=rng.uniform(-0.3, 0.3), gain=0.10)
 
 # drag tone: pitch follows the angle (one octave per full turn)
-d = np.array(cues["drag"])
-i0, i1 = int(d[0, 0] * SR), int(d[-1, 0] * SR)
-td = t_all[i0:i1]
-ang = np.interp(td, d[:, 0], d[:, 1])
-freq = 262 * 2 ** (ang / 360.0)
-phase = 2 * np.pi * np.cumsum(freq) / SR
-vib = 1 + 0.004 * np.sin(2 * np.pi * 5.5 * td)
-tone = (np.sin(phase * vib) + 0.3 * np.sin(2 * phase) + 0.12 * np.sin(3 * phase))
-edge = np.minimum(1, (td - td[0]) / 0.2) * np.minimum(1, (td[-1] - td) / 0.35)
-fx[0, i0:i1] += tone * edge * 0.055
-fx[1, i0:i1] += tone * edge * 0.055
+for seg_ in cues.get("dragSegments") or ([cues["drag"]] if "drag" in cues else []):
+    d = np.array(seg_)
+    i0, i1 = int(d[0, 0] * SR), int(d[-1, 0] * SR)
+    td = t_all[i0:i1]
+    ang = np.interp(td, d[:, 0], d[:, 1])
+    freq = 262 * 2 ** (ang / 360.0)
+    phase = 2 * np.pi * np.cumsum(freq) / SR
+    vib = 1 + 0.004 * np.sin(2 * np.pi * 5.5 * td)
+    tone = (np.sin(phase * vib) + 0.3 * np.sin(2 * phase) + 0.12 * np.sin(3 * phase))
+    edge = np.minimum(1, (td - td[0]) / 0.2) * np.minimum(1, (td[-1] - td) / 0.35)
+    fx[0, i0:i1] += tone * edge * 0.055
+    fx[1, i0:i1] += tone * edge * 0.055
 
 # ------------------------------------------------------------------ music bed
 BPM = 92
@@ -240,9 +248,9 @@ over = np.abs(mix) > knee
 mix[over] = np.sign(mix[over]) * (knee + (0.89 - knee) * np.tanh((np.abs(mix[over]) - knee) / (0.89 - knee)))
 
 pcm = (mix.T * 32767).astype("<i2")
-with wave.open("public/promo-audio.wav", "wb") as w:
+with wave.open(OUT_PATH, "wb") as w:
     w.setnchannels(2)
     w.setsampwidth(2)
     w.setframerate(SR)
     w.writeframes(pcm.tobytes())
-print(f"wrote public/promo-audio.wav  {DUR:.1f}s  rms={np.sqrt((mix**2).mean()):.3f}  peak={np.abs(mix).max():.2f}")
+print(f"wrote {OUT_PATH}  {DUR:.1f}s  rms={np.sqrt((mix**2).mean()):.3f}  peak={np.abs(mix).max():.2f}")

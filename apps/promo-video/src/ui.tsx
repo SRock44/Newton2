@@ -1,15 +1,40 @@
 import type { ReactNode } from "react";
 import Toggle from "../../desktop/src/components/Toggle";
 
+export interface AttachPickerDoc {
+  name: string;
+  date: string;
+}
+
 /** Non-interactive stand-in for the real Composer (real markup/classnames + the real
  * Toggle), showing scripted text with a frame-driven caret. The real Composer's draft
- * lives in internal state, which a frame-driven render can't set. */
-export function ScriptedComposer({ text, caretOn }: { text: string; caretOn: boolean }) {
+ * lives in internal state, which a frame-driven render can't set. The optional props
+ * reproduce the real "+" attach menu, the "Your documents" picker, and the attachment chip
+ * (all real classnames from Composer.tsx). */
+export function ScriptedComposer({
+  text,
+  caretOn,
+  placeholder,
+  learnMode,
+  menuOpen,
+  pickerOpen,
+  pickerDocs,
+  attachment,
+}: {
+  text: string;
+  caretOn: boolean;
+  placeholder?: string;
+  learnMode?: boolean;
+  menuOpen?: boolean;
+  pickerOpen?: boolean;
+  pickerDocs?: AttachPickerDoc[];
+  attachment?: string | null;
+}) {
   return (
     <div className="composer">
       <div className="composer-controls">
-        <div className="composer-learn-mode-toggle">
-          <Toggle checked={false} onChange={() => {}} label="Learn Mode" size="sm" />
+        <div className="composer-learn-mode-toggle" data-promo="learn">
+          <Toggle checked={!!learnMode} onChange={() => {}} label="Learn Mode" size="sm" emphasized={!!learnMode} />
           <span>Learn Mode</span>
         </div>
         <div className="composer-conversation-practice-toggle">
@@ -17,11 +42,48 @@ export function ScriptedComposer({ text, caretOn }: { text: string; caretOn: boo
           <span>Conversation Practice</span>
         </div>
       </div>
+      {attachment && (
+        <div className="composer-attachments">
+          <div className="composer-attachment">
+            <span className="composer-attachment-name">📄 {attachment}</span>
+            <button type="button" className="composer-attachment-remove" tabIndex={-1}>
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       <div className="composer-row">
         <div className="composer-attach-wrap">
-          <button type="button" className="composer-attach" tabIndex={-1}>
+          <button type="button" className="composer-attach" data-promo="plus" tabIndex={-1}>
             +
           </button>
+          {menuOpen && (
+            <div className="composer-attach-menu" role="menu">
+              <button type="button" role="menuitem" className="composer-attach-menu-item" data-promo="menu-upload">
+                Upload from your computer
+              </button>
+              <button type="button" role="menuitem" className="composer-attach-menu-item" data-promo="menu-existing">
+                Attach an existing document
+              </button>
+            </div>
+          )}
+          {pickerOpen && (
+            <div className="composer-document-picker" role="menu" aria-label="Attach an existing document">
+              <div className="composer-document-picker-header">Your documents</div>
+              {(pickerDocs ?? []).map((d, i) => (
+                <button
+                  key={d.name}
+                  type="button"
+                  role="menuitem"
+                  className="composer-document-picker-item"
+                  data-promo={i === 0 ? "picker-deck" : `picker-${i}`}
+                >
+                  <span className="composer-document-picker-name">{d.name}</span>
+                  <span className="composer-document-picker-date">{d.date}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <button type="button" className="composer-mic" tabIndex={-1}>
           🎙
@@ -29,6 +91,7 @@ export function ScriptedComposer({ text, caretOn }: { text: string; caretOn: boo
         <div className="composer-input promo-typed" data-promo="composer">
           {text}
           <span className="promo-caret" style={{ opacity: caretOn ? 1 : 0 }} />
+          {!text && placeholder && <span style={{ color: "var(--color-text-faint)", marginLeft: 2 }}>{placeholder}</span>}
         </div>
         <button type="button" className="btn-primary composer-send" data-promo="send" tabIndex={-1}>
           Send

@@ -8,6 +8,10 @@
     "audio": "npm run cues && python make_audio.py",
     "render:site": "npm run audio && remotion render src/index.ts NewtonPromo ../website/public/demo/newton-promo.mp4 --crf=20 --muted",
     "render:audio": "npm run audio && remotion render src/index.ts NewtonPromo out/newton-promo-audio.mp4 --crf=20",
+    "cues:eng": "tsx scripts/export-cues-eng.ts > out/cues-eng.json",
+    "audio:eng": "npm run cues:eng && python make_audio.py out/cues-eng.json out/engineer-audio.wav",
+    "render:eng-site": "remotion render src/index.ts EngineerFilm ../website/public/demo/newton-engineering.mp4 --crf=22 --muted",
+    "render:eng-audio": "npm run audio:eng && remotion render src/index.ts EngineerFilm out/engineer-silent.mp4 --crf=22 --muted && remotion ffmpeg -y -i out/engineer-silent.mp4 -i out/engineer-audio.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest out/newton-engineer-audio.mp4",
     "flicker": "python analyze_flicker.py"
   },
   "dependencies": {

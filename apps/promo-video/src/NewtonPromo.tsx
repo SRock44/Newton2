@@ -16,35 +16,21 @@ import ChatPane from "../../desktop/src/components/ChatPane";
 import MessageContent from "../../desktop/src/components/MessageContent";
 import NewtonMark from "../../desktop/src/components/NewtonMark";
 import type { ChatMessage, ChatSession, ToolActivityEntry } from "../../desktop/src/types";
-import { clamp01, easeInOut, easeOut, FPS, lerp, measure, prog, track, typed, type Keyframe } from "./anim";
+import { clamp01, easeInOut, easeOut, FPS, measure, prog, track, typed, type Keyframe } from "./anim";
+import { cameraTransform, cursorAt, findTarget, installFrozenTime, WALLPAPER, type Click, type CursorKey, type Pt } from "./engine";
 import { artifactPoint, artifactReady, useArtifactDrive } from "./artifact";
 import { Caption, CursorArrow, ScriptedComposer } from "./ui";
 import * as D from "./data";
 import { T } from "./timeline";
 import { dragAngle } from "./drag";
 
-// Freeze "now" (the sidebar shows a live clock/date) so every frame renders identically.
-const RealDate = Date;
-const FIXED_NOW = new RealDate("2026-02-03T10:24:00").getTime();
-class FixedDate extends RealDate {
-  constructor(...args: unknown[]) {
-    if (args.length === 0) super(FIXED_NOW);
-    else super(...(args as [string]));
-  }
-  static now() {
-    return FIXED_NOW;
-  }
-}
-globalThis.Date = FixedDate as unknown as DateConstructor;
+installFrozenTime("2026-02-03T10:24:00");
 
 const MAIN = { left: 190, top: 30, w: 1400, h: 860, scale: 1.1 };
 const NB = { left: 1090, top: 96, w: 420, h: 580, scale: 1.28 };
 
-type Pt = { x: number; y: number };
-type Target = string | Pt;
-
 // ---------------------------------------------------------------- cursor script
-const CURSOR: { t: number; at: Target; fb: Pt }[] = [
+const CURSOR: CursorKey[] = [
   { t: T.s1CursorIn, at: { x: 1500, y: 720 }, fb: { x: 1500, y: 720 } },
   { t: T.s1ComposerClick, at: "composer", fb: { x: 900, y: 880 } },
   { t: T.s1SendClick - 0.25, at: "send", fb: { x: 1430, y: 880 } },
@@ -72,7 +58,7 @@ const CURSOR: { t: number; at: Target; fb: Pt }[] = [
   { t: T.s3DragEnd + 1.0, at: { x: 1330, y: 760 }, fb: { x: 1330, y: 760 } },
 ];
 
-const CLICKS: { t: number; target: string }[] = [
+const CLICKS: Click[] = [
   { t: T.s1ComposerClick, target: "composer" },
   { t: T.s1SendClick, target: "send" },
   { t: T.nbBodyClick, target: "nb-body" },
@@ -88,53 +74,14 @@ const CLICKS: { t: number; target: string }[] = [
 
 const PRESSABLE = new Set(["send", "nb-preview", "nb-define", "newchat", "buildit", "expand"]);
 
-function findTarget(root: HTMLElement, name: string): Element | null {
-  const byAttr = root.querySelector(`[data-promo="${name}"]`);
-  if (byAttr) return byAttr;
-  if (name === "newchat") {
-    return Array.from(root.querySelectorAll(".sidebar button")).find((b) => b.textContent?.includes("New chat")) ?? null;
-  }
-  if (name === "expand") {
-    return root.querySelector(".artifact-block__actions button");
-  }
-  if (name === "buildit") {
-    return (
-      Array.from(root.querySelectorAll(".artifact-plan-card__actions button")).find((b) => b.textContent?.includes("Build it")) ??
-      null
-    );
-  }
-  return null;
-}
-
-function resolveTarget(root: HTMLElement, at: Target): Pt | null {
-  if (typeof at !== "string") return at;
-  if (at === "artifact-P") {
-    const frame = root.querySelector<HTMLElement>(".artifact-block__frame");
-    if (!frame || !artifactPoint.valid) return null;
-    const m = measure(frame, root);
-    const s = frame.clientWidth ? m.width / frame.clientWidth : 1;
-    return { x: m.left + artifactPoint.x * s, y: m.top + artifactPoint.y * s };
-  }
-  const el = findTarget(root, at);
-  if (!el) return null;
-  const m = measure(el, root);
-  if (at === "composer") return { x: m.left + m.width * 0.3, y: m.top + m.height * 0.5 };
-  if (at === "nb-body") return { x: m.left + 90, y: m.top + 22 };
-  return { x: m.left + m.width / 2, y: m.top + m.height / 2 };
-}
-
-function cursorAt(root: HTMLElement, t: number): Pt {
-  const r = (i: number) => resolveTarget(root, CURSOR[i].at) ?? CURSOR[i].fb;
-  if (t <= CURSOR[0].t) return r(0);
-  for (let i = 1; i < CURSOR.length; i++) {
-    if (t <= CURSOR[i].t) {
-      const a = r(i - 1);
-      const b = r(i);
-      const p = easeInOut(clamp01((t - CURSOR[i - 1].t) / (CURSOR[i].t - CURSOR[i - 1].t)));
-      return { x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p) };
-    }
-  }
-  return r(CURSOR.length - 1);
+/** Targets specific to this film: the point inside the artifact iframe. */
+function customTarget(root: HTMLElement, name: string): Pt | null | undefined {
+  if (name !== "artifact-P") return undefined;
+  const frame = root.querySelector<HTMLElement>(".artifact-block__frame");
+  if (!frame || !artifactPoint.valid) return null;
+  const m = measure(frame, root);
+  const s = frame.clientWidth ? m.width / frame.clientWidth : 1;
+  return { x: m.left + artifactPoint.x * s, y: m.top + artifactPoint.y * s };
 }
 
 // ---------------------------------------------------------------- camera
@@ -154,15 +101,6 @@ const FX: Keyframe<number>[] = [
 ];
 // Zoom toward the bottom edge so the window's bottom never rides up under the caption.
 const FY: Keyframe<number>[] = [{ t: 0, v: 940 }, { t: T.total, v: 940 }];
-
-function cameraTransform(t: number) {
-  const z = track(Z, t);
-  const fx = track(FX, t);
-  const fy = track(FY, t);
-  const tx = Math.min(0, Math.max(1920 * (1 - z), fx * (1 - z)));
-  const ty = Math.min(0, Math.max(1080 * (1 - z), fy * (1 - z)));
-  return `translate(${tx}px, ${ty}px) scale(${z})`;
-}
 
 // ---------------------------------------------------------------- main window
 const OLD_SESSIONS: ChatSession[] = [
@@ -499,7 +437,7 @@ export const NewtonPromo: React.FC = () => {
       root.querySelectorAll<HTMLIFrameElement>(".artifact-block__frame").forEach((f) => {
         if (f.loading !== "eager") f.loading = "eager";
       });
-      const p = cursorAt(root, t);
+      const p = cursorAt(root, t, CURSOR, customTarget);
       cur.style.transform = `translate(${p.x - 4}px, ${p.y - 2}px)`;
       cur.style.opacity = String(clamp01((t - (CURSOR[0].t - 0.3)) / 0.3) * (t > T.outroStart ? 0 : 1));
       let ripple = 0;
@@ -548,14 +486,13 @@ export const NewtonPromo: React.FC = () => {
     >
       <div
         ref={rootRef}
-        style={{ position: "absolute", inset: 0, width: 1920, height: 1080, transformOrigin: "0 0", transform: cameraTransform(t) }}
+        style={{ position: "absolute", inset: 0, width: 1920, height: 1080, transformOrigin: "0 0", transform: cameraTransform(t, Z, FX, FY) }}
       >
         <div
           style={{
             position: "absolute",
             inset: 0,
-            background:
-              "radial-gradient(900px 600px at 15% 10%, rgba(120,150,235,0.20), transparent 60%), radial-gradient(800px 600px at 90% 100%, rgba(200,160,70,0.12), transparent 60%), linear-gradient(150deg, #2a3752 0%, #1b2640 48%, #101828 100%)",
+            background: WALLPAPER,
           }}
         />
         <div

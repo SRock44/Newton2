@@ -731,6 +731,58 @@ kill an epileptic person." And: "add AUDIO to the video — not on the website."
   at 1294x727, 0 tabs / 1 video / 0 iframes, zero console errors, reduced motion holds paused
   on the poster with a Play button.
 
+## Phase 3.12 — Second film: the engineering student (Documents -> attach -> artifact -> pushback)
+Product owner, verbatim: "make another promotional / product demo, where the user is a much more
+sophisticated student, and uploads his MECHANICAL engineering work to Newton DOCUMENTS, then adds
+the slides/pdf to the chat, and has an entire conversation about it. He builds an artifact, pushes
+back on Newton, and gains further understanding." Then: "I want you to ACTUALLY USE THE DOCUMENTS
+PAGE, AND ADD THERE. THEN IN THE CHAT, CLICK THE + AND ADD FROM DOCUMENTS (NOT THIS PC)... Make
+sure you use the Artifact generation, and really show off how Newton is a real LEARNING tool, not
+a cheating tool or another ChatGPT/Claude."
+- [x] **`EngineerFilm` (second composition in `apps/promo-video`)**, 104.6 s, 1920x1080, 30 fps,
+  same real unmodified desktop components. One take: the student opens the REAL Documents page,
+  uploads a real lecture deck (the page's own "Uploading..." state, then the card and preview),
+  opens a new chat, turns on Learn Mode, clicks "+" -> "Attach an existing document" (not
+  "Upload from your computer") -> "Your documents" -> the deck, and asks why the same beam
+  deflects 16x with only 4x the moment. Newton checks the slide numbers with real computation and
+  hands the next step back as a Step Check; the student types the integration constants into the
+  real MathLive field; he asks for a visual, approves the real plan card ("Build it"), the real
+  artifact appears, is expanded, and is explored (support toggle, L and P sliders, readouts).
+  He then disputes the 16x ("I think the 16x is wrong"), Newton shows the ratio with real
+  computation and holds its ground, the student states the symmetry argument himself and Newton
+  confirms it, and when he asks for the homework answer ("just give me the max P") Newton makes him
+  derive it step by step.
+- [x] **Everything Newton says is real backend output.** `apps/promo-video/engineer/capture.py`
+  runs inside the API container: it uploads a real .pptx (built by `build_deck.py`) through
+  `/documents/upload` as the dev student, then sends the student's scripted messages over the
+  real chat WebSocket and records the replies, tool events and the artifact Newton actually
+  built (`captured.json`). Account flags (Pro, Focus Mode off, Learn Mode on) are snapshotted
+  and restored. No AI text is written by hand.
+- [x] **A real bug found by doing this: Pro artifact builds from chat always collided with the
+  parent turn's billing lock.** The frontier-turn lock (`try_acquire_frontier_turn_lock`) is held
+  by the chat turn, and `create_artifact` tried to take it again, so every build from chat was
+  refused as "already spending". Fixed with a `turn_holds_frontier_lock` context flag threaded
+  from the tutor through `run_tool` (create_artifact only acquires/releases a lock it took
+  itself); regression tests cover the in-turn build, the standalone path, and the flag being
+  passed only on frontier turns.
+- [x] **Deterministic rendering, hardened.** New shared `src/engine.ts` (cursor/camera/clock),
+  used by both films (film 1 re-verified pixel-equal). Added: a per-frame "settle" wait opened
+  DURING render (a handle opened only in an effect lost the race with the screenshot and let
+  single frames through with a stale chat scroll — caught by `analyze_flicker.py`, 7 outlier
+  frames -> 0), waits for the lazily-loaded MathLive field, and scroll-invariant cursor targets
+  so the pointer follows controls inside the artifact while the chat pane and the artifact
+  scroll. Flicker check on the final render: 0 single-frame outliers over 3139 frames.
+- [x] **Audio (standalone only; the site stays silent).** `scripts/export-cues-eng.ts` ->
+  `make_audio.py out/cues-eng.json out/engineer-audio.wav` (same synth, generalized: optional
+  cues, several drag tones for the two sliders, keystrokes for typed messages and math entry).
+  Measured -17.4 LUFS, -2.0 dBFS peak. The audio mp4 is a mux of the same video render.
+- [x] **Website:** `FilmPlayer` extracted from `AppWalkthrough` (muted looping autoplay in view,
+  click to pause, progress line, Play button, reduced motion never autoplays); new
+  `EngineerWalkthrough` section ("Push back. Newton holds its ground.") directly under the first
+  film with `/demo/newton-engineering.mp4` (9.2 MB, no audio track) and its poster.
+  Verified: `tsc` and `next build` clean, 63/63 tests, real Playwright against the dev server
+  (1920x1080 source plays, `currentTime` advances, muted, no error; reduced motion holds paused).
+
 ## Phase 4 — Sign-up + download pages
 - [ ] Sign-up page routes into the existing Keycloak OAuth flow (registration already
       enabled realm-side — confirmed, no new backend auth work needed).
