@@ -65,6 +65,13 @@ interface PaperPlanCardProps {
 
 export const APPROVE_MESSAGE = "Looks good — go ahead and write it.";
 
+/** The card numbers its own outline (an <ol>), so a heading the model already wrote as "1. Introduction"
+ * would read "1. 1. Introduction". Drops one leading "1." / "2)" / "3 -" style number. */
+export function stripLeadingNumber(heading: string): string {
+  const stripped = heading.replace(/^\s*\d+\s*[.):-]\s+/, "").trim();
+  return stripped || heading;
+}
+
 function parsePaperPlan(json: string): PaperPlanBlock | null {
   try {
     const parsed = JSON.parse(json);
@@ -77,7 +84,7 @@ function parsePaperPlan(json: string): PaperPlanBlock | null {
     for (const raw of parsed.sections) {
       if (!raw || typeof raw.heading !== "string" || !raw.heading.trim()) return null;
       if (typeof raw.summary !== "string") return null;
-      sections.push({ heading: raw.heading, summary: raw.summary });
+      sections.push({ heading: stripLeadingNumber(raw.heading), summary: raw.summary });
     }
 
     let sourcesNeeded: string[] | undefined;

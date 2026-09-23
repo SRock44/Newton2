@@ -945,3 +945,15 @@ async def test_run_puts_the_users_display_name_on_the_title_page(paper_user, db_
         user_id=str(paper_user.id),
     )
     assert "\\author{Priya Nair}" in capture[0]["tex"]
+
+
+def test_plan_headings_lose_a_leading_number_because_latex_numbers_sections_itself():
+    from app.tools.write_research_paper import _strip_heading_number
+
+    assert _strip_heading_number("1. Introduction") == "Introduction"
+    assert _strip_heading_number("  2) Model problem") == "Model problem"
+    assert _strip_heading_number("3 - Results") == "Results"
+    # left alone: no number, or a number that is part of the title
+    assert _strip_heading_number("Introduction") == "Introduction"
+    assert _strip_heading_number("2D Poisson problem") == "2D Poisson problem"
+    assert _strip_heading_number("1.") == "1."

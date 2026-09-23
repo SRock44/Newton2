@@ -268,6 +268,71 @@ describe("Composer", () => {
     });
   });
 
+  describe("attaching several documents to one message", () => {
+    async function pick(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+      await user.click(screen.getByRole("button", { name: /add attachment/i }));
+      await user.click(screen.getByRole("menuitem", { name: /attach an existing document/i }));
+      await user.click(await screen.findByRole("menuitem", { name }));
+    }
+
+    it("keeps both documents as chips and tags each one on the outgoing message", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await pick(user, /syllabus\.pdf/i);
+      await pick(user, /notes\.txt/i);
+      expect(screen.getByText(/📄 syllabus\.pdf/)).toBeInTheDocument();
+      expect(screen.getByText(/📄 notes\.txt/)).toBeInTheDocument();
+
+      await user.type(screen.getByRole("textbox"), "write a paper from these");
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith(
+        "write a paper from these\n\n[Attached document: doc-1|syllabus.pdf]\n[Attached document: doc-2|notes.txt]",
+      );
+    });
+
+    it("removes just the one document whose × is clicked", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await pick(user, /syllabus\.pdf/i);
+      await pick(user, /notes\.txt/i);
+      await user.click(screen.getByRole("button", { name: /remove attached document syllabus\.pdf/i }));
+      expect(screen.queryByText(/📄 syllabus\.pdf/)).not.toBeInTheDocument();
+
+      await user.type(screen.getByRole("textbox"), "go");
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith("go\n\n[Attached document: doc-2|notes.txt]");
+    });
+
+    it("picking an attached document again detaches it instead of doubling it", async () => {
+      const user = userEvent.setup();
+      render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await pick(user, /syllabus\.pdf/i);
+      await user.click(screen.getByRole("button", { name: /add attachment/i }));
+      await user.click(screen.getByRole("menuitem", { name: /attach an existing document/i }));
+      expect(await screen.findByText("✓ Attached")).toBeInTheDocument();
+      await user.click(screen.getByRole("menuitem", { name: /syllabus\.pdf/i }));
+      expect(screen.queryByText(/📄 syllabus\.pdf/)).not.toBeInTheDocument();
+    });
+
+    it("an uploaded file is added alongside a document that is already attached", async () => {
+      const user = userEvent.setup();
+      const { container } = render(
+        <Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />,
+      );
+
+      await pick(user, /syllabus\.pdf/i);
+      const input = container.querySelector<HTMLInputElement>("input[type=file]")!;
+      await user.upload(input, new File(["x"], "notes.txt", { type: "text/plain" }));
+      await screen.findByText(/📄 notes\.txt/);
+      expect(screen.getByText(/📄 syllabus\.pdf/)).toBeInTheDocument();
+    });
+  });
+
   describe("Learn Mode toggle", () => {
     it("is visible directly in the composer, not just in Settings, and starts unchecked by default", async () => {
       render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" />);

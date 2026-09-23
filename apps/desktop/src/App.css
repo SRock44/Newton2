@@ -4115,6 +4115,15 @@ body.is-resizing-panel * {
   background-color: var(--color-surface-2);
 }
 
+.composer-document-picker-item--attached {
+  background-color: var(--color-surface-2);
+}
+
+.composer-document-picker-item--attached .composer-document-picker-date {
+  color: var(--color-accent, var(--color-text-muted));
+  font-weight: var(--font-weight-medium);
+}
+
 .composer-document-picker-name {
   display: block;
   font-size: var(--font-size-sm);

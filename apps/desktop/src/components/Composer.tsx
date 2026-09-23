@@ -111,7 +111,9 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
 ) {
   const [draft, setDraft] = useState("");
   const [attachedImage, setAttachedImage] = useState<{ id: string; name: string } | null>(null);
-  const [attachedDocument, setAttachedDocument] = useState<{ id: string; name: string } | null>(null);
+  // Several documents can ride along on one message (e.g. lab notes AND a project synopsis for a
+  // paper), each tagged with its own "[Attached document: ...]" marker on send.
+  const [attachedDocuments, setAttachedDocuments] = useState<{ id: string; name: string }[]>([]);
   const [attaching, setAttaching] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
 
@@ -244,7 +246,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   // for) the last one.
   useEffect(() => {
     setAttachedImage(null);
-    setAttachedDocument(null);
+    setAttachedDocuments([]);
     setAttachError(null);
     setMenuOpen(false);
     setPickerOpen(false);
@@ -277,7 +279,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   // immediately cleared by it.
   useEffect(() => {
     if (!pendingAttachment) return;
-    setAttachedDocument({ id: pendingAttachment.id, name: pendingAttachment.name });
+    addAttachedDocument({ id: pendingAttachment.id, name: pendingAttachment.name });
     onPendingAttachmentConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAttachment]);
@@ -329,11 +331,12 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
 
   function handleSend() {
     const trimmed = draft.trim();
-    if ((!trimmed && !attachedImage && !attachedDocument) || disabled) return;
+    if ((!trimmed && !attachedImage && attachedDocuments.length === 0) || disabled) return;
     let text = trimmed;
     if (attachedImage) text = `${text}\n\n[Attached image: ${attachedImage.id}]`.trim();
-    if (attachedDocument) {
-      text = `${text}\n\n[Attached document: ${attachedDocument.id}|${attachedDocument.name}]`.trim();
+    if (attachedDocuments.length > 0) {
+      const markers = attachedDocuments.map((d) => `[Attached document: ${d.id}|${d.name}]`).join("\n");
+      text = `${text}\n\n${markers}`.trim();
     }
     // Same onSend call either way — App.tsx's handleSend itself checks whether an edit
     // is in progress and, if so, deletes-and-truncates before resending. No parallel
@@ -349,7 +352,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     }
     setDraft("");
     setAttachedImage(null);
-    setAttachedDocument(null);
+    setAttachedDocuments([]);
   }
 
   function handleCancelEdit() {
@@ -382,7 +385,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
         setAttachedImage({ id: imageId, name: file.name });
       } else {
         const doc = await uploadDocument(token, file);
-        setAttachedDocument({ id: doc.id, name: doc.filename });
+        addAttachedDocument({ id: doc.id, name: doc.filename });
       }
     } catch (err) {
       setAttachError(err instanceof ApiError ? err.message : `Couldn't attach ${file.name}.`);
@@ -411,8 +414,18 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     }
   }
 
+  function addAttachedDocument(doc: { id: string; name: string }) {
+    setAttachedDocuments((prev) => (prev.some((d) => d.id === doc.id) ? prev : [...prev, doc]));
+  }
+
+  // Picking adds to what is already attached (open "+" again for the next one); picking a
+  // document that is already attached detaches it.
   function selectExistingDocument(doc: UploadedDocument) {
-    setAttachedDocument({ id: doc.id, name: doc.filename });
+    if (attachedDocuments.some((d) => d.id === doc.id)) {
+      setAttachedDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+    } else {
+      addAttachedDocument({ id: doc.id, name: doc.filename });
+    }
     setPickerOpen(false);
   }
 
@@ -479,7 +492,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           )}
         </div>
       </div>
-      {(attachedImage || attachedDocument) && (
+      {(attachedImage || attachedDocuments.length > 0) && (
         <div className="composer-attachments">
           {attachedImage && (
             <div className="composer-attachment">
@@ -494,19 +507,19 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
               </button>
             </div>
           )}
-          {attachedDocument && (
-            <div className="composer-attachment">
-              <span className="composer-attachment-name">📄 {attachedDocument.name}</span>
+          {attachedDocuments.map((doc) => (
+            <div className="composer-attachment" key={doc.id}>
+              <span className="composer-attachment-name">📄 {doc.name}</span>
               <button
                 type="button"
                 className="composer-attachment-remove"
-                onClick={() => setAttachedDocument(null)}
-                aria-label="Remove attached document"
+                onClick={() => setAttachedDocuments((prev) => prev.filter((d) => d.id !== doc.id))}
+                aria-label={attachedDocuments.length > 1 ? `Remove attached document ${doc.name}` : "Remove attached document"}
               >
                 ×
               </button>
             </div>
-          )}
+          ))}
         </div>
       )}
       {attachError && <div className="composer-attachment-error">{attachError}</div>}
@@ -577,18 +590,23 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
               ) : pickerDocuments && pickerDocuments.length === 0 ? (
                 <p className="empty-state-text">No documents yet.</p>
               ) : (
-                pickerDocuments?.map((doc) => (
-                  <button
-                    key={doc.id}
-                    type="button"
-                    role="menuitem"
-                    className="composer-document-picker-item"
-                    onClick={() => selectExistingDocument(doc)}
-                  >
-                    <span className="composer-document-picker-name">{doc.filename}</span>
-                    <span className="composer-document-picker-date">{formatDate(doc.created_at)}</span>
-                  </button>
-                ))
+                pickerDocuments?.map((doc) => {
+                  const attached = attachedDocuments.some((d) => d.id === doc.id);
+                  return (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      role="menuitem"
+                      className={`composer-document-picker-item${attached ? " composer-document-picker-item--attached" : ""}`}
+                      onClick={() => selectExistingDocument(doc)}
+                    >
+                      <span className="composer-document-picker-name">{doc.filename}</span>
+                      <span className="composer-document-picker-date">
+                        {attached ? "✓ Attached" : formatDate(doc.created_at)}
+                      </span>
+                    </button>
+                  );
+                })
               )}
             </div>
           )}
@@ -643,7 +661,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             type="button"
             className="btn-primary composer-send"
             onClick={handleSend}
-            disabled={disabled || (!draft.trim() && !attachedImage && !attachedDocument)}
+            disabled={disabled || (!draft.trim() && !attachedImage && attachedDocuments.length === 0)}
             aria-label={editing ? "Save edit" : "Send message"}
           >
             {editing ? "Save edit" : "Send"}

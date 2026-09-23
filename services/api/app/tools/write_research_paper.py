@@ -255,6 +255,15 @@ Original document:
 """
 
 
+_LEADING_NUMBER = re.compile(r"^\s*\d+\s*[.):-]\s+")
+
+
+def _strip_heading_number(heading: str) -> str:
+    """LaTeX numbers sections itself, so a plan heading the model wrote as "1. Introduction" would
+    typeset as "1 1. Introduction". Drops one leading "1." / "2)" style number."""
+    return _LEADING_NUMBER.sub("", heading).strip() or heading
+
+
 @dataclass
 class SectionDraft:
     heading: str
@@ -779,7 +788,7 @@ class WriteResearchPaperTool(Tool):
         for s in sections:
             if not isinstance(s, dict) or not str(s.get("heading") or "").strip():
                 return "Error: each section needs a non-empty 'heading'."
-            clean_sections.append({"heading": str(s["heading"]), "summary": str(s.get("summary") or "")})
+            clean_sections.append({"heading": _strip_heading_number(str(s["heading"])), "summary": str(s.get("summary") or "")})
 
         wanted = [f for f in ([document_filename] if document_filename else []) + list(document_filenames or []) if f]
         document_text: str | None = None

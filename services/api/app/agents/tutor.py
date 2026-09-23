@@ -465,6 +465,8 @@ SYSTEM_PROMPT = (
     'single-column preprint with equations and tables), "abstract_sketch": "1-3 sentence '
     'summary of the intended argument", "sections": [{"heading": "...", "summary": '
     '"..."}], "sources_needed": ["optional notes on what research is still needed"]}. '
+    'Section headings are plain titles ("Introduction"), never numbered ("1. Introduction"): the '
+    'plan card and the LaTeX both number the sections themselves. '
     "Never call write_research_paper in the same turn as a plan -- only call it once "
     "the student unambiguously approves that exact plan (e.g. \"looks good, go ahead "
     "and write it\"); if they ask for changes instead, revise and re-emit the plan "

@@ -27,6 +27,24 @@ describe("PaperPlanCard", () => {
     expect(screen.getByText(/Frames the research question/)).toBeInTheDocument();
   });
 
+  it("does not double the numbers when the model already numbered its headings (1. 1. Introduction)", () => {
+    const numbered = JSON.stringify({
+      title: "T",
+      style: "arxiv",
+      abstract_sketch: "Sketch.",
+      sections: [
+        { heading: "1. Introduction", summary: "Why." },
+        { heading: "2) Methods", summary: "How." },
+        { heading: "2D Poisson problem", summary: "A title that starts with a digit." },
+      ],
+    });
+    render(<PaperPlanCard json={numbered} onApprove={vi.fn()} onRequestChanges={vi.fn()} interactive />);
+    expect(screen.getByText("Introduction")).toBeInTheDocument();
+    expect(screen.getByText("Methods")).toBeInTheDocument();
+    expect(screen.getByText("2D Poisson problem")).toBeInTheDocument();
+    expect(screen.queryByText(/^1\./)).not.toBeInTheDocument();
+  });
+
   it("renders the sources-needed notes when present", () => {
     render(<PaperPlanCard json={PLAN_JSON} onApprove={vi.fn()} onRequestChanges={vi.fn()} interactive />);
     expect(screen.getByText("Sources still needed")).toBeInTheDocument();
