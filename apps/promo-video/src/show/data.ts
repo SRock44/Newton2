@@ -46,6 +46,17 @@ export const OLD_DOCS = [
 
 export const STUDENT = "Priya";
 export const NOTE_TITLE = "Calc II — Lecture 12";
+/** What a brand-new note is called until the student names it (the app defaults to the date). */
+export const DEFAULT_NOTE_TITLE = "2026-02-03";
+/** Topic tags the student gives the new note (the Notepad's tags feature). */
+export const NOTE_TAGS = ["Calc II", "Integration"];
+/** The student's notes from other classes, each tagged with its class and topic. */
+export const NOTE_LIST = [
+  { title: "Bio 101 — Lecture 6", tags: ["Bio 101", "Photosynthesis"], updated: "2026-02-02T15:20:00Z" },
+  { title: "Physics 201 — Lecture 14", tags: ["Physics 201", "Momentum"], updated: "2026-02-02T11:05:00Z" },
+  { title: "Organic Chem — Reaction mechanisms", tags: ["Chem 210", "SN1 / SN2"], updated: "2026-01-30T09:40:00Z" },
+  { title: "Stats — Confidence intervals", tags: ["Stats 130", "Inference"], updated: "2026-01-28T19:15:00Z" },
+];
 
 /** The turn pairs, by role. Turn k = (user, assistant). */
 export const turn = (k: number) => ({ user: TURNS[2 * k], assistant: TURNS[2 * k + 1] });

@@ -118,6 +118,7 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
       Markdown,
       Placeholder.configure({
         placeholder: ({ editor: ed }) => (ed.isEmpty ? "Start writing…" : "Keep writing…"),
+        showOnlyWhenEditable: false,
       }),
       ...mathExtensions(editorRef),
       NewtonNote,

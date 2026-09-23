@@ -1,4 +1,4 @@
-import { NOTE, NOTE_TYPED_FULL, TURNS, attemptLatex, latexPrefixes, typedText, turn } from "./data";
+import { NOTE, NOTE_TAGS, NOTE_TITLE, NOTE_TYPED_FULL, TURNS, attemptLatex, latexPrefixes, typedText, turn } from "./data";
 
 // One continuous take. Every time below is derived from the captured content (lengths of
 // what is typed and streamed), so if a capture is replaced the film re-times itself and the
@@ -14,6 +14,8 @@ import { NOTE, NOTE_TYPED_FULL, TURNS, attemptLatex, latexPrefixes, typedText, t
 
 export const TYPE_CPS = 78; // a fast, confident typist
 export const NOTE_CPS = 40;
+export const TITLE_CPS = 18;
+export const TAG_CPS = 14;
 export const REVEAL_CPS = 330; // streamed replies, sped up like a promo would
 export const RESEARCH_REVEAL_CPS = 300;
 const TOOL_DUR = 0.5;
@@ -53,8 +55,26 @@ nb.windowIn = 1.5;
 nb.cursorIn = 2.0;
 nb.nbIn = 2.8;
 nb.nbInDur = 0.9;
-nb.bodyClick = 4.0;
-nb.typeStart = 4.3;
+// the notes list: other classes, each tagged with its topic
+nb.listHover = nb.nbIn + 1.9;
+nb.newNoteClick = nb.nbIn + 3.6;
+// a new note: name it, tag it
+nb.titleClick = nb.newNoteClick + 1.0;
+nb.titleTypeStart = nb.titleClick + 0.35;
+nb.titleTypeEnd = nb.titleTypeStart + NOTE_TITLE.length / TITLE_CPS;
+nb.tagIconClick = nb.titleTypeEnd + 0.6;
+export const tagTimes: { typeStart: number; enter: number }[] = [];
+let tt = nb.tagIconClick + 0.55;
+for (const tag of NOTE_TAGS) {
+  const typeStart = tt;
+  const enter = typeStart + tag.length / TAG_CPS + 0.3;
+  tagTimes.push({ typeStart, enter });
+  tt = enter + 0.45;
+}
+nb.tagDone = tt + 0.2;
+// then the lecture note itself
+nb.bodyClick = nb.tagDone + 0.8;
+nb.typeStart = nb.bodyClick + 0.3;
 nb.typeEnd = nb.typeStart + NOTE_TYPED_FULL.length / NOTE_CPS;
 // highlight "LIATE" -> Define
 // no mode switch: the note already looks the way it will, so he just moves on to highlighting

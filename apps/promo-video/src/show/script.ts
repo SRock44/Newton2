@@ -1,12 +1,24 @@
 import type { Keyframe } from "../anim";
 import type { Click, CursorKey } from "../engine";
-import { T } from "./timeline";
+import { T, tagTimes } from "./timeline";
 
 // The cursor's route, the camera, and the captions for the showcase film. Pure data derived
 // from the timeline (no React), so the soundtrack exporter reads the very same clicks.
 
 const M = T.marks;
 const nb = T.nb;
+
+/** Where the Notepad's controls sit, in the film's canvas units (used as fallbacks while the
+ * window is in another phase). */
+const NBPT = {
+  row: { x: 1342, y: 361 },
+  newBtn: { x: 1359, y: 180 },
+  title: { x: 1396, y: 177 },
+  tagIcon: { x: 1598, y: 169 },
+  tagInput: { x: 1400, y: 277 },
+  tagDone: { x: 1599, y: 277 },
+  body: { x: 1520, y: 345 },
+};
 
 const keys: CursorKey[] = [];
 export const CLICKS: Click[] = [];
@@ -22,7 +34,20 @@ const click = (t: number, target: string, fb?: { x: number; y: number }) => {
 // ---- Notepad: click into the note, type (it is formatted as it is written), highlight a word ->
 // Define, highlight the formula -> Explain
 pt(nb.cursorIn, 1500, 720);
-click(nb.bodyClick, "nb-body", { x: 1300, y: 360 });
+// the notes list, then a new note: name it, tag it. The controls live in different phases of the
+// window, so each keeps a fallback at the spot it occupies (the cursor rests there in between).
+at(nb.listHover, "nb-list-row", NBPT.row);
+click(nb.newNoteClick, "nb-new", NBPT.newBtn);
+click(nb.titleClick, "nb-title", NBPT.title);
+click(nb.tagIconClick, "nb-tag-icon", NBPT.tagIcon);
+pt(tagTimes[tagTimes.length - 1].enter + 0.1, NBPT.tagInput.x, NBPT.tagInput.y);
+click(nb.tagDone, "nb-tag-done", NBPT.tagDone);
+// click into the empty part of the note (to the right of where the text will go, so the pointer
+// never sits on top of what is being typed) and stay there while it is typed
+pt(nb.bodyClick - 0.4, NBPT.body.x, NBPT.body.y);
+pt(nb.bodyClick, NBPT.body.x, NBPT.body.y);
+CLICKS.push({ t: nb.bodyClick, target: "nb-body" });
+pt(nb.typeEnd, NBPT.body.x, NBPT.body.y);
 at(nb.selTermStart - 0.5, "nb-term-start", { x: 1250, y: 420 });
 at(nb.selTermStart + nb.selDur, "nb-term-end", { x: 1330, y: 420 });
 click(nb.defineClick, "nb-define", { x: 1300, y: 380 });
@@ -91,7 +116,9 @@ export const FY: Keyframe<number>[] = [{ t: 0, v: 940 }, { t: T.total, v: 940 }]
 
 // ------------------------------------------------------------------------ captions
 export const CAPTIONS = [
-  { from: nb.bodyClick, to: nb.selTermStart - 0.2, text: "In class: take notes in the Newton Notepad." },
+  { from: nb.nbIn + 0.5, to: nb.newNoteClick - 0.2, text: "The Notepad: your notes from every class, tagged by topic." },
+  { from: nb.newNoteClick, to: nb.bodyClick - 0.2, text: "Start a new note for today's lecture — name it, tag it." },
+  { from: nb.bodyClick, to: nb.selTermStart - 0.2, text: "In class: take notes as you go." },
   { from: nb.selTermStart, to: nb.selFormulaStart - 0.2, text: "Highlight a term. Define it — right in your note." },
   { from: nb.selFormulaStart, to: nb.scrollStart - 0.2, text: "Highlight a formula. Have Newton explain it." },
   { from: nb.scrollStart, to: nb.nbOut, text: "Newton's answers live right in your note." },

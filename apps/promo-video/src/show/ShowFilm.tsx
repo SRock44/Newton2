@@ -22,9 +22,9 @@ import { cameraTransform, cursorAt, findTarget, installFrozenTime, WALLPAPER, ty
 import { Caption, CursorArrow, ScriptedComposer } from "../ui";
 import "./api";
 import { showState, type ShowDoc } from "./api";
-import { DOC, NOTE, NOTE_TITLE, OLD_DOCS, STUDENT, TURNS, noteState, safePrefix, typedText } from "./data";
+import { DEFAULT_NOTE_TITLE, DOC, NOTE, NOTE_LIST, NOTE_TAGS, NOTE_TITLE, OLD_DOCS, STUDENT, TURNS, noteState, safePrefix, typedText } from "./data";
 import { CAPTIONS, CLICKS, CURSOR, FX, FY, Z } from "./script";
-import { NOTE_CPS, REVEAL_CPS, RESEARCH_REVEAL_CPS, STEP_DELAY, T, TYPE_CPS, type TurnMark } from "./timeline";
+import { NOTE_CPS, REVEAL_CPS, RESEARCH_REVEAL_CPS, STEP_DELAY, T, TAG_CPS, TITLE_CPS, TYPE_CPS, tagTimes, type TurnMark } from "./timeline";
 
 installFrozenTime("2026-02-03T10:24:00");
 
@@ -123,7 +123,7 @@ function elementFor(root: HTMLElement, name: string): Element | null {
 }
 const PRESSABLE = new Set([
   "send", "newchat", "nav-documents", "upload-btn", "sc-submit", "cp-submit", "menu-existing",
-  "picker-deck", "plus", "nb-define", "nb-explain", "learn",
+  "picker-deck", "plus", "nb-define", "nb-explain", "learn", "nb-new", "nb-tag-icon", "nb-tag-done",
 ]);
 
 // ------------------------------------------------------------------ chat content from time
@@ -345,6 +345,15 @@ function NotepadWindow({ t }: { t: number }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  // The window starts on the notes list (other classes, tagged), then "+ New Note" opens the editor.
+  const inList = t < nbT.newNoteClick + 0.08;
+  const title = t < nbT.titleTypeStart ? DEFAULT_NOTE_TITLE : typed(NOTE_TITLE, t, nbT.titleTypeStart, TITLE_CPS);
+  const tagPopoverOpen = t >= nbT.tagIconClick + 0.05 && t < nbT.tagDone + 0.05;
+  const tags = NOTE_TAGS.filter((_, i) => t >= tagTimes[i].enter);
+  const tagDraft = NOTE_TAGS.map((tag, i) =>
+    t >= tagTimes[i].typeStart && t < tagTimes[i].enter ? typed(tag, t, tagTimes[i].typeStart, TAG_CPS) : "",
+  ).find((d) => d) ?? "";
+
   const defined = t >= nbT.defineShown;
   const explained = t >= nbT.explainShown;
   const state = noteState(defined, explained);
@@ -411,19 +420,81 @@ function NotepadWindow({ t }: { t: number }) {
     <div className="app-root" ref={rootRef}>
       <TitleBar title="Newton Notepad" variant="notepad" />
       <div className="notepad-window">
+        {inList ? (
+          <div className="notepad-window__picker">
+            <button type="button" className="btn-primary notepad-window__new" data-promo="nb-new">
+              + New Note
+            </button>
+            <ul className="notepad-window__note-list">
+              {NOTE_LIST.map((note, i) => (
+                <li key={note.title} className="notepad-window__note-row">
+                  <button type="button" className="notepad-window__note-item" data-promo={i === 1 ? "nb-list-row" : undefined}>
+                    <span className="notepad-window__note-title">{note.title}</span>
+                    <span className="notepad-window__tag-pills">
+                      {note.tags.map((tag) => (
+                        <span key={tag} className="notepad-window__tag-pill notepad-window__tag-pill--readonly">
+                          {tag}
+                        </span>
+                      ))}
+                    </span>
+                    <span className="notepad-window__note-updated">{new Date(note.updated).toLocaleString()}</span>
+                  </button>
+                  <button type="button" className="notepad-window__tag-icon-btn" tabIndex={-1}>
+                    🏷
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
         <div className="notepad-window__editor" style={{ position: "relative" }}>
           <div className="notepad-window__editor-header">
             <button type="button" className="btn-secondary notepad-window__back">
               ← Notes
             </button>
-            <input type="text" className="notepad-window__title-input" value={NOTE_TITLE} readOnly />
+            <input type="text" className="notepad-window__title-input" data-promo="nb-title" value={title} readOnly />
+            <button type="button" className="notepad-window__tag-icon-btn" data-promo="nb-tag-icon" tabIndex={-1}>
+              🏷
+            </button>
           </div>
+          {tagPopoverOpen && (
+            <div className="notepad-window__tag-popover">
+              <div className="notepad-window__tag-pills">
+                {tags.length === 0 && <span className="notepad-window__tag-empty">No tags yet</span>}
+                {tags.map((tag) => (
+                  <span key={tag} className="notepad-window__tag-pill">
+                    {tag}
+                    <button type="button" className="notepad-window__tag-remove" tabIndex={-1}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="notepad-window__tag-add">
+                <div className="notepad-window__tag-input promo-typed" style={{ minHeight: 26 }}>
+                  {tagDraft || <span style={{ color: "var(--color-text-faint)" }}>Add a tag…</span>}
+                </div>
+                <button type="button" className="btn-secondary-sm" data-promo="nb-tag-done" tabIndex={-1}>
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+          {!tagPopoverOpen && tags.length > 0 && (
+            <div className="notepad-window__tag-pills notepad-window__tag-pills--header">
+              {tags.map((tag) => (
+                <span key={tag} className="notepad-window__tag-pill notepad-window__tag-pill--readonly">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="notepad-window__toolbar">
             <div className="notepad-window__toolbar-right">
               <button type="button" className="notepad-window__record-btn">
                 🎙 Record
               </button>
-              <span className="notepad-window__save-status">{writing || t < nbT.explainShown + 1 ? "Saving…" : "Saved"}</span>
+              <span className="notepad-window__save-status">{t < nbT.bodyClick || writing || t < nbT.explainShown + 1 ? "Saving…" : "Saved"}</span>
             </div>
           </div>
           <div className="notepad-window__body" ref={bodyRef} style={{ overflowY: "auto" }}>
@@ -432,6 +503,7 @@ function NotepadWindow({ t }: { t: number }) {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       <div

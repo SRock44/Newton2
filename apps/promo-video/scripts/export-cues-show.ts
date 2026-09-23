@@ -7,7 +7,8 @@
 // pings + source blips while Newton Research works.
 import { TURNS, noteState, typedText } from "../src/show/data";
 import { CLICKS } from "../src/show/script";
-import { NOTE_CPS, STEP_DELAY, T, TYPE_CPS } from "../src/show/timeline";
+import { NOTE_CPS, STEP_DELAY, T, TAG_CPS, TITLE_CPS, TYPE_CPS, tagTimes } from "../src/show/timeline";
+import { NOTE_TAGS, NOTE_TITLE } from "../src/show/data";
 
 const nb = T.nb;
 const keys: { t: number; space: boolean; kind?: "note" }[] = [];
@@ -18,6 +19,17 @@ for (let k = 1; k <= noteText.length; k++) {
   const t = nb.typeStart + k / NOTE_CPS;
   if (t < nb.typeEnd && noteText[k - 1] !== "\n") keys.push({ t, space: noteText[k - 1] === " ", kind: "note" });
 }
+// the new note's title and its tags
+for (let k = 1; k <= NOTE_TITLE.length; k++) {
+  const t = nb.titleTypeStart + k / TITLE_CPS;
+  if (t < nb.titleTypeEnd + 0.05) keys.push({ t, space: NOTE_TITLE[k - 1] === " ", kind: "note" });
+}
+NOTE_TAGS.forEach((tag, i) => {
+  for (let k = 1; k <= tag.length; k++) {
+    const t = tagTimes[i].typeStart + k / TAG_CPS;
+    if (t < tagTimes[i].enter) keys.push({ t, space: tag[k - 1] === " ", kind: "note" });
+  }
+});
 // Chat: typed messages, math-field entry, checkpoint answers
 for (const m of T.marks) {
   if ((m.kind === "composer" || m.kind === "checkpoint") && m.typed !== undefined) {
@@ -57,7 +69,7 @@ const cues = {
   duration: T.total,
   keys,
   clicks: CLICKS.map((c) => c.t),
-  pops: T.marks.flatMap((m) => [m.userAppear, m.asstAppear]),
+  pops: [nb.newNoteClick + 0.2, ...T.marks.flatMap((m) => [m.userAppear, m.asstAppear])],
   chipTicks: T.marks.flatMap((m) => m.tools.map((x) => x.start)),
   dings: T.marks.flatMap((m) => m.tools.filter((x) => x.tool === "symbolic_math").map((x) => x.done)),
   selections: [
@@ -73,7 +85,7 @@ const cues = {
   correct,
   nudges,
   pings,
-  blips,
+  blips: [...blips, ...tagTimes.map((x) => x.enter)],
   readyChime: rEnd + 0.05,
   whooshes: [
     { t: 0.4, dur: 0.8, dir: "in" },
@@ -83,8 +95,11 @@ const cues = {
     { t: T.outroStart, dur: 0.8, dir: "out" },
   ],
   building: { start: rStart, end: rEnd },
-  bpm: 100,
+  // a calm, quiet bed so the per-feature effects are what you notice
+  bpm: 76,
   transpose: 2,
+  musicGain: 0.4,
+  arpEvery: 2,
   introAt: 0.25,
   outroAt: T.outroStart + 0.9,
 };

@@ -265,6 +265,8 @@ for seg_ in cues.get("dragSegments") or ([cues["drag"]] if "drag" in cues else [
 
 # ------------------------------------------------------------------ music bed
 BPM = cues.get("bpm", 92)
+MUSIC_GAIN = cues.get("musicGain", 1.0)  # the bed sits under the effects; a quieter bed lets them read
+ARP_EVERY = cues.get("arpEvery", 1)  # play every Nth arpeggio note (2 = a calmer, sparser figure)
 TRANSPOSE = cues.get("transpose", 0)
 beat = 60.0 / BPM
 midi = lambda m: 440.0 * 2 ** ((m + TRANSPOSE - 69) / 12)
@@ -292,6 +294,8 @@ for bi in range(n_bars):
     bassline = np.sin(2 * np.pi * midi(bass) * ti) * swell * 0.11
     place(music, pad + bassline, t0)
     for k, ai in enumerate(ARP):
+        if k % ARP_EVERY:
+            continue
         tk = t0 + k * beat / 2
         f = midi(tones[ai] + 12)
         nn = int(0.9 * SR)
@@ -320,7 +324,7 @@ def reverb(x, seconds=1.7, wet=0.22):
     wetsig = np.stack([fftconvolve(x[c], ir[c])[: x.shape[1]] for c in range(2)])
     return x * (1 - wet) + wetsig * wet * 2.2
 
-mix = reverb(music * 1.0, wet=0.35) + reverb(fx, wet=0.16)
+mix = reverb(music * MUSIC_GAIN, wet=0.35) + reverb(fx, wet=0.16)
 mix = mix[:, : int(DUR * SR)]
 tt = np.arange(mix.shape[1]) / SR
 mix *= np.minimum(1, tt / 0.4) * np.minimum(1, (DUR - tt) / 1.4)  # fade in / out
