@@ -19,11 +19,10 @@ const click = (t: number, target: string, fb?: { x: number; y: number }) => {
   CLICKS.push({ t, target });
 };
 
-// ---- Notepad: click into the note, type, click away (it renders), highlight a word -> Define,
-// highlight the formula -> Explain
+// ---- Notepad: click into the note, type (it is formatted as it is written), highlight a word ->
+// Define, highlight the formula -> Explain
 pt(nb.cursorIn, 1500, 720);
 click(nb.bodyClick, "nb-body", { x: 1300, y: 360 });
-click(nb.finishClick, "nb-title", { x: 1300, y: 200 });
 at(nb.selTermStart - 0.5, "nb-term-start", { x: 1250, y: 420 });
 at(nb.selTermStart + nb.selDur, "nb-term-end", { x: 1330, y: 420 });
 click(nb.defineClick, "nb-define", { x: 1300, y: 380 });

@@ -4,8 +4,8 @@ import { NOTE, NOTE_TYPED_FULL, TURNS, attemptLatex, latexPrefixes, typedText, t
 // what is typed and streamed), so if a capture is replaced the film re-times itself and the
 // soundtrack (which is exported from this same object) follows.
 //
-//   1. Notepad (one live editor): type notes, click away so they render, highlight + Define,
-//      highlight + Explain — the answers land as cards right in the note
+//   1. Notepad (one live WYSIWYG editor): type notes (formatted as they are written), highlight +
+//      Define, highlight + Explain — the answers land as cards right in the note
 //   2. Documents: upload the lecture handout, open a new chat, Learn Mode on, attach it from
 //      Documents via "+"
 //   3. Conversation (Learn Mode): Step Checks that derive the rule from the product rule, a
@@ -57,9 +57,8 @@ nb.bodyClick = 4.0;
 nb.typeStart = 4.3;
 nb.typeEnd = nb.typeStart + NOTE_TYPED_FULL.length / NOTE_CPS;
 // highlight "LIATE" -> Define
-// the student clicks away: the note renders (no separate preview mode any more)
-nb.finishClick = nb.typeEnd + 0.6;
-nb.selTermStart = nb.finishClick + 1.0;
+// no mode switch: the note already looks the way it will, so he just moves on to highlighting
+nb.selTermStart = nb.typeEnd + 1.2;
 nb.selDur = 0.6;
 nb.toolbarTerm = nb.selTermStart + nb.selDur + 0.1;
 nb.defineClick = nb.toolbarTerm + 0.9;

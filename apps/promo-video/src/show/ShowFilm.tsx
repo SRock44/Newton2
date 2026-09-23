@@ -123,7 +123,7 @@ function elementFor(root: HTMLElement, name: string): Element | null {
 }
 const PRESSABLE = new Set([
   "send", "newchat", "nav-documents", "upload-btn", "sc-submit", "cp-submit", "menu-existing",
-  "picker-deck", "plus", "nb-define", "nb-explain", "nb-title", "learn",
+  "picker-deck", "plus", "nb-define", "nb-explain", "learn",
 ]);
 
 // ------------------------------------------------------------------ chat content from time
@@ -328,10 +328,10 @@ function textRect(root: HTMLElement, win: HTMLElement, needle: string) {
  * the film's settle loop re-run that measurement once late layout (fonts, markdown) has landed. */
 const notepadReflow: { fn: () => void } = { fn: () => {} };
 
-/** The companion Notepad window, rendering the REAL NoteEditor: the student types the note (the
- * first paragraph group is an editable field), clicks away so it renders, highlights a term ->
- * Define, highlights the formula -> Explain, and Newton's answers land as cards right in the
- * note — no Write/Preview modes, no raw fence. */
+/** The companion Notepad window, rendering the REAL NoteEditor (the WYSIWYG editor the app ships):
+ * the note is formatted as it is typed, the student highlights a term -> Define and the formula ->
+ * Explain, and Newton's answers land as cards right in the note — one look throughout, no
+ * Write/Preview modes, no raw fence. */
 function NotepadWindow({ t }: { t: number }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const hlRef = useRef<HTMLDivElement>(null);
@@ -348,7 +348,7 @@ function NotepadWindow({ t }: { t: number }) {
   const defined = t >= nbT.defineShown;
   const explained = t >= nbT.explainShown;
   const state = noteState(defined, explained);
-  const writing = t < nbT.finishClick + 0.05;
+  const writing = t < nbT.typeEnd + 0.05;
   const shown = writing ? typed(state.content, t, nbT.typeStart, NOTE_CPS) : state.content;
 
   const termSel = t >= nbT.selTermStart && t < nbT.defineShown;
@@ -416,7 +416,7 @@ function NotepadWindow({ t }: { t: number }) {
             <button type="button" className="btn-secondary notepad-window__back">
               ← Notes
             </button>
-            <input type="text" className="notepad-window__title-input" data-promo="nb-title" value={NOTE_TITLE} readOnly />
+            <input type="text" className="notepad-window__title-input" value={NOTE_TITLE} readOnly />
           </div>
           <div className="notepad-window__toolbar">
             <div className="notepad-window__toolbar-right">
@@ -428,7 +428,7 @@ function NotepadWindow({ t }: { t: number }) {
           </div>
           <div className="notepad-window__body" ref={bodyRef} style={{ overflowY: "auto" }}>
             <div ref={editorRef} data-promo="nb-body">
-              <NoteEditor value={shown} onChange={() => {}} editingIndex={writing ? 0 : null} readOnly />
+              <NoteEditor value={shown} onChange={() => {}} readOnly />
             </div>
           </div>
         </div>
@@ -589,8 +589,9 @@ export const ShowFilm: React.FC = () => {
         continueRender(handle);
       }
     };
+    // (the Notepad's editor builds its document and Newton cards a beat after the first paint too)
     const height = () =>
-      Array.from(document.querySelectorAll<HTMLElement>(".chat-pane"))
+      Array.from(document.querySelectorAll<HTMLElement>(".chat-pane, .notepad-window__body, .ProseMirror"))
         .map((el) => el.scrollHeight)
         .join(",");
     const started = Date.now();
