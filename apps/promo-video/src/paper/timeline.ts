@@ -60,8 +60,11 @@ export const docs = {
 const attach = {
   plusClick: d0 + 12.4,
   menuExistingClick: d0 + 13.3,
-  pickerClick: d0 + 14.2,
-  composerClick: d0 + 14.8,
+  pickerClick: d0 + 14.2, // the synopsis
+  plus2Click: d0 + 15.2, // open "+" again for the second document
+  menuExisting2Click: d0 + 16.0,
+  picker2Click: d0 + 16.9, // the lab notes
+  composerClick: d0 + 17.5,
 };
 
 // ------------------------------------------------------------------------ 2-4. the chat

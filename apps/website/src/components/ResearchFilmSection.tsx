@@ -37,7 +37,7 @@ export default function ResearchFilmSection() {
       <FilmPlayer
         src="/demo/newton-research.mp4"
         poster="/demo/newton-research-poster.jpg"
-        ariaLabel="Screen film of a graduate student writing a paper with Newton: uploading scratch lab notes and a project synopsis, attaching the synopsis to a chat, reviewing and revising Newton's paper plan, approving it, and then reading the finished arXiv-style PDF with equations, tables and cited sources."
+        ariaLabel="Screen film of a graduate student writing a paper with Newton: uploading scratch lab notes and a project synopsis, attaching both to one chat, reviewing and revising Newton's paper plan, approving it, and then reading the finished arXiv-style PDF with equations, tables and references."
       />
     </section>
   );

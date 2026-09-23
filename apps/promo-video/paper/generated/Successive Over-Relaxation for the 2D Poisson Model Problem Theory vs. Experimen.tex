@@ -1,0 +1,169 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,citecolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
+\usepackage[backend=biber,style=numeric,sortcites=true]{biblatex}
+\addbibresource{refs.bib}
+\title{Successive Over-Relaxation for the 2D Poisson Model Problem: Theory vs. Experiment}
+\author{Priya Nair}
+\date{\today}
+\begin{document}
+\maketitle
+\begin{abstract}
+We solve -laplacian(u)=1 on the unit square with Dirichlet 0 using the 5-point stencil (h=1/(n+1)) for n=16,32,64, comparing Jacobi, Gauss-Seidel (red-black), and SOR with optimal w*. We test classical theory against measured iterations to relative residual 1e-8, showing close agreement for Jacobi/GS and O(n\textasciicircum{}2) vs O(n) scaling, with the SOR offset left as an open question.
+\end{abstract}
+\section{Introduction}
+The discrete Poisson model problem is the standard first test for stationary iterative methods. On the unit square with homogeneous Dirichlet data, the five-point stencil with mesh spacing $h=1/(n+1)$ produces an $n^2 \times n^2$ linear system. Jacobi, Gauss--Seidel, and successive over-relaxation (SOR) are classical textbook iterations, and their convergence is usually encoded by asymptotic spectral radii. Less often do textbook treatments confront those asymptotic rates with the number of iterations actually needed to drive the relative residual below a fixed tolerance on moderate grids.
+
+Here we make that comparison for the basic case $-\Delta u=1$ on the unit square, with the zero initial guess and the stopping criterion $\lVert r_k \rVert_2 / \lVert r_0 \rVert_2 < 10^{-8}$. We use red-black Gauss--Seidel and SOR with the optimal parameter $\omega_* = 2/(1+\sin(\pi h))$. For each of the three grids $n=16$, $32$, and $64$, we report measured counts for Jacobi, Gauss--Seidel, and SOR, and compare them with the counts predicted by the spectral radii $\rho_J = \cos(\pi h)$, $\rho_{GS} = \rho_J^2$, and $\rho_{SOR} = \omega_* - 1$ via the standard estimate $K = \lceil \ln(10^{-8}) / \ln \rho \rceil$. The scope is deliberately limited: we make no claim beyond $n=64$.
+
+The measurements reproduce the expected scaling picture. Jacobi and Gauss--Seidel require about $3.8$--$3.9$ times as many iterations when $n$ is doubled, consistent with $O(n^2)$ growth, while SOR doubles, consistent with $O(n)$. Jacobi and Gauss--Seidel match the spectral-radius predictions within a few percent, and Gauss--Seidel takes almost exactly half as many iterations as Jacobi. The SOR prediction is less satisfactory: the measured count exceeds the asymptotic prediction by roughly $30$--$37\%$ on these grids. We do not claim an explanation for this gap; transient effects of the non-normal SOR iteration matrix are a plausible conjecture, but testing that conjecture is left to future work.
+\section{Related Work}
+Successive over-relaxation (SOR) was developed in Young's classic analysis of iterative methods for elliptic difference equations \cite{young1954iterative}. That paper introduced the structural conditions of Property A and consistent ordering, under which the eigenvalues of the SOR iteration matrix can be related to those of the Jacobi iteration matrix. This relation yields the classical optimal relaxation parameter used in the experiments below. A broader matrix-theoretic framework for Jacobi, Gauss--Seidel, and SOR is given in Varga's monograph \cite{varga1962matrix}; we rely on that framework when stating asymptotic convergence rates and converting spectral radii into predicted iteration counts. The present note is deliberately limited to the model problem and these three stationary solvers, so this section credits only the sources that directly support the theoretical predictions used in the comparison.
+\section{Model Problem and Discretization}
+We consider the two-dimensional Poisson model problem
+\[
+-\Delta u = f \quad \text{in } \Omega=(0,1)^2, \qquad u=0 \quad \text{on } \partial\Omega,
+\]
+with $f\equiv 1$ and homogeneous Dirichlet boundary conditions.
+
+The domain is discretized with a uniform grid of mesh width $h=1/(n+1)$. The interior grid points are $(x_i,y_j)=(ih,jh)$ for $i,j=1,\dots,n$, so there are $N=n^2$ unknowns. The standard five-point finite-difference approximation of $-\Delta u$ at an interior point is
+\[
+\frac{4u_{i,j}-u_{i-1,j}-u_{i+1,j}-u_{i,j-1}-u_{i,j+1}}{h^2}=1,
+\]
+where $u_{0,j}=u_{n+1,j}=u_{i,0}=u_{i,n+1}=0$ enforces the Dirichlet data. This finite-difference equation can be written as the linear system
+\[
+A_h u_h = \mathbf{1}_h,
+\]
+where $A_h\in\mathbb{R}^{N\times N}$ is the standard block-tridiagonal matrix representing the five-point stencil with the $1/h^2$ factor included.
+
+The grids used in this paper are $n=16,32,64$, corresponding to $N=256,1024,4096$ unknowns and mesh widths $h=1/17,1/33,1/65$, respectively.
+\section{Iterative Methods and Convergence Theory}
+Let $h=1/(n+1)$ and let $u_{i,j}$ denote the approximate solution at $(ih,jh)$, $i,j=1,\dots,n$. The five-point discretization of $-\Delta u=1$ with Dirichlet boundary conditions is
+\[
+\frac{4u_{i,j}-u_{i-1,j}-u_{i+1,j}-u_{i,j-1}-u_{i,j+1}}{h^2}=1,
+\]
+or equivalently $4u_{i,j}-\sum_{\mathcal{N}(i,j)}u=h^2$, where $\mathcal{N}(i,j)$ are the four nearest neighbors. Boundary values are taken as zero wherever the stencil reaches outside the square.
+
+Jacobi's method uses only values from the previous iterate:
+\[
+u_{i,j}^{(k+1)}=\frac{1}{4}\left(u_{i-1,j}^{(k)}+u_{i+1,j}^{(k)}+u_{i,j-1}^{(k)}+u_{i,j+1}^{(k)}+h^2\right).
+\]
+
+Gauss-Seidel uses the most recently available values. We use the red-black ordering: red points are updated first from black neighbors, then black points are updated from the new red values. For this model problem the spectral radii below are the same for natural and red-black orderings; red-black is convenient for vectorization and is the ordering used in the experiments below. The update is
+\[
+u_{i,j}^{(k+1)}=\frac{1}{4}\left(u_{i-1,j}^{(\mathrm{latest})}+u_{i+1,j}^{(\mathrm{latest})}+u_{i,j-1}^{(\mathrm{latest})}+u_{i,j+1}^{(\mathrm{latest})}+h^2\right),
+\]
+where $(\mathrm{latest})$ denotes the newest value available in red-black order, i.e., $u^{(k+1)}$ at points already updated and $u^{(k)}$ at points not yet updated.
+
+SOR with relaxation parameter $\omega$ extrapolates the Gauss-Seidel update:
+\[
+u_{i,j}^{(k+1)}=(1-\omega)u_{i,j}^{(k)}+\frac{\omega}{4}\left(u_{i-1,j}^{(\mathrm{latest})}+u_{i+1,j}^{(\mathrm{latest})}+u_{i,j-1}^{(\mathrm{latest})}+u_{i,j+1}^{(\mathrm{latest})}+h^2\right).
+\]
+For $\omega=1$ this reduces to Gauss-Seidel.
+
+The discrete sine transform diagonalizes the five-point operator. The eigenvalues of the Jacobi iteration matrix are
+\[
+\mu_{p,q}=\frac{\cos(p\pi h)+\cos(q\pi h)}{2},\qquad p,q=1,\dots,n,
+\]
+so the spectral radius of Jacobi is
+\[
+\rho_J=\cos(\pi h).
+\]
+For the consistently ordered five-point Laplacian, Gauss-Seidel satisfies
+\[
+\rho_{\mathrm{GS}}=\rho_J^2=\cos^2(\pi h).
+\]
+The optimal SOR parameter and the corresponding spectral radius are
+\[
+\omega_*=\frac{2}{1+\sin(\pi h)},\qquad
+\rho_{\mathrm{SOR}}=\omega_*-1
+=\frac{1-\sin(\pi h)}{1+\sin(\pi h)}.
+\]
+
+The iteration count predicted by the spectral radius is obtained by writing $\|r_k\|_2/\|r_0\|_2\sim \rho^k$ and equating $\rho^k$ to $10^{-8}$:
+\[
+k_{\mathrm{pred}}=\frac{\ln(10^{-8})}{\ln \rho}.
+\]
+Table~\ref{tab:pred} lists the values of $\omega_*$ and the predicted counts for the grids used below.
+
+\begin{table}[htbp]
+\centering
+\caption{Predicted iteration counts to reduce the relative residual below $10^{-8}$, from $\rho_J$, $\rho_{\mathrm{GS}}$, and $\rho_{\mathrm{SOR}}$.}
+\label{tab:pred}
+\begin{tabular}{lccc}
+\toprule
+$n$ & 16 & 32 & 64 \\
+\midrule
+$h$ & $1/17$ & $1/33$ & $1/65$ \\
+$\omega_*$ & 1.6895 & 1.8264 & 1.9078 \\
+\midrule
+Jacobi & 1073 & 4059 & 15765 \\
+Gauss--Seidel & 537 & 2030 & 7883 \\
+SOR & 50 & 97 & 191 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These are asymptotic predictions. The SOR iteration matrix is non-normal, so its spectral radius may not describe the whole history of the residual iteration; whether a transient explains any discrepancy with measured counts is examined in the next section.
+\section{Experimental Setup}
+All experiments solve the model problem $-\Delta u = 1$ on the unit square $[0,1]^2$ with homogeneous Dirichlet boundary conditions. The discrete operator is the standard five-point Laplacian with mesh size $h = 1/(n+1)$ on an $n \times n$ interior grid. The right-hand side is identically one, and the boundary values are fixed at zero; they are stored in the solution array only so that stencil evaluations at interior points can be written as array slices. The grids included are $n = 16, 32, 64$.
+
+Every method starts from the zero initial guess $u^0 = 0$. The residual is $r^k = b - A u^k$, where $k$ counts complete updates of all interior unknowns. The iteration is stopped when $\|r^k\|_2 / \|r^0\|_2 < 10^{-8}$. All norms are Euclidean.
+
+Implementation. All solver routines were written in pure NumPy; no external sparse solver was used. Jacobi updates all interior points simultaneously from the previous complete update using shifted slices of the $(n+2)\times(n+2)$ solution array. For Gauss-Seidel and SOR, red-black ordering is used so that each half-sweep is also a vectorized update. A complete update is one red-black sweep. The interior grid is colored by parity: point $(i,j)$ is red if $(i+j) \bmod 2 = 0$ and black otherwise. A boolean mask on the interior block $U[1:n+1,1:n+1]$ selects the points of each color. In the red half-sweep, the neighbor sums for all red points are formed from the current solution array by the four shifted slices $U[0:n,1:n+1]$, $U[2:n+2,1:n+1]$, $U[1:n+1,0:n]$, and $U[1:n+1,2:n+2]$ (using zero-based Python/NumPy indexing); all red points are updated in one vectorized assignment. In the black half-sweep, the same four slices are formed from the updated array, so black points see the just-updated red neighbors; all black points are updated in one vectorized assignment. For SOR, each half-sweep applies the relaxation formula $u \leftarrow \omega_* u_{\mathrm{GS}} + (1-\omega_*) u$, where $u_{\mathrm{GS}}$ is the Gauss-Seidel value obtained from the five-point stencil and $\omega_* = 2/(1+\sin(\pi h))$ is the classical optimal parameter for this model problem.
+
+An $n=128$ run was attempted in the same pure-NumPy implementation, but it was too slow for the present study and is therefore excluded.
+\section{Results}
+Table~\ref{tab:results} reports the measured iteration counts for the model problem $-\Delta u=1$ on the unit square with homogeneous Dirichlet data, using a five-point stencil with $h=1/(n+1)$. All runs start from $u_0=0$ and stop when $\lVert r_k\rVert_2/\lVert r_0\rVert_2<10^{-8}$. Gauss--Seidel was implemented with red-black ordering. The predicted counts are obtained from the classical spectral radii
+\[\rho_J=\cos(\pi h),\quad \rho_{GS}=\rho_J^2,\quad \rho_{SOR}=\omega^*-1,\quad \omega^*=\frac{2}{1+\sin(\pi h)},\]
+via $N_{\mathrm{pred}}=\lceil \ln(10^{-8})/\ln\rho\rceil$.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{2}{c}{Jacobi} & \multicolumn{2}{c}{Gauss--Seidel} & \multicolumn{2}{c}{SOR($\omega^*$)} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+$n$ & Meas. & Pred. & Meas. & Pred. & Meas. & Pred. \\
+\midrule
+16 & 1064 & 1073 & 543 & 537 & 65 & 50 \\
+32 & 4020 & 4059 & 2048 & 2030 & 129 & 97 \\
+64 & 15599 & 15765 & 7948 & 7883 & 261 & 191 \\
+\bottomrule
+\end{tabular}
+\caption{Measured and predicted iteration counts to reduce the relative residual below $10^{-8}$ from the zero initial guess. Predictions use the spectral radius formula described in the text.}
+\label{tab:results}
+\end{table}
+
+For Jacobi, the measured counts are $1064$, $4020$, and $15599$, versus predicted $1073$, $4059$, and $15765$; the agreement is within about $1\%$. Gauss--Seidel also matches the prediction within about $1\%$: $543$ versus $537$, $2048$ versus $2030$, and $7948$ versus $7883$. As expected from $\rho_{GS}=\rho_J^2$, Gauss--Seidel needs almost exactly half as many iterations as Jacobi at every grid size; the measured ratios are $0.510$, $0.509$, and $0.510$.
+
+The scaling with $n$ is the expected one. Doubling $n$ multiplies the Jacobi counts by $3.78$ and $3.88$ and the Gauss--Seidel counts by $3.77$ and $3.88$, consistent with $O(n^2)$; a log-log plot of iterations versus $n$ therefore has slope $2$ for both methods. The SOR counts multiply by $1.98$ and $2.02$, consistent with $O(n)$ and a log-log slope of $1$.
+
+The SOR($\omega^*$) results are qualitatively different. The measured counts are $65$, $129$, and $261$, which are $30\%$, $33\%$, and $37\%$ above the asymptotic predictions $50$, $97$, and $191$. The gap is larger than the Jacobi/Gauss--Seidel agreement and appears to grow slowly with $n$; we do not have an explanation from the present experiments. In particular, the transient/non-normality hypothesis mentioned in the introduction was not tested here and remains an open question.
+\section{Discussion and Limitations}
+Jacobi and Gauss--Seidel behaved as the spectral-radius analysis predicts: measured iteration counts to the \(10^{-8}\) relative-residual stopping criterion agreed with the counts computed from \(\rho_J=\cos(\pi h)\) and \(\rho_{GS}=\rho_J^2\) to within a few percent, and Gauss--Seidel required nearly half the iterations of Jacobi. The expected scaling split was also visible: Jacobi and Gauss--Seidel counts increased by roughly \(3.8\)--\(3.9\times\) per doubling of \(n\), while SOR with \(\omega^*\) increased by about \(2\times\), consistent with \(O(n^2)\) and \(O(n)\) behavior, respectively.
+
+The SOR count, however, is not as well explained by the asymptotic spectral-radius prediction. Let \(k_{\mathrm{meas}}\) be the measured iteration count and \(k_{\mathrm{pred}}\) the count predicted from \(\rho_{\mathrm{SOR}}=\omega^*-1\). For the three grids used here,
+\[
+\frac{k_{\mathrm{meas}}}{k_{\mathrm{pred}}}=
+\begin{cases}
+1.30, & n=16,\\
+1.33, & n=32,\\
+1.37, & n=64.
+\end{cases}
+\]
+So SOR took roughly \(30\)--\(37\%\) more iterations than the asymptotic prediction on these grids. We deliberately leave this gap as an open question. A plausible candidate is that the non-normal SOR iteration matrix produces a transient before the asymptotic rate is reached, but we did not test that hypothesis, and we explicitly do not claim it as an explanation. We also did not sweep \(\omega\) around \(\omega^*\) or compute \(n=128\), so whether the modest increase in the ratio persists at larger grids is not addressed by these experiments.
+\section{Conclusion and Future Work}
+We solved the two-dimensional Poisson model problem \(-\Delta u = 1\) on the unit square with homogeneous Dirichlet data, using the five-point stencil with \(h = 1/(n+1)\) and grids \(n = 16, 32, 64\). Iteration counts were measured to a relative residual tolerance of \(10^{-8}\) from the zero initial guess; here \(n\) denotes the number of interior points per dimension. The experiments confirm the classical complexity separation: Jacobi and Gauss--Seidel iteration counts grow by roughly \(3.8\)--\(3.9\times\) for each doubling of \(n\), consistent with \(O(n^2)\) iteration counts, while SOR with the optimal parameter \(\omega_* = 2/(1+\sin \pi h)\) grows by only about \(2\times\), consistent with \(O(n)\) iteration counts. Equivalently, the measured counts scale as \(O(n^2)\) and \(O(n)\), respectively, and this is the practical payoff of the relaxation parameter.
+
+For the standard asymptotic predictions, \(\rho_J = \cos \pi h\), \(\rho_{\mathrm{GS}} = \rho_J^2\), and \(\rho_{\mathrm{SOR}} = \omega_* - 1\), the predicted iteration count is \(\lceil \ln(10^{-8}) / \ln \rho \rceil\). Jacobi and Gauss--Seidel measured counts agree with these predictions to within a few percent, and Gauss--Seidel requires essentially half the iterations of Jacobi. SOR, however, measured consistently above the prediction: the ratios of measured to predicted counts were \(1.30\), \(1.33\), and \(1.37\) for \(n = 16, 32, 64\). We do not attribute this gap to any single cause; the non-normal transient hypothesis mentioned earlier remains a conjecture and was not tested here.
+
+Several directions are natural future work. First, the \(n = 128\) case, which was too slow in pure NumPy for the present study, should be run (possibly overnight) to see whether the SOR measured-to-predicted ratio continues to creep upward or approaches a constant. Second, a sweep of \(\omega\) around \(\omega_*\) for a fixed grid would display the sharp minimum and test the common claim that the convergence curve is asymmetric. Third, a comparison with conjugate gradients is a natural next step, since CG is the standard Krylov method for symmetric positive definite systems and would provide a useful benchmark against the stationary methods. Finally, a multigrid solver should be included; it offers an \(O(n^2)\) operation count for the \(n^2\) unknowns, i.e. \(O(1)\) iterations in the grid parameter, and would underscore how classical relaxation methods are best viewed as smoothers rather than standalone solvers.
+\printbibliography[title={References}]
+\end{document}

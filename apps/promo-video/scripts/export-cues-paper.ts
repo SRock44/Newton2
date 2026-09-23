@@ -34,7 +34,7 @@ const cues = {
   pops: T.marks.flatMap((m) => [m.userAppear, m.asstAppear]),
   chipTicks: T.marks.flatMap((m) => m.tools.map((x) => x.start)),
   dings: [],
-  snaps: [T.pickerClick + 0.1],
+  snaps: [T.pickerClick + 0.1, T.picker2Click + 0.1],
   uploadRises: [
     { t: T.up1Click + 0.1, dur: T.up1Done - T.up1Click - 0.1 },
     { t: T.up2Click + 0.1, dur: T.up2Done - T.up2Click - 0.1 },

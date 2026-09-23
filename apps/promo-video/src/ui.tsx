@@ -6,6 +6,27 @@ export interface AttachPickerDoc {
   date: string;
 }
 
+// The app uses emoji (a microphone, a page) for these two glyphs. A headless renderer has no colour
+// emoji font and draws them as a tiny smudge, so the film draws the same two symbols as SVG.
+function MicIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v4" />
+    </svg>
+  );
+}
+
+function DocIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: "-2px" }}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+    </svg>
+  );
+}
+
 /** Non-interactive stand-in for the real Composer (real markup/classnames + the real
  * Toggle), showing scripted text with a frame-driven caret. The real Composer's draft
  * lives in internal state, which a frame-driven render can't set. The optional props
@@ -20,6 +41,7 @@ export function ScriptedComposer({
   pickerOpen,
   pickerDocs,
   attachment,
+  attachments,
 }: {
   text: string;
   caretOn: boolean;
@@ -29,7 +51,10 @@ export function ScriptedComposer({
   pickerOpen?: boolean;
   pickerDocs?: AttachPickerDoc[];
   attachment?: string | null;
+  /** several attached documents (the real composer keeps a list); wins over `attachment` */
+  attachments?: string[];
 }) {
+  const chips = attachments ?? (attachment ? [attachment] : []);
   return (
     <div className="composer">
       <div className="composer-controls">
@@ -42,14 +67,18 @@ export function ScriptedComposer({
           <span>Conversation Practice</span>
         </div>
       </div>
-      {attachment && (
+      {chips.length > 0 && (
         <div className="composer-attachments">
-          <div className="composer-attachment">
-            <span className="composer-attachment-name">📄 {attachment}</span>
-            <button type="button" className="composer-attachment-remove" tabIndex={-1}>
-              ×
-            </button>
-          </div>
+          {chips.map((name) => (
+            <div className="composer-attachment" key={name}>
+              <span className="composer-attachment-name">
+                <DocIcon /> {name}
+              </span>
+              <button type="button" className="composer-attachment-remove" tabIndex={-1}>
+                ×
+              </button>
+            </div>
+          ))}
         </div>
       )}
       <div className="composer-row">
@@ -70,23 +99,26 @@ export function ScriptedComposer({
           {pickerOpen && (
             <div className="composer-document-picker" role="menu" aria-label="Attach an existing document">
               <div className="composer-document-picker-header">Your documents</div>
-              {(pickerDocs ?? []).map((d, i) => (
-                <button
-                  key={d.name}
-                  type="button"
-                  role="menuitem"
-                  className="composer-document-picker-item"
-                  data-promo={i === 0 ? "picker-deck" : `picker-${i}`}
-                >
-                  <span className="composer-document-picker-name">{d.name}</span>
-                  <span className="composer-document-picker-date">{d.date}</span>
-                </button>
-              ))}
+              {(pickerDocs ?? []).map((d, i) => {
+                const attached = chips.includes(d.name);
+                return (
+                  <button
+                    key={d.name}
+                    type="button"
+                    role="menuitem"
+                    className={`composer-document-picker-item${attached ? " composer-document-picker-item--attached" : ""}`}
+                    data-promo={i === 0 ? "picker-deck" : `picker-${i}`}
+                  >
+                    <span className="composer-document-picker-name">{d.name}</span>
+                    <span className="composer-document-picker-date">{attached ? "✓ Attached" : d.date}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
         <button type="button" className="composer-mic" tabIndex={-1}>
-          🎙
+          <MicIcon />
         </button>
         <div className="composer-input promo-typed" data-promo="composer">
           {text}

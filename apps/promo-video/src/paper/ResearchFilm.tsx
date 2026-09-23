@@ -119,7 +119,7 @@ function elementFor(root: HTMLElement, name: string): Element | null {
   return findTarget(root, name);
 }
 const PRESSABLE = new Set([
-  "send", "newchat", "nav-documents", "upload-btn", "menu-existing", "picker-deck", "plus",
+  "send", "newchat", "nav-documents", "upload-btn", "menu-existing", "picker-deck", "picker-1", "plus",
   "plan-changes", "plan-approve", "doc-download",
 ]);
 
@@ -260,9 +260,16 @@ function MainWindow({ t }: { t: number }) {
 
   const { messages, composerText } = buildChat(t);
   const started = t >= M[0].userAppear;
-  const menuOpen = t >= T.plusClick + 0.05 && t < T.menuExistingClick + 0.05;
-  const pickerOpen = t >= T.menuExistingClick + 0.05 && t < T.pickerClick + 0.05;
-  const attachment = t >= T.pickerClick + 0.05 && t < M[0].sendClick + 0.05 ? SYNOPSIS.doc.filename : null;
+  const menuOpen =
+    (t >= T.plusClick + 0.05 && t < T.menuExistingClick + 0.05) ||
+    (t >= T.plus2Click + 0.05 && t < T.menuExisting2Click + 0.05);
+  const pickerOpen =
+    (t >= T.menuExistingClick + 0.05 && t < T.pickerClick + 0.05) ||
+    (t >= T.menuExisting2Click + 0.05 && t < T.picker2Click + 0.05);
+  const sending = t < M[0].sendClick + 0.05;
+  const attachments: string[] = [];
+  if (sending && t >= T.pickerClick + 0.05) attachments.push(SYNOPSIS.doc.filename);
+  if (sending && t >= T.picker2Click + 0.05) attachments.push(NOTES.doc.filename);
   const typingNow = M.some((m) => m.kind === "composer" && t >= m.clickField! && t < m.sendClick);
   const idle = !messages.length || t < M[1].sendClick;
   const beforeSend = M.every((m) => t < m.sendClick || t >= m.userAppear);
@@ -335,7 +342,7 @@ function MainWindow({ t }: { t: number }) {
                 menuOpen={menuOpen}
                 pickerOpen={pickerOpen}
                 pickerDocs={PICKER_DOCS}
-                attachment={attachment}
+                attachments={attachments}
               />
             </>
           )}
@@ -582,11 +589,23 @@ export const ResearchFilm: React.FC = () => {
           <MainWindow t={t} />
         </div>
         {/* page 1 of the real compiled PDF, laid over the Documents preview pane */}
+        {/* it belongs to the main window, so it fades, dims and blurs with it (never outlives it) */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 15,
+            opacity: mainOpacity,
+            filter: dim < 1 ? `brightness(${dim}) blur(${blur}px)` : undefined,
+          }}
+        >
         <div
           ref={pdfPaneRef}
-          style={{ position: "absolute", overflow: "hidden", opacity: 0, zIndex: 15, background: "#fff", borderRadius: 4 }}
+          style={{ position: "absolute", overflow: "hidden", opacity: 0, background: "#fff", borderRadius: 4 }}
         >
           <img src={staticFile(paperPage(1))} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
+        </div>
         </div>
         <div
           className="promo-win"

@@ -33,6 +33,9 @@ click(T.newChatClick, "newchat", { x: 330, y: 270 });
 click(T.plusClick, "plus", { x: 700, y: 880 });
 click(T.menuExistingClick, "menu-existing", { x: 800, y: 800 });
 click(T.pickerClick, "picker-deck", { x: 800, y: 760 });
+click(T.plus2Click, "plus", { x: 700, y: 880 });
+click(T.menuExisting2Click, "menu-existing", { x: 800, y: 800 });
+click(T.picker2Click, "picker-1", { x: 800, y: 730 });
 
 for (const m of M) {
   if (m.kind === "composer") {
@@ -82,12 +85,12 @@ export const FY: Keyframe<number>[] = [{ t: 0, v: 940 }, { t: T.total, v: 940 }]
 // ------------------------------------------------------------------------ captions
 export const CAPTIONS = [
   { from: T.navClick - 0.3, to: T.newChatClick - 0.4, text: "Drop in your raw lab notes and your project synopsis." },
-  { from: T.plusClick - 0.1, to: M[0].asstAppear - 0.2, text: "Attach what Newton should write from." },
+  { from: T.plusClick - 0.1, to: M[0].asstAppear - 0.2, text: "Attach both: your synopsis and your raw notes." },
   { from: M[0].asstAppear, to: M[1].preClick! - 0.2, text: "Newton plans an arXiv-style paper — from what your notes actually show." },
   { from: M[1].preClick!, to: M[2].sendClick - 0.2, text: "Push back on the plan. Newton revises it." },
-  { from: M[2].sendClick, to: M[2].end, text: "Approve: real sources found, real LaTeX written and compiled." },
+  { from: M[2].sendClick, to: M[2].end, text: "Approve: Newton writes and compiles the real LaTeX." },
   { from: P.nav2Click, to: P.viewerIn - 0.3, text: "Saved to your Documents: the PDF and its LaTeX source." },
-  { from: P.viewerIn + 0.2, to: T.viewerOut, text: "A real arXiv-style paper: equations, tables, and cited sources." },
+  { from: P.viewerIn + 0.2, to: T.viewerOut, text: "A real arXiv-style paper: equations, tables, and references." },
 ];
 
 export { VIEWER_MOVE, viewerStops };

@@ -79,17 +79,29 @@ async def set_flags(sub, plan, focus, learn, display_name):
         return orig
 
 
-async def stage_setup():
+async def stage_setup(orig_override=None):
     tok = await token()
     sub = jose_jwt.get_unverified_claims(tok)["sub"]
     s = load()
     orig = await set_flags(sub, "pro", False, False, AUTHOR)
-    if "orig" not in s:
+    if orig_override:
+        # the account's real settings, when the state file was lost (a rebuilt container) and the
+        # flags read just now are already the capture's
+        s["orig"] = orig_override
+    elif "orig" not in s:
         s["orig"] = orig
     s["sub"] = sub
     s["docs"] = {}
+    # before the uploads, so `restore --delete-docs` removes them too
+    s["started"] = datetime.now(timezone.utc).isoformat()
     async with httpx.AsyncClient(timeout=90) as c:
         h = {"Authorization": f"Bearer {tok}"}
+        # leftovers of an earlier run of this capture would be duplicates in the Documents list
+        mine = {NOTES[0], SYNOPSIS[0]}
+        for d in (await c.get(f"{API}/documents", headers=h)).json():
+            if d["filename"] in mine:
+                await c.delete(f"{API}/documents/{d['id']}", headers=h)
+                print("removed leftover", d["filename"])
         for key, (name, mime) in (("notes", NOTES), ("synopsis", SYNOPSIS)):
             raw = open(f"{SRC}/{name}", "rb").read()
             r = await c.post(f"{API}/documents/upload", headers=h, files={"file": (name, raw, mime)})
@@ -101,7 +113,6 @@ async def stage_setup():
         s["doc_list"] = (await c.get(f"{API}/documents", headers=h)).json()
     s["turns"] = []
     s.pop("session", None)
-    s["started"] = datetime.now(timezone.utc).isoformat()
     save(s)
     print("ORIG", s["orig"])
 
@@ -111,8 +122,12 @@ async def stage_say(text, attach, timeout):
     tok = await token()
     h = {"Authorization": f"Bearer {tok}"}
     if attach:
-        d = s["docs"]["synopsis"]["doc"]
-        text = f"{text}\n\n[Attached document: {d['id']}|{d['filename']}]"
+        # both source documents ride along on the one message: the synopsis, then the lab notes
+        marks = [
+            f"[Attached document: {s['docs'][k]['doc']['id']}|{s['docs'][k]['doc']['filename']}]"
+            for k in ("synopsis", "notes")
+        ]
+        text = f"{text}\n\n" + "\n".join(marks)
     async with httpx.AsyncClient(timeout=30) as c:
         if "session" not in s:
             r = await c.post(f"{API}/chat/sessions", headers=h)
@@ -223,7 +238,7 @@ def main():
     if not a:
         return
     if a[0] == "setup":
-        asyncio.run(stage_setup())
+        asyncio.run(stage_setup(json.loads(a[a.index("--orig") + 1]) if "--orig" in a else None))
     elif a[0] == "say":
         timeout = int(a[a.index("--timeout") + 1]) if "--timeout" in a else 300
         asyncio.run(stage_say(base64.b64decode(a[1]).decode("utf-8"), "--attach" in a, timeout))
