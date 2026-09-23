@@ -4,18 +4,10 @@
   "version": "0.1.0",
   "scripts": {
     "studio": "remotion studio",
-    "cues": "tsx scripts/export-cues.ts > cues.json",
-    "audio": "npm run cues && python make_audio.py",
-    "render:site": "npm run audio && remotion render src/index.ts NewtonPromo ../website/public/demo/newton-promo.mp4 --crf=20 --muted",
-    "render:audio": "npm run audio && remotion render src/index.ts NewtonPromo out/newton-promo-audio.mp4 --crf=20",
-    "cues:eng": "tsx scripts/export-cues-eng.ts > out/cues-eng.json",
-    "audio:eng": "npm run cues:eng && python make_audio.py out/cues-eng.json out/engineer-audio.wav",
-    "render:eng-site": "remotion render src/index.ts EngineerFilm ../website/public/demo/newton-engineering.mp4 --crf=22 --muted",
-    "render:eng-audio": "npm run audio:eng && remotion render src/index.ts EngineerFilm out/engineer-silent.mp4 --crf=22 --muted && remotion ffmpeg -y -i out/engineer-silent.mp4 -i out/engineer-audio.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest out/newton-engineer-audio.mp4",
-    "cues:show": "tsx scripts/export-cues-show.ts > out/cues-show.json",
-    "audio:show": "npm run cues:show && python make_audio.py out/cues-show.json out/show-audio.wav",
-    "render:show-site": "remotion render src/index.ts ShowFilm ../website/public/demo/newton-showcase.mp4 --crf=22 --muted",
-    "render:show-audio": "npm run audio:show && remotion render src/index.ts ShowFilm out/show-silent.mp4 --crf=22 --muted && remotion ffmpeg -y -i out/show-silent.mp4 -i out/show-audio.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest out/newton-showcase-audio.mp4",
+    "cues": "tsx scripts/export-cues-show.ts > out/cues-show.json",
+    "audio": "npm run cues && python make_audio.py out/cues-show.json out/show-audio.wav",
+    "render:site": "remotion render src/index.ts ShowFilm ../website/public/demo/newton-showcase.mp4 --crf=22 --muted",
+    "render:audio": "npm run audio && remotion render src/index.ts ShowFilm out/show-silent.mp4 --crf=22 --muted && remotion ffmpeg -y -i out/show-silent.mp4 -i out/show-audio.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest out/newton-showcase-audio.mp4",
     "flicker": "python analyze_flicker.py"
   },
   "dependencies": {

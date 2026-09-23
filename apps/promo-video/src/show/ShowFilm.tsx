@@ -14,13 +14,12 @@ import TitleBar from "../../../desktop/src/components/TitleBar";
 import Sidebar from "../../../desktop/src/components/Sidebar";
 import ChatPane from "../../../desktop/src/components/ChatPane";
 import DocumentsPanel from "../../../desktop/src/components/DocumentsPanel";
-import MessageContent from "../../../desktop/src/components/MessageContent";
+import NoteEditor from "../../../desktop/src/components/NoteEditor";
 import NewtonMark from "../../../desktop/src/components/NewtonMark";
 import type { ChatMessage, ChatSession, MainView, ToolActivityEntry } from "../../../desktop/src/types";
 import { clamp01, easeInOut, easeOut, FPS, measure, prog, typed } from "../anim";
 import { cameraTransform, cursorAt, findTarget, installFrozenTime, WALLPAPER, type Pt } from "../engine";
 import { Caption, CursorArrow, ScriptedComposer } from "../ui";
-import { activeFilm } from "../filmId";
 import "./api";
 import { showState, type ShowDoc } from "./api";
 import { DOC, NOTE, NOTE_TITLE, OLD_DOCS, STUDENT, TURNS, noteState, safePrefix, typedText } from "./data";
@@ -124,7 +123,7 @@ function elementFor(root: HTMLElement, name: string): Element | null {
 }
 const PRESSABLE = new Set([
   "send", "newchat", "nav-documents", "upload-btn", "sc-submit", "cp-submit", "menu-existing",
-  "picker-deck", "plus", "nb-define", "nb-explain", "nb-preview", "learn",
+  "picker-deck", "plus", "nb-define", "nb-explain", "nb-title", "learn",
 ]);
 
 // ------------------------------------------------------------------ chat content from time
@@ -305,13 +304,36 @@ function DocsView({ phase }: { phase: "A" | "B" | "C" }) {
   );
 }
 
-// ------------------------------------------------------------------ Notepad (Write mode)
-/** The companion Notepad window. The student writes in WRITE mode: types the note, highlights a
- * term -> Define, highlights the formula -> Explain (the response is inserted right after the
- * highlight, as a raw ```newton-note block — exactly what the real Write-mode toolbar does).
- * Only at the end does Preview show the finished note. */
+// ------------------------------------------------------------------ Notepad (one live editor)
+/** Finds the on-screen rect of `needle` in the first text node of `root` that contains it,
+ * in `win`'s own layout units. */
+function textRect(root: HTMLElement, win: HTMLElement, needle: string) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node: Node | null = null;
+  while ((node = walker.nextNode())) {
+    if (node.textContent?.includes(needle)) break;
+  }
+  if (!node) return null;
+  const at = (node.textContent as string).indexOf(needle);
+  const range = document.createRange();
+  range.setStart(node, at);
+  range.setEnd(node, at + needle.length);
+  const rr = range.getBoundingClientRect();
+  const c = win.getBoundingClientRect();
+  const s = win.offsetWidth ? c.width / win.offsetWidth : 1;
+  return { left: (rr.left - c.left) / s, top: (rr.top - c.top) / s, width: rr.width / s, height: rr.height / s };
+}
+
+/** The Notepad measures its own text (highlight, anchors, toolbar) after every render; this lets
+ * the film's settle loop re-run that measurement once late layout (fonts, markdown) has landed. */
+const notepadReflow: { fn: () => void } = { fn: () => {} };
+
+/** The companion Notepad window, rendering the REAL NoteEditor: the student types the note (the
+ * first paragraph group is an editable field), clicks away so it renders, highlights a term ->
+ * Define, highlights the formula -> Explain, and Newton's answers land as cards right in the
+ * note — no Write/Preview modes, no raw fence. */
 function NotepadWindow({ t }: { t: number }) {
-  const textRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const hlRef = useRef<HTMLDivElement>(null);
   const anchors = {
     ts: useRef<HTMLDivElement>(null),
@@ -325,11 +347,9 @@ function NotepadWindow({ t }: { t: number }) {
 
   const defined = t >= nbT.defineShown;
   const explained = t >= nbT.explainShown;
-  const inPreview = t >= nbT.previewClick + 0.1;
   const state = noteState(defined, explained);
-  const writing = t < nbT.typeEnd + 0.05;
+  const writing = t < nbT.finishClick + 0.05;
   const shown = writing ? typed(state.content, t, nbT.typeStart, NOTE_CPS) : state.content;
-  const caretOn = Math.floor(t * 2) % 2 === 0;
 
   const termSel = t >= nbT.selTermStart && t < nbT.defineShown;
   const formulaSel = t >= nbT.selFormulaStart && t < nbT.explainShown;
@@ -340,33 +360,21 @@ function NotepadWindow({ t }: { t: number }) {
   const toolbarOn =
     (t >= nbT.toolbarTerm && t < nbT.defineClick + 0.1) || (t >= nbT.toolbarFormula && t < nbT.explainClick + 0.1);
 
-  useLayoutEffect(() => {
-    const text = textRef.current;
+  const measureNotepad = () => {
+    const editor = editorRef.current;
     const win = rootRef.current?.closest(".promo-win") as HTMLElement | null;
     const body = bodyRef.current;
-    if (body && inPreview) {
-      // Preview is taller than the window: scroll through the finished note, top to bottom.
-      const from = nbT.previewClick + 1.3;
-      const to = nbT.nbOut - 0.5;
-      const f = easeInOut(clamp01((t - from) / (to - from)));
+    if (!editor || !win || !body) return;
+    if (t >= nbT.scrollStart) {
+      // scroll through the finished note, top to bottom
+      const f = easeInOut(clamp01((t - nbT.scrollStart) / (nbT.scrollEnd - nbT.scrollStart)));
       body.scrollTop = f * Math.max(0, body.scrollHeight - body.clientHeight);
+    } else {
+      body.scrollTop = 0;
     }
-    if (!text || !win || inPreview) return;
-    const node = text.firstChild;
-    if (!node || node.nodeType !== Node.TEXT_NODE) return;
-    const len = (node.textContent ?? "").length;
-    const c = win.getBoundingClientRect();
-    const s = win.offsetWidth ? c.width / win.offsetWidth : 1;
-    const rectOf = (from: number, to: number) => {
-      if (to > len) return null;
-      const range = document.createRange();
-      range.setStart(node, from);
-      range.setEnd(node, to);
-      const rr = range.getBoundingClientRect();
-      return { left: (rr.left - c.left) / s, top: (rr.top - c.top) / s, width: rr.width / s, height: rr.height / s };
-    };
-    const term = rectOf(state.termAt, state.termAt + NOTE.term.length);
-    const formula = rectOf(state.formulaAt, state.formulaAt + NOTE.formula.length);
+    if (writing) return;
+    const term = textRect(editor, win, NOTE.term);
+    const formula = textRect(editor, win, NOTE.formula);
     const put = (el: HTMLDivElement | null, x: number, y: number) => {
       if (!el) return;
       el.style.left = `${x}px`;
@@ -391,8 +399,12 @@ function NotepadWindow({ t }: { t: number }) {
     if (toolbarRef.current && active) {
       const tb = toolbarRef.current;
       tb.style.left = `${Math.max(4, Math.min(active.left, win.offsetWidth - tb.offsetWidth - 10))}px`;
-      toolbarRef.current.style.top = `${active.top - 44}px`;
+      tb.style.top = `${active.top - 44}px`;
     }
+  };
+  useLayoutEffect(() => {
+    notepadReflow.fn = measureNotepad;
+    measureNotepad();
   });
 
   return (
@@ -404,41 +416,20 @@ function NotepadWindow({ t }: { t: number }) {
             <button type="button" className="btn-secondary notepad-window__back">
               ← Notes
             </button>
-            <input type="text" className="notepad-window__title-input" value={NOTE_TITLE} readOnly />
+            <input type="text" className="notepad-window__title-input" data-promo="nb-title" value={NOTE_TITLE} readOnly />
           </div>
           <div className="notepad-window__toolbar">
-            <div className="notepad-window__mode-toggle">
-              <button type="button" className={inPreview ? "notepad-window__mode-btn" : "notepad-window__mode-btn--active"}>
-                Write
-              </button>
-              <button
-                type="button"
-                data-promo="nb-preview"
-                className={inPreview ? "notepad-window__mode-btn--active" : "notepad-window__mode-btn"}
-              >
-                Preview
-              </button>
-            </div>
             <div className="notepad-window__toolbar-right">
+              <button type="button" className="notepad-window__record-btn">
+                🎙 Record
+              </button>
               <span className="notepad-window__save-status">{writing || t < nbT.explainShown + 1 ? "Saving…" : "Saved"}</span>
             </div>
           </div>
           <div className="notepad-window__body" ref={bodyRef} style={{ overflowY: "auto" }}>
-            {inPreview ? (
-              <div className="notepad-window__preview">
-                <MessageContent content={state.content} />
-              </div>
-            ) : (
-              <div
-                ref={textRef}
-                className="notepad-window__textarea"
-                data-promo="nb-body"
-                style={{ display: "block", whiteSpace: "pre-wrap", overflowWrap: "anywhere", height: "auto", minHeight: "100%" }}
-              >
-                {shown}
-                <span className="promo-caret" style={{ opacity: writing && caretOn ? 1 : 0 }} />
-              </div>
-            )}
+            <div ref={editorRef} data-promo="nb-body">
+              <NoteEditor value={shown} onChange={() => {}} editingIndex={writing ? 0 : null} readOnly />
+            </div>
           </div>
         </div>
       </div>
@@ -451,7 +442,7 @@ function NotepadWindow({ t }: { t: number }) {
           borderRadius: 3,
           background: "rgba(47, 77, 140, 0.30)",
           pointerEvents: "none",
-          opacity: !inPreview && (termSel || formulaSel) ? 1 : 0,
+          opacity: !writing && (termSel || formulaSel) ? 1 : 0,
         }}
       />
       <div ref={anchors.ts} data-promo="nb-term-start" style={{ position: "absolute", width: 1, height: 1 }} />
@@ -543,7 +534,6 @@ function useFieldTyping(t: number, frame: number, replace: () => void) {
 
 // ------------------------------------------------------------------ composition
 export const ShowFilm: React.FC = () => {
-  activeFilm.id = "show";
   const frame = useCurrentFrame();
   const t = frame / FPS;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -633,6 +623,7 @@ export const ShowFilm: React.FC = () => {
       const rip = rippleRef.current;
       if (!root || !cur || !rip) return;
 
+      notepadReflow.fn();
       // Pin the chat to the bottom (instant, not the app's smooth scroll).
       root.querySelectorAll<HTMLElement>(".chat-pane").forEach((el) => {
         el.scrollTo({ top: el.scrollHeight, behavior: "instant" });

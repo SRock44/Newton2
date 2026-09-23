@@ -19,17 +19,17 @@ const click = (t: number, target: string, fb?: { x: number; y: number }) => {
   CLICKS.push({ t, target });
 };
 
-// ---- Notepad (Write mode): click into the note, type, highlight a word -> Define, highlight the
-// formula -> Explain, then Preview
+// ---- Notepad: click into the note, type, click away (it renders), highlight a word -> Define,
+// highlight the formula -> Explain
 pt(nb.cursorIn, 1500, 720);
 click(nb.bodyClick, "nb-body", { x: 1300, y: 360 });
+click(nb.finishClick, "nb-title", { x: 1300, y: 200 });
 at(nb.selTermStart - 0.5, "nb-term-start", { x: 1250, y: 420 });
 at(nb.selTermStart + nb.selDur, "nb-term-end", { x: 1330, y: 420 });
 click(nb.defineClick, "nb-define", { x: 1300, y: 380 });
 at(nb.selFormulaStart - 0.5, "nb-formula-start", { x: 1180, y: 320 });
 at(nb.selFormulaStart + nb.selDur, "nb-formula-end", { x: 1400, y: 320 });
 click(nb.explainClick, "nb-explain", { x: 1250, y: 300 });
-click(nb.previewClick, "nb-preview", { x: 1500, y: 250 });
 pt(nb.nbOut + 0.3, 1250, 620);
 
 // ---- Documents: upload the handout, open it, start a new chat, Learn Mode, attach from Documents
@@ -94,8 +94,8 @@ export const FY: Keyframe<number>[] = [{ t: 0, v: 940 }, { t: T.total, v: 940 }]
 export const CAPTIONS = [
   { from: nb.bodyClick, to: nb.selTermStart - 0.2, text: "In class: take notes in the Newton Notepad." },
   { from: nb.selTermStart, to: nb.selFormulaStart - 0.2, text: "Highlight a term. Define it — right in your note." },
-  { from: nb.selFormulaStart, to: nb.previewClick - 0.2, text: "Highlight a formula. Have Newton explain it." },
-  { from: nb.previewClick, to: nb.nbOut, text: "Preview: your note, with Newton's answers built in." },
+  { from: nb.selFormulaStart, to: nb.scrollStart - 0.2, text: "Highlight a formula. Have Newton explain it." },
+  { from: nb.scrollStart, to: nb.nbOut, text: "Newton's answers live right in your note." },
   { from: T.navClick - 0.3, to: T.newChatClick - 0.4, text: "Upload your lecture handout to Newton Documents." },
   { from: T.learnClick - 0.3, to: T.plusClick - 0.2, text: "Learn Mode: Newton teaches — it doesn't just tell." },
   { from: T.plusClick - 0.1, to: M[0].asstAppear - 0.2, text: "Attach it to a chat, straight from Documents." },

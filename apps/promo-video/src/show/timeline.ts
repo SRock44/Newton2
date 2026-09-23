@@ -4,7 +4,8 @@ import { NOTE, NOTE_TYPED_FULL, TURNS, attemptLatex, latexPrefixes, typedText, t
 // what is typed and streamed), so if a capture is replaced the film re-times itself and the
 // soundtrack (which is exported from this same object) follows.
 //
-//   1. Notepad, Write mode: type notes, highlight + Define, highlight + Explain, then Preview
+//   1. Notepad (one live editor): type notes, click away so they render, highlight + Define,
+//      highlight + Explain — the answers land as cards right in the note
 //   2. Documents: upload the lecture handout, open a new chat, Learn Mode on, attach it from
 //      Documents via "+"
 //   3. Conversation (Learn Mode): Step Checks that derive the rule from the product rule, a
@@ -56,7 +57,9 @@ nb.bodyClick = 4.0;
 nb.typeStart = 4.3;
 nb.typeEnd = nb.typeStart + NOTE_TYPED_FULL.length / NOTE_CPS;
 // highlight "LIATE" -> Define
-nb.selTermStart = nb.typeEnd + 0.7;
+// the student clicks away: the note renders (no separate preview mode any more)
+nb.finishClick = nb.typeEnd + 0.6;
+nb.selTermStart = nb.finishClick + 1.0;
 nb.selDur = 0.6;
 nb.toolbarTerm = nb.selTermStart + nb.selDur + 0.1;
 nb.defineClick = nb.toolbarTerm + 0.9;
@@ -66,10 +69,10 @@ nb.selFormulaStart = nb.defineShown + 1.0;
 nb.toolbarFormula = nb.selFormulaStart + nb.selDur + 0.1;
 nb.explainClick = nb.toolbarFormula + 0.9;
 nb.explainShown = nb.explainClick + 0.15;
-// Preview: how the finished note looks
-nb.previewClick = nb.explainShown + 1.3;
-nb.previewHold = 6.4;
-nb.nbOut = nb.previewClick + nb.previewHold;
+// the finished note, in place: Newton's answers are cards right in the text; scroll through it
+nb.scrollStart = nb.explainShown + 1.0;
+nb.scrollEnd = nb.scrollStart + 5.4;
+nb.nbOut = nb.scrollEnd + 0.6;
 nb.nbOutDur = 0.7;
 
 // -------------------------------------------------------------------- 2. documents + attach

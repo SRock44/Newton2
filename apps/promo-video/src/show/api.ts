@@ -1,6 +1,5 @@
 import { continueRender, delayRender } from "remotion";
 import { DOC, DOC_CONTENT, OLD_DOCS } from "./data";
-import { activeFilm } from "../filmId";
 
 // The Documents page fetches from the API on mount. This film renders frame by frame, so every
 // request holds the frame's render open (delayRender) until the response has been consumed and
@@ -24,7 +23,7 @@ const json = (body: unknown) =>
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  if (activeFilm.id !== "show" || !url.startsWith(API_BASE)) return realFetch(input, init);
+  if (!url.startsWith(API_BASE)) return realFetch(input, init);
   const method = (init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET")).toUpperCase();
   const path = url.slice(API_BASE.length).split("?")[0];
 

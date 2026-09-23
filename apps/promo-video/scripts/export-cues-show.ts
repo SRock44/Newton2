@@ -2,8 +2,7 @@
 // is rendered from (so sound can never drift from picture). Consumed by make_audio.py.
 //
 // Every product moment gets its own sound: Notepad writing (soft wooden ticks), highlight
-// sweeps, a bright chime for Define and a warmer two-note for Explain, a page-turn into
-// Preview, an upload rise + landing chime, the Learn Mode switch, the attach snap, a rising
+// sweeps, a bright chime for Define and a warmer two-note for Explain, an upload rise + landing chime, the Learn Mode switch, the attach snap, a rising
 // chime when Newton confirms an answer and a soft falling pair when it pushes back, and sonar
 // pings + source blips while Newton Research works.
 import { TURNS, noteState, typedText } from "../src/show/data";
@@ -67,7 +66,6 @@ const cues = {
   ],
   defineChimes: [nb.defineShown],
   explainChimes: [nb.explainShown],
-  pageTurns: [nb.previewClick + 0.1],
   switches: [T.learnClick + 0.05],
   snaps: [T.pickerDeckClick + 0.1],
   uploadRises: [{ t: T.uploadClick + 0.1, dur: T.uploadDone - T.uploadClick - 0.1 }],

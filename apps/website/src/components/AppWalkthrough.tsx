@@ -7,8 +7,8 @@ import pageStyles from "@/app/page.module.css";
 // separate demos. Product owner, verbatim: "The end goal is to have ONE product video that
 // showcases everything, instead of a bunch of separate ones." The film (apps/promo-video's
 // ShowFilm, a Remotion project) renders the REAL, unmodified desktop-app components on one
-// desktop: a student takes notes in the Notepad (Write mode) and highlights a term to Define
-// and a formula to Explain, then Previews the finished note; uploads a lecture handout on the
+// desktop: a student takes notes in the Notepad and highlights a term to Define and a formula to
+// Explain — Newton's answers land as cards right in the note; uploads a lecture handout on the
 // Documents page and attaches it to a Learn Mode chat straight from Documents; is walked
 // through why integration by parts works — typing answers, getting pushed back on a sign error
 // and asked to explain it in his own words; and finally uses Newton Research for real sources.
