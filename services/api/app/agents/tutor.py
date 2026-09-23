@@ -1229,6 +1229,7 @@ async def run_tutor(
                             session_id=session_id,
                             user_id=user_id,
                             on_progress=_on_progress,
+                            turn_holds_frontier_lock=frontier_lock_held,
                         )
                     )
                     while not tool_task.done():

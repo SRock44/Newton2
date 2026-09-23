@@ -768,6 +768,7 @@ class CreateArtifactTool(Tool):
         document_id: str | None = None,
         user_id: str | None = None,
         on_progress: Callable[[str], Awaitable[None]] | None = None,
+        turn_holds_frontier_lock: bool = False,
     ) -> str:
         if not user_id:
             return "Error: no signed-in user to build an artifact for."
@@ -782,6 +783,14 @@ class CreateArtifactTool(Tool):
             return "Error: prompt must not be empty."
 
         source_block: str | None = None
+        # Whether THIS call took the frontier-turn lock (and so must release it). A
+        # frontier-routed chat turn holds that same per-user lock for its whole duration
+        # (see tutor.run_tutor), and this tool runs INSIDE that turn -- so when
+        # turn_holds_frontier_lock is set, the spend is already covered by the parent's
+        # lock: trying to acquire it again always failed against the parent itself
+        # ("already mid-generation"), which made artifacts unbuildable from chat for any
+        # Pro student on a frontier model. The parent releases it when its turn ends.
+        acquired_lock = False
         async with SessionLocal() as db:
             user = await db.get(User, uid)
             if user is None or not billing_service.is_pro(user):
@@ -803,8 +812,10 @@ class CreateArtifactTool(Tool):
             # SAME user could read that same balance and pass too. See
             # ALREADY_SPENDING_MESSAGE's own comment and
             # billing.try_acquire_frontier_turn_lock's docstring.
-            if not await billing_service.try_acquire_frontier_turn_lock(uid):
-                return ALREADY_SPENDING_MESSAGE
+            if not turn_holds_frontier_lock:
+                if not await billing_service.try_acquire_frontier_turn_lock(uid):
+                    return ALREADY_SPENDING_MESSAGE
+                acquired_lock = True
 
             # A quiz over named material reads that material here, inside the same
             # pre-spend session as the gate, so a document that doesn't exist or has
@@ -818,7 +829,8 @@ class CreateArtifactTool(Tool):
             if kind == "quiz" and named:
                 source_block, error = await _quiz_source_block(db, uid, named)
                 if error:
-                    await billing_service.release_frontier_turn_lock(uid)
+                    if acquired_lock:
+                        await billing_service.release_frontier_turn_lock(uid)
                     return error
 
         try:
@@ -850,8 +862,10 @@ class CreateArtifactTool(Tool):
         finally:
             # Always released once THIS build's spend is fully settled (charged or
             # not), regardless of how it ended -- a normal finish, an early return
-            # below, or an unhandled exception from _write_brief/build_artifact.
-            await billing_service.release_frontier_turn_lock(uid)
+            # below, or an unhandled exception from _write_brief/build_artifact. Only
+            # if this call is the one that took it (see acquired_lock above).
+            if acquired_lock:
+                await billing_service.release_frontier_turn_lock(uid)
 
         if not result.success or not result.html:
             return _failure_summary(result)

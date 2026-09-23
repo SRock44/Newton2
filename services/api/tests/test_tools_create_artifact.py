@@ -382,6 +382,53 @@ async def test_a_second_build_for_the_same_user_is_refused_while_one_is_already_
     assert charged == []  # nothing charged
 
 
+async def test_a_build_inside_a_turn_that_already_holds_the_lock_is_not_refused_by_its_own_parent(
+    pro_user, monkeypatch
+):
+    """Real bug this pins down: a frontier-routed chat turn holds the per-user
+    frontier-turn lock for its whole duration (tutor.run_tutor), and create_artifact runs
+    INSIDE that turn. It used to try to acquire the same lock again, always failed against
+    its own parent, and answered "already mid-generation" -- so no Pro student on a
+    frontier model could build an artifact from chat at all. When the parent says it
+    already holds the lock (turn_holds_frontier_lock), the build must proceed, spend
+    normally, and leave the lock for the PARENT to release."""
+    provider, calls, charged = _patch_pipeline(
+        monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result()
+    )
+
+    # The parent turn's lock.
+    assert await artifact_tool.billing_service.try_acquire_frontier_turn_lock(pro_user.id) is True
+    try:
+        result = await CreateArtifactTool().run(
+            kind="chart",
+            prompt="plot it",
+            user_id=str(pro_user.id),
+            turn_holds_frontier_lock=True,
+        )
+        assert result.startswith("```newton-artifact")
+        assert len(calls) == 1  # the build really ran
+        assert charged  # and its real spend was recorded
+
+        # Still held: only whoever acquired it may release it, and that was the parent.
+        assert await artifact_tool.billing_service.try_acquire_frontier_turn_lock(pro_user.id) is False
+    finally:
+        await artifact_tool.billing_service.release_frontier_turn_lock(pro_user.id)
+
+
+async def test_a_build_that_does_not_inherit_the_lock_still_takes_and_releases_its_own(pro_user, monkeypatch):
+    """The default (a build not running inside a lock-holding turn -- e.g. the chat turn
+    fell back to the free tier) is unchanged: acquire, build, release."""
+    _patch_pipeline(monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result())
+
+    result = await CreateArtifactTool().run(
+        kind="chart", prompt="plot it", user_id=str(pro_user.id), turn_holds_frontier_lock=False
+    )
+    assert result.startswith("```newton-artifact")
+
+    assert await artifact_tool.billing_service.try_acquire_frontier_turn_lock(pro_user.id) is True
+    await artifact_tool.billing_service.release_frontier_turn_lock(pro_user.id)
+
+
 async def test_a_successful_build_releases_the_lock_so_the_next_one_can_proceed(pro_user, monkeypatch):
     _patch_pipeline(monkeypatch, brief_text="TITLE: T\n\nbrief", build_result=_ok_result())
 

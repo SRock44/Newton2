@@ -252,6 +252,69 @@ async def test_run_tutor_releases_the_frontier_turn_lock_it_acquired(tutor_user,
     await billing_service.release_frontier_turn_lock(user.id)
 
 
+class _FrontierToolThenAnswerProvider(_FakeFrontierProvider):
+    """Frontier stand-in whose first round asks for one tool call, then answers."""
+
+    async def stream_chat(self, messages, model, tools=None):
+        self.calls_seen.append({"messages": list(messages), "model": model, "tools": tools})
+        if len(self.calls_seen) == 1:
+            yield ToolCallRequest([ToolCall(id="c1", name="calculator", arguments={"expression": "1+1"})])
+        else:
+            yield TextDelta("done")
+        self.last_usage = {"prompt_tokens": 10, "completion_tokens": 5}
+
+
+async def test_a_frontier_turn_tells_its_tools_it_already_holds_the_frontier_lock(tutor_user, monkeypatch):
+    """Regression for "artifacts can't be built from chat": a frontier turn holds the
+    per-user lock for its whole duration, and create_artifact runs inside it. The tutor
+    must tell the tool so (turn_holds_frontier_lock=True), otherwise the tool tries to
+    take the lock again and always loses to its own parent turn."""
+    user = await tutor_user(plan="pro", credits_used_cents=0)
+
+    monkeypatch.setattr(tutor, "get_settings", lambda: Settings(openrouter_api_key="fake-or-key"))
+    monkeypatch.setattr(tutor, "OpenAICompatibleProvider", _FrontierToolThenAnswerProvider)
+
+    async def fake_record(*a, **kw):
+        return 0
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    seen: dict = {}
+
+    async def fake_run_tool(name, arguments, **kwargs):
+        seen.update(kwargs)
+        return "2"
+
+    monkeypatch.setattr(tutor, "run_tool", fake_run_tool)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "done"
+    assert seen["turn_holds_frontier_lock"] is True
+
+
+async def test_a_free_tier_turn_does_not_claim_to_hold_the_frontier_lock(tutor_user, monkeypatch):
+    """The other side: when the turn is NOT frontier-routed it holds no lock, so its
+    tools must acquire their own as before."""
+    user = await tutor_user(plan="free")
+
+    fake = ScriptedToolCallingProvider(
+        [[ToolCall(id="c1", name="calculator", arguments={"expression": "1+1"})], ["done"]]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "free-model"))
+
+    seen: dict = {}
+
+    async def fake_run_tool(name, arguments, **kwargs):
+        seen.update(kwargs)
+        return "2"
+
+    monkeypatch.setattr(tutor, "run_tool", fake_run_tool)
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "hi", user_id=str(user.id))]
+    assert text_of(events) == "done"
+    assert seen["turn_holds_frontier_lock"] is False
+
+
 async def test_run_tutor_routes_to_a_pro_users_selected_model(tutor_user, monkeypatch):
     chosen = billing_service.PRO_MODELS[-1]["id"]
     user = await tutor_user(plan="pro", credits_used_cents=0, preferred_pro_model=chosen)

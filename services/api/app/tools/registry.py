@@ -79,7 +79,13 @@ _TOOLS: dict[str, Tool] = {
 # string (never a fake/heuristic one) while still in flight -- see create_artifact.py's
 # use of it and app/agents/tutor.py's run_tutor, which is what actually turns a call into
 # a live-updating chip instead of one static label for the tool's entire duration.
-_CONTEXT_PARAMS = ("session_id", "user_id", "on_progress")
+#
+# turn_holds_frontier_lock: True when the chat turn that is calling this tool has itself
+# already acquired the per-user frontier-turn lock (see billing.try_acquire_frontier_turn_
+# lock) -- true for EVERY tool call made during a frontier-routed turn. A tool that takes
+# that same lock for its own spend (create_artifact) must not try to acquire it again in
+# that case: it would always collide with its own parent turn and refuse to build.
+_CONTEXT_PARAMS = ("session_id", "user_id", "on_progress", "turn_holds_frontier_lock")
 
 # Sent directly, in full, on EVERY turn (see app/agents/tutor.py's run_tutor) --
 # everything a typical simple student request (arithmetic, a quick lookup, a unit
@@ -229,13 +235,19 @@ async def run_tool(
     session_id: str | None = None,
     user_id: str | None = None,
     on_progress: Callable[[str], Awaitable[None]] | None = None,
+    turn_holds_frontier_lock: bool = False,
 ) -> str:
     tool = _TOOLS.get(name)
     if tool is None:
         return f"Error: unknown tool '{name}'"
     try:
         call_args = dict(arguments)
-        context = {"session_id": session_id, "user_id": user_id, "on_progress": on_progress}
+        context = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "on_progress": on_progress,
+            "turn_holds_frontier_lock": turn_holds_frontier_lock,
+        }
         accepted = inspect.signature(tool.run).parameters
         for param in _CONTEXT_PARAMS:
             if param in accepted:
