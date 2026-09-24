@@ -42,6 +42,7 @@ export function ScriptedComposer({
   pickerDocs,
   attachment,
   attachments,
+  requestingChangesFor,
 }: {
   text: string;
   caretOn: boolean;
@@ -53,10 +54,22 @@ export function ScriptedComposer({
   attachment?: string | null;
   /** several attached documents (the real composer keeps a list); wins over `attachment` */
   attachments?: string[];
+  /** A plan's title, while "Request Changes"/"Change it" has just been clicked on it —
+   * the real Composer's `requestingChangesFor` banner (same classnames), shown here so
+   * the film demonstrates the real acknowledgement rather than a silent focus. */
+  requestingChangesFor?: string | null;
 }) {
   const chips = attachments ?? (attachment ? [attachment] : []);
   return (
     <div className="composer">
+      {requestingChangesFor && (
+        <div className="composer-editing-banner" role="status">
+          <span className="composer-editing-label">Requesting changes to "{requestingChangesFor}"</span>
+          <button type="button" className="composer-editing-cancel" tabIndex={-1}>
+            Cancel
+          </button>
+        </div>
+      )}
       <div className="composer-controls">
         <div className="composer-learn-mode-toggle" data-promo="learn">
           <Toggle checked={!!learnMode} onChange={() => {}} label="Learn Mode" size="sm" emphasized={!!learnMode} />

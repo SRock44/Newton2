@@ -26,7 +26,9 @@
  *
  * Two buttons below the plan are pure chat-message shortcuts, not real approval logic:
  * "Approve & Write" sends a fixed confirmation sentence; "Request Changes" sends
- * nothing and just focuses the composer so the student types their own tweaks. What
+ * nothing and just focuses the composer (passing the plan's title along, so the
+ * composer can show an explicit "Requesting changes to <title>" banner — see
+ * Composer.tsx's `requestingChangesFor`) so the student types their own tweaks. What
  * either message actually causes next (which tool gets called, what "approved" means)
  * is entirely up to the backend orchestration/model layer — this component has no
  * opinion on it and does not try to detect approval from later chat content.
@@ -66,8 +68,10 @@ interface PaperPlanCardProps {
   json: string;
   /** Sends the fixed "Approve & Write" confirmation message. */
   onApprove: (text: string) => void;
-  /** Focuses the composer for "Request Changes" — sends nothing itself. */
-  onRequestChanges: () => void;
+  /** Focuses the composer for "Request Changes" — sends nothing itself. Called with
+   * this plan's title, so the composer can show which plan changes are being
+   * requested for. */
+  onRequestChanges: (title: string) => void;
   /** Whether this is the most recent paper-plan block in the visible conversation (see
    * the contract comment above). Only then do the action buttons render as clickable. */
   interactive: boolean;
@@ -178,7 +182,7 @@ function PaperPlanCard({ json, onApprove, onRequestChanges, interactive, answere
           <button type="button" className="btn-primary" onClick={handleApprove}>
             Approve &amp; Write
           </button>
-          <button type="button" className="btn-secondary" onClick={onRequestChanges}>
+          <button type="button" className="btn-secondary" onClick={() => onRequestChanges(plan.title)}>
             Request Changes
           </button>
         </div>

@@ -665,6 +665,85 @@ describe("Composer", () => {
     });
   });
 
+  // "Request Changes" (PaperPlanCard) / "Change it" (ArtifactPlanCard): a purely visible
+  // acknowledgement banner, App.tsx-owned (see App.test.tsx for the end-to-end click ->
+  // banner -> send-clears-it flow) — this covers Composer's own piece in isolation.
+  // Deliberately unlike `editing` above: this never touches the draft.
+  describe("requesting changes (paper/artifact plan)", () => {
+    it("shows a banner naming the plan, without touching the (empty) draft", () => {
+      render(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          requestingChangesFor="SOR paper plan"
+        />,
+      );
+
+      expect(screen.getByText('Requesting changes to "SOR paper plan"')).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toHaveValue("");
+    });
+
+    it("Cancel calls onCancelRequestChanges without sending, and leaves any typed draft alone", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      const onCancelRequestChanges = vi.fn();
+      render(
+        <Composer
+          onSend={onSend}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          requestingChangesFor="SOR paper plan"
+          onCancelRequestChanges={onCancelRequestChanges}
+        />,
+      );
+
+      await user.type(screen.getByRole("textbox"), "actually never mind");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onCancelRequestChanges).toHaveBeenCalledTimes(1);
+      expect(onSend).not.toHaveBeenCalled();
+      // Unlike editing's Cancel, this never owned the draft, so it never clears it either.
+      expect(screen.getByRole("textbox")).toHaveValue("actually never mind");
+    });
+
+    it("Send still sends the typed text normally — the banner doesn't intercept it", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(
+        <Composer
+          onSend={onSend}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          requestingChangesFor="SOR paper plan"
+        />,
+      );
+
+      await user.type(screen.getByRole("textbox"), "add a related work section");
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+
+      expect(onSend).toHaveBeenCalledWith("add a related work section");
+    });
+
+    it("shows the editing banner instead when both are somehow set, never both at once", () => {
+      render(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          editing={{ id: "m1", content: "original" }}
+          requestingChangesFor="SOR paper plan"
+        />,
+      );
+      expect(screen.getByText("Editing message")).toBeInTheDocument();
+      expect(screen.queryByText('Requesting changes to "SOR paper plan"')).not.toBeInTheDocument();
+    });
+  });
+
   // Speech-to-text in the MAIN composer. The transcribe endpoint and a working recorder
   // implementation both already existed, but the only place a student could talk to
   // Newton was the Notepad's lecture capture — the chat composer was keyboard-only.

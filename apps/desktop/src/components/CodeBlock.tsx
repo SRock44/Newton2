@@ -26,8 +26,10 @@ type PreProps = ComponentPropsWithoutRef<"pre"> & {
    * an "options" pick or a "paper-plan" approval. Undefined in a context with nowhere
    * for such a message to go (falls back to a no-op so those blocks never throw). */
   onSend?: (text: string) => void;
-  /** From MessageContent — focuses the composer, for "paper-plan"'s "Request Changes". */
-  onFocusComposer?: () => void;
+  /** From MessageContent — focuses the composer, for "paper-plan"'s "Request Changes"
+   * (and "artifact-plan"'s "Change it"). Called with the plan's title, so the composer
+   * can show an explicit "Requesting changes to <title>" banner. */
+  onFocusComposer?: (title: string) => void;
   /** From MessageContent (ultimately ChatPane, which has the full message list) — the
    * plain text of the chat message immediately following this one, if any. Used by an
    * "options" block to render read-only once it's been answered. See OptionsPicker.tsx. */

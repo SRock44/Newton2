@@ -134,6 +134,20 @@ const PRESSABLE = new Set([
   "plan-changes", "plan-approve", "doc-download", "doc-chip", "doc-ask",
 ]);
 
+/** Pulls a ```paper-plan block's "title" back out of a real captured assistant reply, for
+ * the "Request Changes" banner (see Composer.tsx's requestingChangesFor) — the film
+ * shows the exact real title rather than a hand-typed copy that could drift from it. */
+function extractPlanTitle(content: string): string | null {
+  const match = /```paper-plan\n([\s\S]*?)\n```/.exec(content);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1]!) as { title?: unknown };
+    return typeof parsed.title === "string" ? parsed.title : null;
+  } catch {
+    return null;
+  }
+}
+
 // ------------------------------------------------------------------ chat content from time
 function userContent(k: number): string {
   return k === 2 ? APPROVE_TEXT : TURNS[2 * k].content;
@@ -255,6 +269,13 @@ function MainWindow({ t }: { t: number }) {
   if (sending && t >= T.pickerClick + 0.05) attachments.push(SYNOPSIS.doc.filename);
   if (sending && t >= T.picker2Click + 0.05) attachments.push(NOTES.doc.filename);
   const typingNow = M.some((m) => m.kind === "composer" && t >= m.clickField! && t < m.sendClick);
+  // "Request Changes" was just clicked on turn 0's plan (only the revise turn, M[1], has
+  // a preClick) -- shows the real banner from that click until the revised text is sent,
+  // same window the real product keeps it up for.
+  const requestingChangesFor =
+    M[1]!.preClick !== undefined && t >= M[1]!.preClick! && t < M[1]!.sendClick
+      ? extractPlanTitle(TURNS[1]!.content)
+      : null;
   const idle = !messages.length || t < M[1].sendClick;
   const beforeSend = M.every((m) => t < m.sendClick || t >= m.userAppear);
   const caretOn = beforeSend && (idle || typingNow) && Math.floor(t * 2) % 2 === 0 && t > T.composerClick - 0.5;
@@ -329,6 +350,7 @@ function MainWindow({ t }: { t: number }) {
                   pickerOpen={pickerOpen}
                   pickerDocs={PICKER_DOCS}
                   attachments={attachments}
+                  requestingChangesFor={requestingChangesFor}
                 />
               </div>
               {/* The real DocumentViewerPanel — opened from the document card write_research_paper's

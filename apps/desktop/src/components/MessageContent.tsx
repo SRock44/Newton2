@@ -27,7 +27,7 @@ interface MessageContentProps {
   /** Threaded down to CodeBlock for "options"/"paper-plan" blocks — see CodeBlock.tsx
    * for what each one means. */
   onSend?: (text: string) => void;
-  onFocusComposer?: () => void;
+  onFocusComposer?: (title: string) => void;
   nextMessageContent?: string;
   isLatestPaperPlanMessage?: boolean;
 }

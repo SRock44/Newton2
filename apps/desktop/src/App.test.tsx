@@ -7,7 +7,15 @@ import type { ChatMessage, ChatSession } from "./types";
 const sessions: ChatSession[] = [
   { id: "s1", title: null, status: "active", created_at: new Date().toISOString() },
   { id: "s2", title: "Physics review", status: "active", created_at: new Date().toISOString() },
+  { id: "s3", title: "SOR paper plan", status: "active", created_at: new Date().toISOString() },
 ];
+
+const PAPER_PLAN_JSON = JSON.stringify({
+  title: "SOR paper plan",
+  style: "ieee",
+  abstract_sketch: "Compares SOR to Jacobi and Gauss-Seidel.",
+  sections: [{ heading: "Introduction", summary: "Motivation." }],
+});
 
 const messagesBySession: Record<string, ChatMessage[]> = {
   s1: [
@@ -15,6 +23,7 @@ const messagesBySession: Record<string, ChatMessage[]> = {
     { id: "m2", role: "assistant", content: "Here's the file.\n\n[Attached document: doc-1|syllabus.pdf]" },
   ],
   s2: [{ id: "m3", role: "assistant", content: "Reply in s2" }],
+  s3: [{ id: "m4", role: "assistant", content: "```paper-plan\n" + PAPER_PLAN_JSON + "\n```" }],
 };
 
 function makeFakeSocket() {
@@ -623,7 +632,7 @@ describe("App", () => {
     await (await messageList()).findByText("Hello from s1");
 
     const deleteButtons = screen.getAllByLabelText("Delete chat");
-    expect(deleteButtons).toHaveLength(2);
+    expect(deleteButtons).toHaveLength(3);
     await user.click(deleteButtons[1]!); // s2, "Physics review" — not the active session
 
     await waitFor(() => expect(vi.mocked(deleteSession)).toHaveBeenCalledWith(expect.any(String), "s2"));
@@ -1153,6 +1162,52 @@ describe("App", () => {
       await openMessageContextMenu("Hello from s1");
       const editItem = await screen.findByRole("menuitem", { name: "Edit message" });
       expect(editItem).toBeDisabled();
+    });
+  });
+
+  // UX polish: "Request Changes" on a paper plan used to just silently focus the
+  // composer, with no visible sign the click did anything. Now it shows an explicit
+  // banner naming the plan (Composer.tsx's requestingChangesFor), and the composer is
+  // already focused so the student can start typing immediately.
+  describe("requesting changes on a paper plan", () => {
+    async function openPlanSession(user: ReturnType<typeof userEvent.setup>) {
+      await waitFor(() => expect(document.querySelector('[data-session-id="s3"] .session-item-main')).not.toBeNull());
+      await user.click(document.querySelector('[data-session-id="s3"] .session-item-main') as HTMLElement);
+      await (await messageList()).findByText("SOR paper plan");
+    }
+
+    it("clicking Request Changes shows a banner naming the plan and focuses the composer", async () => {
+      const user = await signIn();
+      await openPlanSession(user);
+
+      await user.click(screen.getByRole("button", { name: /request changes/i }));
+
+      expect(screen.getByText('Requesting changes to "SOR paper plan"')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/ask newton/i)).toHaveFocus();
+    });
+
+    it("Cancel on the banner dismisses it without sending anything", async () => {
+      const user = await signIn();
+      await openPlanSession(user);
+
+      await user.click(screen.getByRole("button", { name: /request changes/i }));
+      expect(screen.getByText('Requesting changes to "SOR paper plan"')).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByText('Requesting changes to "SOR paper plan"')).not.toBeInTheDocument();
+    });
+
+    it("sending the requested changes clears the banner", async () => {
+      const user = await signIn();
+      await openPlanSession(user);
+      await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+
+      await user.click(screen.getByRole("button", { name: /request changes/i }));
+      const textarea = screen.getByPlaceholderText(/ask newton/i);
+      await user.type(textarea, "Add a related work section");
+      await user.keyboard("{Enter}");
+
+      expect(screen.queryByText('Requesting changes to "SOR paper plan"')).not.toBeInTheDocument();
     });
   });
 

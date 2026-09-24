@@ -156,6 +156,7 @@ describe("ArtifactPlanCard", () => {
       );
 
       await user.click(screen.getByRole("button", { name: /change it/i }));
+      expect(onRequestChanges).toHaveBeenCalledWith("Projectile range explorer");
       expect(onRequestChanges).toHaveBeenCalledTimes(1);
       expect(onApprove).not.toHaveBeenCalled();
     });

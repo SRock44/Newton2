@@ -82,6 +82,7 @@ describe("ChatPane — options/paper-plan wiring across the full message list", 
     renderPane([{ role: "assistant", content: "```paper-plan\n" + PLAN_A + "\n```" }], { onFocusComposer });
 
     await user.click(screen.getByRole("button", { name: /request changes/i }));
+    expect(onFocusComposer).toHaveBeenCalledWith("Plan A");
     expect(onFocusComposer).toHaveBeenCalledTimes(1);
   });
 

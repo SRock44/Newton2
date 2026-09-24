@@ -170,6 +170,10 @@ function App() {
   // without ever touching messages/the original conversation.
   const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  // A paper/artifact plan's title, non-null right after "Request Changes"/"Change it"
+  // was clicked on it — purely a visible acknowledgement (Composer's banner) that the
+  // student is now typing a change request, not a fresh message. See handleFocusComposer.
+  const [requestingChangesFor, setRequestingChangesFor] = useState<string | null>(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>("closed");
@@ -537,6 +541,7 @@ function App() {
   useEffect(() => {
     setEditingMessage(null);
     setEditError(null);
+    setRequestingChangesFor(null);
   }, [activeSessionId]);
 
   // Load message history whenever the active session changes.
@@ -940,6 +945,10 @@ function App() {
       });
       setEditingMessage(null);
     }
+    // A message is actually being sent now — whatever prompted "Request Changes" is
+    // answered by this exact text, so the banner's job is done (same moment editing's
+    // own state above gets cleared).
+    setRequestingChangesFor(null);
 
     // The user's message AND an immediate "Newton is thinking" placeholder land in the
     // same synchronous update, before any WebSocket frame can possibly arrive -- so
@@ -998,8 +1007,13 @@ function App() {
     setEditError(null);
   }
 
-  function handleFocusComposer() {
+  function handleFocusComposer(title: string) {
+    setRequestingChangesFor(title);
     composerRef.current?.focus();
+  }
+
+  function handleCancelRequestChanges() {
+    setRequestingChangesFor(null);
   }
 
   function handleStop() {
@@ -1344,6 +1358,8 @@ function App() {
                       editing={editingMessage}
                       onCancelEdit={handleCancelEdit}
                       editError={editError}
+                      requestingChangesFor={requestingChangesFor}
+                      onCancelRequestChanges={handleCancelRequestChanges}
                     />
                   </div>
                   {chatDocumentPanel && (

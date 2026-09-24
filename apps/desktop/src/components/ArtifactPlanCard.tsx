@@ -96,8 +96,10 @@ interface ArtifactPlanCardProps {
   json: string;
   /** Sends the fixed "Build it" confirmation message. */
   onApprove: (text: string) => void;
-  /** Focuses the composer for "Change it" — sends nothing itself. */
-  onRequestChanges: () => void;
+  /** Focuses the composer for "Change it" — sends nothing itself. Called with this
+   * plan's title, so the composer can show which plan changes are being requested
+   * for (same convention as PaperPlanCard.tsx). */
+  onRequestChanges: (title: string) => void;
   /** The plain text of the chat message right after this one, if any — the same prop
    * OptionsPicker/StepCheck/Checkpoint use. Its mere existence means this card was
    * already acted on, so the actions render locked even after a remount or a reload.
@@ -138,7 +140,7 @@ function ArtifactPlanCard({ json, onApprove, onRequestChanges, answeredWith }: A
           <button type="button" className="btn-primary" onClick={handleBuild}>
             Build it
           </button>
-          <button type="button" className="btn-secondary" onClick={onRequestChanges}>
+          <button type="button" className="btn-secondary" onClick={() => onRequestChanges(plan.title)}>
             Change it
           </button>
         </div>

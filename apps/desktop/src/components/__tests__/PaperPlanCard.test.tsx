@@ -100,6 +100,9 @@ describe("PaperPlanCard", () => {
       );
 
       await user.click(screen.getByRole("button", { name: /request changes/i }));
+      // Called with the plan's own title, so the composer can show which plan the
+      // student is now requesting changes to (see Composer.tsx's requestingChangesFor).
+      expect(onRequestChanges).toHaveBeenCalledWith("The Impact of Spaced Repetition on Retention");
       expect(onRequestChanges).toHaveBeenCalledTimes(1);
       expect(onApprove).not.toHaveBeenCalled();
     });
@@ -262,6 +265,7 @@ describe("MessageContent + paper-plan code fence", () => {
     render(<MessageContent content={content} onSend={vi.fn()} onFocusComposer={onFocusComposer} />);
 
     await user.click(screen.getByRole("button", { name: /request changes/i }));
+    expect(onFocusComposer).toHaveBeenCalledWith("The Impact of Spaced Repetition on Retention");
     expect(onFocusComposer).toHaveBeenCalledTimes(1);
   });
 

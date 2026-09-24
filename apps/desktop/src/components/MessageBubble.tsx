@@ -25,7 +25,7 @@ interface MessageBubbleProps {
    * sites/tests that never render one of those blocks don't need to pass it. */
   onSend?: (text: string) => void;
   /** Focuses the composer — for "paper-plan"'s "Request Changes" action. */
-  onFocusComposer?: () => void;
+  onFocusComposer?: (title: string) => void;
   /** The plain text of the chat message immediately following this one in the full
    * session history, if any — see OptionsPicker.tsx for what this is used for. */
   nextMessageContent?: string;

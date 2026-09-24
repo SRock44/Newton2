@@ -84,6 +84,16 @@ interface ComposerProps {
    * fail-loud-but-leave-everything-untouched spirit as this app's other destructive
    * actions (e.g. SettingsPanel's delete-account confirmation). */
   editError?: string | null;
+  /** A paper/artifact plan's title, non-null while "Request Changes"/"Change it" has
+   * just been clicked on it — set by App.tsx's handleFocusComposer, cleared once the
+   * student actually sends a message (or switches sessions). Purely a visible
+   * acknowledgement (a banner, same idea as `editing` below): unlike `editing`, this
+   * never touches the draft — the student still writes their own tweaks from scratch.
+   * The composer is ALSO focused (via the `focus` ref handle) the same moment this is
+   * set, so the textarea is already ready to type into, no extra click needed. */
+  requestingChangesFor?: string | null;
+  /** Dismisses the banner above without sending anything — see onCancelEdit. */
+  onCancelRequestChanges?: () => void;
 }
 
 const MAX_TEXTAREA_HEIGHT = 220;
@@ -116,6 +126,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     editing,
     onCancelEdit,
     editError,
+    requestingChangesFor,
+    onCancelRequestChanges,
   },
   ref,
 ) {
@@ -450,8 +462,12 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   }
 
   return (
-    <div className={`composer${editing ? " composer--editing" : ""}`}>
-      {editing && (
+    <div
+      className={`composer${editing ? " composer--editing" : ""}${
+        !editing && requestingChangesFor ? " composer--requesting-changes" : ""
+      }`}
+    >
+      {editing ? (
         <div className="composer-editing-banner" role="status">
           <span className="composer-editing-label">Editing message</span>
           {editError && <span className="composer-editing-error">{editError}</span>}
@@ -459,6 +475,15 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             Cancel
           </button>
         </div>
+      ) : (
+        requestingChangesFor && (
+          <div className="composer-editing-banner composer-request-changes-banner" role="status">
+            <span className="composer-editing-label">Requesting changes to "{requestingChangesFor}"</span>
+            <button type="button" className="composer-editing-cancel" onClick={onCancelRequestChanges}>
+              Cancel
+            </button>
+          </div>
+        )
       )}
       <div className="composer-controls">
         <div

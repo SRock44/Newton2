@@ -22,7 +22,7 @@ interface ChatPaneProps {
    * existing call sites/tests that never render one of those blocks don't need it. */
   onSend?: (text: string) => void;
   /** Focuses the composer — for "paper-plan"'s "Request Changes" action. */
-  onFocusComposer?: () => void;
+  onFocusComposer?: (title: string) => void;
   /** True only for a brand-new account that hasn't dismissed (or acted on) the
    * first-run welcome card yet — see App.tsx/lib/onboarding.ts. Only takes effect on an
    * actually-empty chat (see the render below): a returning student who happens to open
