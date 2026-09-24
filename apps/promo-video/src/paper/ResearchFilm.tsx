@@ -29,6 +29,7 @@ import {
   OLD_DOCS,
   PAPER_PDF,
   PAPER_TEX,
+  REVIEW_TOPIC,
   STUDENT,
   SYNOPSIS,
   TURNS,
@@ -48,6 +49,9 @@ const RP = T.reviewPanel;
 // rendered text layer for this run across however many <span>s it's split into; trimRectToInk
 // then trims each returned rect to the page's own painted pixels, so the highlight's exact
 // length no longer matters the way it once seemed to (see trimRectToInk's own comment).
+/** How long after clicking Ask Newton the AI topic label takes to come back (a real call is about a
+ * second) -- until then the banner honestly reads "your selection". */
+const TOPIC_LATENCY = 0.7;
 const REVIEW_HIGHLIGHT_SNIPPET = "they are systematically larger than the spectral-radius prediction";
 
 const asDoc = (d: { id: string; filename: string; mime_type: string; created_at: string; has_bibliography?: boolean }): FilmDoc => d;
@@ -276,6 +280,17 @@ function MainWindow({ t }: { t: number }) {
     M[1]!.preClick !== undefined && t >= M[1]!.preClick! && t < M[1]!.sendClick
       ? extractPlanTitle(TURNS[1]!.content)
       : null;
+  // "Ask Newton" was just clicked on the highlighted sentence: the real banner (Composer's
+  // selectionActivity) from that click until the question is sent -- first with "your
+  // selection" while the few-word AI label is still coming back, then the real label.
+  const selectionActivity =
+    t >= RP.askClick && t < M[3]!.sendClick
+      ? {
+          action: "ask" as const,
+          topic: t >= RP.askClick + TOPIC_LATENCY ? REVIEW_TOPIC : null,
+          working: false,
+        }
+      : null;
   const idle = !messages.length || t < M[1].sendClick;
   const beforeSend = M.every((m) => t < m.sendClick || t >= m.userAppear);
   const caretOn = beforeSend && (idle || typingNow) && Math.floor(t * 2) % 2 === 0 && t > T.composerClick - 0.5;
@@ -351,6 +366,7 @@ function MainWindow({ t }: { t: number }) {
                   pickerDocs={PICKER_DOCS}
                   attachments={attachments}
                   requestingChangesFor={requestingChangesFor}
+                  selectionActivity={selectionActivity}
                 />
               </div>
               {/* The real DocumentViewerPanel — opened from the document card write_research_paper's
@@ -520,7 +536,7 @@ export const ResearchFilm: React.FC = () => {
     // require the actual on-screen position to have stopped moving too, not just its ceiling.
     const height = () => {
       const base = Array.from(document.querySelectorAll<HTMLElement>(".chat-pane, .doc-detail-body, .doc-viewer-panel__body"))
-        .map((el) => `${el.scrollHeight}@${el.scrollTop}`)
+        .map((el) => `${el.scrollHeight}@${el.scrollTop}@${el.querySelector<HTMLElement>(".message-list")?.style.transform ?? ""}`)
         .join(",");
       // The highlight's own drawn width (after trimRectToInk, the same call the real drawing
       // code makes) folded into the fingerprint too, so "settled" also waits for the page's
@@ -564,22 +580,35 @@ export const ResearchFilm: React.FC = () => {
       const toolbar = toolbarRef.current;
       if (!root || !cur || !rip || !hlBox || !toolbar) return;
 
-      // The chat stays pinned to the bottom (instant, not the app's smooth scroll) — except while
-      // it pans across a freshly written plan card, from the card's top to its buttons.
+      // The chat stays pinned to the bottom -- except while it pans across a freshly written plan
+      // card, from the card's top to its buttons. Done with a transform on the message list, NOT
+      // by scrolling the pane: a programmatic scrollTop on a composited scroller inside this
+      // film's scaled/zoomed layers can be painted a whole message short of where the DOM says it
+      // is (a real, observed bug: the last ~5 s of the film, with the document panel open, showed
+      // the follow-up question with Newton's reply pushed below the fold even though scrollTop
+      // read as the maximum). A transform has no separate compositor scroll state to lag behind.
+      // The pane is `overflow-y: clip` (see promo.css) so nothing -- including ChatPane's own
+      // `scrollTop = scrollHeight` effect -- can scroll it out from under this.
       root.querySelectorAll<HTMLElement>(".chat-pane").forEach((el) => {
-        const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
-        let top = el.scrollHeight;
+        const list = el.querySelector<HTMLElement>(".message-list");
+        if (!list) return;
+        list.style.transform = ""; // measure the untranslated layout
+        el.scrollTop = 0;
+        const paneRect = el.getBoundingClientRect();
+        const paneScale = el.offsetWidth ? paneRect.width / el.offsetWidth : 1;
+        const contentHeight =
+          (list.getBoundingClientRect().bottom - paneRect.top) / paneScale + parseFloat(getComputedStyle(el).paddingBottom || "0");
+        const maxTop = Math.max(0, contentHeight - el.clientHeight);
+        let top = maxTop;
         const m = M.find((mk) => mk.planPan && t >= mk.planPan.from && t < mk.planPan.to);
         const cards = el.querySelectorAll<HTMLElement>(".paper-plan-card");
         if (m && cards.length) {
           const card = cards[cards.length - 1];
-          const pr = el.getBoundingClientRect();
-          const s = el.offsetWidth ? pr.width / el.offsetWidth : 1;
-          const cardTop = (card.getBoundingClientRect().top - pr.top) / s + el.scrollTop - 10;
+          const cardTop = (card.getBoundingClientRect().top - paneRect.top) / paneScale - 10;
           const f = easeInOut(clamp01((t - m.planPan!.from) / (m.planPan!.to - m.planPan!.from)));
           top = lerp(Math.min(cardTop, maxTop), maxTop, f);
         }
-        el.scrollTo({ top, behavior: "instant" });
+        list.style.transform = `translateY(${-Math.round(top)}px)`;
       });
 
       // The highlighted sentence in the real, pdf.js-rendered PDF, and the toolbar over it —
@@ -659,6 +688,7 @@ export const ResearchFilm: React.FC = () => {
 
   return (
     <div
+      className="promo-paper"
       style={
         {
           width: 1920,

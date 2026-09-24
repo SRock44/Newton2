@@ -665,6 +665,83 @@ describe("Composer", () => {
     });
   });
 
+  // A passage highlighted in the document viewer being used (Explain / Define / Summarize /
+  // Ask Newton): the same banner slot as editing / request-changes, so the student can SEE
+  // their click registered and what it's acting on. App.tsx owns the state (see
+  // App.test.tsx's end-to-end flow); this covers Composer's own piece in isolation.
+  describe("selection activity (highlight in the document viewer)", () => {
+    function renderWith(props: Partial<React.ComponentProps<typeof Composer>>) {
+      return render(<Composer onSend={vi.fn()} disabled={false} token="test-token" sessionId="test-session" {...props} />);
+    }
+
+    it("Ask Newton: shows 'Asking Newton about <topic>' with a Cancel, and leaves the draft alone", () => {
+      renderWith({ selectionActivity: { action: "ask", topic: "the SOR iteration gap", working: false } });
+      expect(screen.getByText("Asking Newton about the SOR iteration gap")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toHaveValue("");
+    });
+
+    it("says 'your selection' until the AI topic label arrives", () => {
+      renderWith({ selectionActivity: { action: "ask", topic: null, working: false } });
+      expect(screen.getByText("Asking Newton about your selection…")).toBeInTheDocument();
+    });
+
+    it("Define while working: shows 'Defining <topic>…' with a spinner and a Dismiss", () => {
+      const { container } = renderWith({ selectionActivity: { action: "define", topic: "spectral radius", working: true } });
+      expect(screen.getByText("Defining spectral radius…")).toBeInTheDocument();
+      expect(container.querySelector(".composer-selection-spinner")).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    });
+
+    it("Define once done: 'Newton defined <topic>', no spinner", () => {
+      const { container } = renderWith({ selectionActivity: { action: "define", topic: "spectral radius", working: false } });
+      expect(screen.getByText("Newton defined spectral radius")).toBeInTheDocument();
+      expect(container.querySelector(".composer-selection-spinner")).toBeNull();
+    });
+
+    it("Cancel/Dismiss calls onDismissSelectionActivity without sending anything or touching the draft", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      const onDismiss = vi.fn();
+      renderWith({
+        onSend,
+        selectionActivity: { action: "ask", topic: "x", working: false },
+        onDismissSelectionActivity: onDismiss,
+      });
+
+      await user.type(screen.getByRole("textbox"), "my question");
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+      expect(onSend).not.toHaveBeenCalled();
+      expect(screen.getByRole("textbox")).toHaveValue("my question");
+    });
+
+    it("editing wins the banner slot, then this, then request-changes — never two banners at once", () => {
+      const { rerender } = renderWith({
+        editing: { id: "m1", content: "original" },
+        selectionActivity: { action: "ask", topic: "x", working: false },
+        requestingChangesFor: "SOR paper plan",
+      });
+      expect(screen.getByText("Editing message")).toBeInTheDocument();
+      expect(screen.queryByText(/Asking Newton about/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Requesting changes to/)).not.toBeInTheDocument();
+
+      rerender(
+        <Composer
+          onSend={vi.fn()}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          selectionActivity={{ action: "ask", topic: "x", working: false }}
+          requestingChangesFor="SOR paper plan"
+        />,
+      );
+      expect(screen.getByText("Asking Newton about x")).toBeInTheDocument();
+      expect(screen.queryByText(/Requesting changes to/)).not.toBeInTheDocument();
+    });
+  });
+
   // "Request Changes" (PaperPlanCard) / "Change it" (ArtifactPlanCard): a purely visible
   // acknowledgement banner, App.tsx-owned (see App.test.tsx for the end-to-end click ->
   // banner -> send-clears-it flow) — this covers Composer's own piece in isolation.

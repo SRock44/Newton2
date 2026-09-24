@@ -86,3 +86,62 @@ async def annotate_selection(selected_text: str, context: str, action: AnnotateA
         return text.strip()
 
     return await asyncio.wait_for(_call(), timeout=ANNOTATE_TIMEOUT_SECONDS)
+
+
+# --- Selection topic label -----------------------------------------------------------
+# The short "Asking Newton about <x>" / "Defining <x>" label the desktop app shows above
+# the chatbox while a highlighted passage is being acted on (see DocumentViewerPanel's
+# onSelectionActivity). A label for a UI chip, not an answer, so it is deliberately tiny:
+# a few words, one direct provider call, same unbilled free-tier routing as annotate_selection.
+TOPIC_TIMEOUT_SECONDS = 10.0
+# A highlight can be a whole page; the model only needs the gist to name what it's about.
+MAX_TOPIC_INPUT_CHARS = 3000
+# Hard ceiling on what reaches a UI chip, whatever the model returns.
+MAX_TOPIC_CHARS = 80
+
+_TOPIC_SYSTEM_PROMPT = (
+    "You label highlighted passages for a study app. The student highlighted some text and "
+    "the app needs a very short label for what it is about, shown as 'Asking Newton about "
+    "<label>'. Reply with ONLY that label: a lowercase noun phrase of at most 7 words, no "
+    "quotes, no trailing punctuation, no leading verb or 'the passage'. If the highlight "
+    "covers several distinct topics, name them together briefly (e.g. 'iteration counts and "
+    "convergence rates'). Never answer or explain the passage itself."
+)
+
+
+def _clean_topic(raw: str) -> str:
+    """One line, no wrapping quotes/markdown, no trailing punctuation, capped -- whatever
+    the model actually returned, this is all that ever reaches a UI chip."""
+    lines = [line.strip() for line in raw.strip().splitlines() if line.strip()]
+    topic = lines[0] if lines else ""
+    # Wrapping quotes/markdown and trailing punctuation can nest ("**label**:"), so peel
+    # both until nothing changes rather than in one fixed order.
+    while True:
+        peeled = topic.strip("\"'`*_ ").rstrip(".:;,!?— -").strip()
+        if peeled == topic:
+            break
+        topic = peeled
+    if len(topic) > MAX_TOPIC_CHARS:
+        topic = topic[: MAX_TOPIC_CHARS - 1].rstrip() + "…"
+    return topic
+
+
+async def summarize_selection_topic(selected_text: str) -> str:
+    """Runs one direct provider call and returns a short topic label for `selected_text`
+    ("" if the model gave nothing usable -- the caller falls back to a plain snippet).
+    Raises on provider failure/timeout, like annotate_selection; the frontend treats any
+    failure as "use the snippet fallback", never as an error worth showing."""
+    provider, model = get_provider()
+    turns = [
+        ChatTurn(role="system", content=_TOPIC_SYSTEM_PROMPT),
+        ChatTurn(role="user", content=f"Highlighted text:\n{selected_text[:MAX_TOPIC_INPUT_CHARS]}"),
+    ]
+
+    async def _call() -> str:
+        text = ""
+        async for event in provider.stream_chat(turns, model):
+            if isinstance(event, TextDelta):
+                text += event.text
+        return text
+
+    return _clean_topic(await asyncio.wait_for(_call(), timeout=TOPIC_TIMEOUT_SECONDS))

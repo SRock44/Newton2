@@ -267,6 +267,21 @@ export async function annotateDocumentSelection(
   return data.text as string;
 }
 
+/** A few-word AI label for what a highlighted passage is about — the "<x>" in the composer
+ * banner's "Asking Newton about <x>" / "Defining <x>" (see lib/selectionActivity.ts). Callers
+ * treat ANY failure as "use lib/selectionActivity.ts's fallbackTopic instead": it's a
+ * nicety on top of an action that has already started, never worth an error message. */
+export async function getSelectionTopic(token: string, documentId: string, selectedText: string): Promise<string> {
+  const res = await fetch(`${API_URL}/documents/${documentId}/selection-topic`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ selected_text: selectedText }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't summarize that selection."));
+  const data = await res.json();
+  return typeof data.topic === "string" ? data.topic : "";
+}
+
 export async function updateDocumentContent(
   token: string,
   documentId: string,

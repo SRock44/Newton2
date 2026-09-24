@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import Toggle from "../../desktop/src/components/Toggle";
+import { selectionActivityLabel } from "../../desktop/src/lib/selectionActivity";
+import type { SelectionActivity } from "../../desktop/src/lib/selectionActivity";
 
 export interface AttachPickerDoc {
   name: string;
@@ -43,6 +45,7 @@ export function ScriptedComposer({
   attachment,
   attachments,
   requestingChangesFor,
+  selectionActivity,
 }: {
   text: string;
   caretOn: boolean;
@@ -58,17 +61,31 @@ export function ScriptedComposer({
    * the real Composer's `requestingChangesFor` banner (same classnames), shown here so
    * the film demonstrates the real acknowledgement rather than a silent focus. */
   requestingChangesFor?: string | null;
+  /** What a highlighted passage in the document viewer is being used for -- the real Composer's
+   * `selectionActivity` banner (same classnames and label), so the film shows the real
+   * "Asking Newton about <x>" indicator rather than a silent quote appearing. */
+  selectionActivity?: SelectionActivity | null;
 }) {
   const chips = attachments ?? (attachment ? [attachment] : []);
   return (
     <div className="composer">
-      {requestingChangesFor && (
-        <div className="composer-editing-banner" role="status">
-          <span className="composer-editing-label">Requesting changes to "{requestingChangesFor}"</span>
+      {selectionActivity ? (
+        <div className="composer-editing-banner composer-selection-banner" role="status">
+          {selectionActivity.working && <span className="composer-selection-spinner" aria-hidden="true" />}
+          <span className="composer-editing-label">{selectionActivityLabel(selectionActivity)}</span>
           <button type="button" className="composer-editing-cancel" tabIndex={-1}>
-            Cancel
+            {selectionActivity.action === "ask" ? "Cancel" : "Dismiss"}
           </button>
         </div>
+      ) : (
+        requestingChangesFor && (
+          <div className="composer-editing-banner" role="status">
+            <span className="composer-editing-label">Requesting changes to "{requestingChangesFor}"</span>
+            <button type="button" className="composer-editing-cancel" tabIndex={-1}>
+              Cancel
+            </button>
+          </div>
+        )
       )}
       <div className="composer-controls">
         <div className="composer-learn-mode-toggle" data-promo="learn">

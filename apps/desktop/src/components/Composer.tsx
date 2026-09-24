@@ -2,6 +2,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import type { ChangeEvent, KeyboardEvent } from "react";
 import { ApiError, getBillingStatus, listDocuments, setLearnMode, uploadChatImage, uploadDocument } from "../api";
 import type { UploadedDocument } from "../types";
+import { selectionActivityLabel } from "../lib/selectionActivity";
+import type { SelectionActivity } from "../lib/selectionActivity";
 import { useVoiceRecorder } from "../lib/useVoiceRecorder";
 import Toggle from "./Toggle";
 
@@ -94,6 +96,15 @@ interface ComposerProps {
   requestingChangesFor?: string | null;
   /** Dismisses the banner above without sending anything — see onCancelEdit. */
   onCancelRequestChanges?: () => void;
+  /** What a passage highlighted in the document viewer is being used for — "Asking Newton
+   * about <x>", "Defining <x>…", "Newton defined <x>" — shown as a banner in the same slot and
+   * style as the two above, so the student can SEE that Explain / Define / Summarize / Ask
+   * Newton registered and what it's acting on. Owned by App.tsx (set by DocumentViewerPanel);
+   * this only displays it. Never touches the draft. */
+  selectionActivity?: SelectionActivity | null;
+  /** Dismisses the banner without sending anything (the result itself, if any, stays where
+   * it is in the document viewer). */
+  onDismissSelectionActivity?: () => void;
 }
 
 const MAX_TEXTAREA_HEIGHT = 220;
@@ -128,6 +139,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     editError,
     requestingChangesFor,
     onCancelRequestChanges,
+    selectionActivity,
+    onDismissSelectionActivity,
   },
   ref,
 ) {
@@ -473,6 +486,14 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           {editError && <span className="composer-editing-error">{editError}</span>}
           <button type="button" className="composer-editing-cancel" onClick={handleCancelEdit}>
             Cancel
+          </button>
+        </div>
+      ) : selectionActivity ? (
+        <div className="composer-editing-banner composer-selection-banner" role="status">
+          {selectionActivity.working && <span className="composer-selection-spinner" aria-hidden="true" />}
+          <span className="composer-editing-label">{selectionActivityLabel(selectionActivity)}</span>
+          <button type="button" className="composer-editing-cancel" onClick={onDismissSelectionActivity}>
+            {selectionActivity.action === "ask" ? "Cancel" : "Dismiss"}
           </button>
         </div>
       ) : (

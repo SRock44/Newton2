@@ -67,6 +67,11 @@ export const APPROVE_TEXT = "Looks good — go ahead and write it.";
 export const REVIEW_QUOTE =
   "they are systematically larger than the spectral-radius prediction: the predicted counts are 50, 97, and 191, giving measured-to-predicted ratios 1.30, 1.33, and 1.37.";
 
+/** The few-word AI label the app shows in its "Asking Newton about <x>" banner for the highlighted
+ * sentence -- the real output of the backend's summarize_selection_topic (the function behind
+ * POST /documents/{id}/selection-topic), recorded by paper/capture.py's `topic` stage. */
+export const REVIEW_TOPIC = (captured as unknown as { selection_topic: { topic: string } }).selection_topic.topic;
+
 /** The turn pairs, by role. Turn k = (user, assistant). */
 export const turn = (k: number) => ({ user: TURNS[2 * k], assistant: TURNS[2 * k + 1] });
 

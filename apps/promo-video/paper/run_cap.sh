@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: run_cap.sh setup | say "text" [--attach] [--timeout N] | review [--timeout N] | fetch-paper | truncate N | show | dump | restore [--delete-docs]
+# Usage: run_cap.sh setup | say "text" [--attach] [--timeout N] | topic "text" | fetch-paper | truncate N | show | dump | restore [--delete-docs]
 # Streams capture.py to the api container on the dev box.
 # Needs NEWTON_DEV_HOST=user@host and (optionally) NEWTON_DEV_KEY=path/to/ssh/key.
 # `stage` copies the two source documents into the container first: ./run_cap.sh stage
@@ -15,17 +15,6 @@ if [ "$1" = "stage" ]; then
   echo staged
   exit 0
 fi
-if [ "$1" = "stage-pdf" ]; then
-  # copies the already-generated paper PDF back into the container so `review` can
-  # re-upload it (the account's documents were deleted by `restore --delete-docs`).
-  f=$(ls generated/*.pdf | head -1)
-  base=$(basename "$f")
-  ssh -i "$KEY" -o BatchMode=yes "$HOST" "docker exec newton2-api-1 mkdir -p /tmp/paper_src"
-  scp -i "$KEY" -o BatchMode=yes "$f" "$HOST:/tmp/paper_pdf_stage" >/dev/null
-  ssh -i "$KEY" -o BatchMode=yes "$HOST" "docker cp /tmp/paper_pdf_stage 'newton2-api-1:/tmp/paper_src/$base' && rm /tmp/paper_pdf_stage"
-  echo "staged $base"
-  exit 0
-fi
 if [ "$1" = "pull" ]; then
   # copy the generated paper files out of the container into ./out
   mkdir -p out
@@ -36,8 +25,8 @@ if [ "$1" = "pull" ]; then
   exit 0
 fi
 args=()
-if [ "$1" = "say" ]; then
-  args=(say "$(printf '%s' "$2" | base64 -w0)")
+if [ "$1" = "say" ] || [ "$1" = "topic" ]; then
+  args=("$1" "$(printf '%s' "$2" | base64 -w0)")
   shift 2
 else
   args=("$1"); shift

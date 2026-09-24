@@ -93,5 +93,6 @@ export const CAPTIONS = [
   { from: M[2].end - 0.1, to: RP.chipClick - 0.3, text: "The finished PDF arrives as a real, clickable file — right in the chat." },
   { from: RP.chipClick - 0.1, to: RP.highlightStart - 0.2, text: "Open it without leaving the conversation." },
   { from: RP.highlightStart, to: RP.askClick + 0.3, text: "Highlight anything in it, and ask." },
+  { from: RP.askClick + 0.3, to: M[3].sendClick - 0.2, text: "Newton shows exactly what you're asking about." },
   { from: M[3].asstAppear, to: T.viewerOut, text: "Newton answers from the exact sentence you pointed at." },
 ];

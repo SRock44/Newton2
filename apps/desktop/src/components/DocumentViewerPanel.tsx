@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { ApiError, annotateDocumentSelection, documentRawUrl, getDocumentContent } from "../api";
+import { ApiError, annotateDocumentSelection, documentRawUrl, getDocumentContent, getSelectionTopic } from "../api";
 import { fetchBytes, filtersForFilename, saveBytesToDisk } from "../lib/download";
 import { isPreviewableAsPdf } from "../lib/fileType";
 import {
@@ -12,6 +12,8 @@ import {
   getDocPanelWidth,
   setDocPanelWidth,
 } from "../lib/preferences";
+import { fallbackTopic } from "../lib/selectionActivity";
+import type { SelectionActivity, SelectionActivityAction } from "../lib/selectionActivity";
 import { usePanelResize } from "../lib/usePanelResize";
 import type { NoteAnnotateAction } from "../types";
 import MessageContent from "./MessageContent";
@@ -65,6 +67,12 @@ interface DocumentViewerPanelProps {
    * anything on the student's behalf" rule as every other attach flow in this app: the
    * student still writes and sends their own instruction. */
   onAskAboutSelection: (excerpt: string) => void;
+  /** What the highlighted passage is currently being used for — Explain / Define / Summarize
+   * (working, then done) or Ask Newton — so App.tsx can show it above the chatbox
+   * ("Defining <x>…", "Asking Newton about <x>"; see lib/selectionActivity.ts). `null` clears
+   * it. The <x> starts null and arrives a moment later, once a few-word AI label for the
+   * highlight comes back. */
+  onSelectionActivity?: (activity: SelectionActivity | null) => void;
 }
 
 /** Opens a document ALONGSIDE the active chat (split, like the chat's own composer
@@ -78,7 +86,14 @@ interface DocumentViewerPanelProps {
  * Explain/Define/Summarize this app already gives a note or a document (see
  * DocumentsPanel.tsx's own selection toolbar, same backend call), plus "Ask Newton" —
  * see onAskAboutSelection above. */
-function DocumentViewerPanel({ token, documentId, initialFilename, onClose, onAskAboutSelection }: DocumentViewerPanelProps) {
+function DocumentViewerPanel({
+  token,
+  documentId,
+  initialFilename,
+  onClose,
+  onAskAboutSelection,
+  onSelectionActivity,
+}: DocumentViewerPanelProps) {
   const resize = usePanelResize({
     initial: getDocPanelWidth(),
     defaultWidth: DOC_PANEL_DEFAULT_WIDTH,
@@ -116,6 +131,48 @@ function DocumentViewerPanel({ token, documentId, initialFilename, onClose, onAs
   const [annotateError, setAnnotateError] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
+  // The indicator above the chatbox (see onSelectionActivity). Kept in refs, not state: it is
+  // handed straight up to App.tsx, and a topic label that arrives late must update whatever is
+  // CURRENT, not the closure of the click that asked for it — `activityRunRef` numbers each
+  // activity so a stale label from a superseded one is dropped.
+  const onActivityRef = useRef(onSelectionActivity);
+  onActivityRef.current = onSelectionActivity;
+  const activityRef = useRef<SelectionActivity | null>(null);
+  const activityRunRef = useRef(0);
+
+  function emitActivity(next: SelectionActivity | null) {
+    activityRef.current = next;
+    onActivityRef.current?.(next);
+  }
+
+  /** Starts an activity and asks for its topic label alongside (never in front of) the action
+   * itself; any failure falls back to a quoted snippet of the highlight. Returns the run id. */
+  function beginActivity(action: SelectionActivityAction, selected: string, working: boolean): number {
+    const run = ++activityRunRef.current;
+    emitActivity({ action, topic: null, working });
+    getSelectionTopic(token, documentId, selected)
+      .then((topic) => topic.trim() || fallbackTopic(selected))
+      .catch(() => fallbackTopic(selected))
+      .then((topic) => {
+        if (activityRunRef.current !== run || !activityRef.current) return;
+        emitActivity({ ...activityRef.current, topic });
+      });
+    return run;
+  }
+
+  /** Clears an Explain / Define / Summarize indicator — but never an "ask" one: that quote is
+   * still sitting in the composer waiting for the student's question, whatever happens to
+   * this panel or its popover. */
+  function endAnnotateActivity() {
+    if (activityRef.current && activityRef.current.action !== "ask") {
+      activityRunRef.current++;
+      emitActivity(null);
+    }
+  }
+
+  // Closing the panel takes the popover with it, so its indicator goes too.
+  useEffect(() => () => endAnnotateActivity(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isPdf = isPreviewableAsPdf({ filename, mime_type: null });
 
   // Reload whenever a different document is opened into this same panel (clicking a
@@ -127,6 +184,7 @@ function DocumentViewerPanel({ token, documentId, initialFilename, onClose, onAs
     setError(null);
     setSelectionToolbar(null);
     setAnnotationResult(null);
+    endAnnotateActivity();
     setZoom(1);
     setLoading(true);
     let cancelled = false;
@@ -165,6 +223,7 @@ function DocumentViewerPanel({ token, documentId, initialFilename, onClose, onAs
     const rect = selection.getRangeAt(0).getBoundingClientRect();
     setSelectionToolbar({ text: selected, top: rect.top, left: rect.left });
     setAnnotationResult(null);
+    endAnnotateActivity();
   }
 
   async function handleAnnotate(action: NoteAnnotateAction) {
@@ -173,12 +232,16 @@ function DocumentViewerPanel({ token, documentId, initialFilename, onClose, onAs
     setAnnotating(true);
     setAnnotateError(null);
     setSelectionToolbar(null);
+    const run = beginActivity(action, selected, true);
     try {
       const context = (text ?? "").slice(0, ANNOTATE_CONTEXT_CHARS);
       const generated = await annotateDocumentSelection(token, documentId, selected, context, action);
       setAnnotationResult({ action, text: generated, top, left });
+      if (activityRunRef.current === run && activityRef.current) emitActivity({ ...activityRef.current, working: false });
     } catch (err) {
       setAnnotateError(err instanceof ApiError ? err.message : "Couldn't get a response for that selection.");
+      // The error banner below says what went wrong; don't leave a stale "Defining…" up.
+      if (activityRunRef.current === run) emitActivity(null);
     } finally {
       setAnnotating(false);
     }
@@ -186,6 +249,7 @@ function DocumentViewerPanel({ token, documentId, initialFilename, onClose, onAs
 
   function handleAsk() {
     if (!selectionToolbar) return;
+    beginActivity("ask", selectionToolbar.text, false);
     onAskAboutSelection(selectionToolbar.text);
     setSelectionToolbar(null);
   }
@@ -308,7 +372,10 @@ function DocumentViewerPanel({ token, documentId, initialFilename, onClose, onAs
                   type="button"
                   className="doc-annotate-popover__close"
                   aria-label="Dismiss"
-                  onClick={() => setAnnotationResult(null)}
+                  onClick={() => {
+                    setAnnotationResult(null);
+                    endAnnotateActivity();
+                  }}
                 >
                   ×
                 </button>

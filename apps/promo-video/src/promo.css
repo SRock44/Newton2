@@ -50,6 +50,13 @@ html, body { margin: 0; background: #0b1120; }
    shape a real, line-wrapped text selection would take. */
 .promo-doc-highlight { position: absolute; background: rgba(255, 209, 102, 0.55); border-radius: 2px; }
 
+/* The research film pins its chat to the bottom with a transform on .message-list (see
+   ResearchFilm.tsx's place()), so the pane itself must never scroll -- `clip`, unlike `hidden`, also
+   refuses programmatic scrolling (ChatPane's own scrollTop = scrollHeight effect). */
+/* min-height: 0 because `clip`, unlike `auto`, is not a scroll container, so a flex item no longer
+   shrinks below its content on its own. */
+.promo-paper .chat-pane { overflow-y: clip; min-height: 0; }
+
 .promo-caption {
   position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
   padding: 12px 26px; border-radius: 999px; white-space: nowrap;

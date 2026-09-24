@@ -567,3 +567,86 @@ async def test_annotate_document_404s_for_another_users_document(someone_elses_d
         json={"selected_text": "x", "context": "y", "action": "explain"},
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /documents/{id}/selection-topic -- the few-word label behind the desktop app's
+# "Asking Newton about <x>" / "Defining <x>" indicator above the chatbox.
+# ---------------------------------------------------------------------------
+
+
+async def test_selection_topic_router_returns_the_cleaned_label(db_session, monkeypatch):
+    """Calls the router coroutine in-process (same reasoning as the annotate test above:
+    the hermetic http_client hits a separate uvicorn subprocess a monkeypatch can't reach)."""
+    from app.routers import documents as documents_router
+
+    user = User(keycloak_sub=f"test-doc-topic-{uuid.uuid4()}")
+    db_session.add(user)
+    await db_session.flush()
+    document = Document(user_id=user.id, filename="paper.pdf", mime_type="application/pdf", minio_key="unused/doc-topic")
+    db_session.add(document)
+    await db_session.commit()
+
+    try:
+        fake = ScriptedToolCallingProvider([['"iteration counts and convergence rates."']])
+        monkeypatch.setattr(notes_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+        result = await documents_router.selection_topic(
+            document.id,
+            documents_router.DocumentSelectionTopicRequest(selected_text="Jacobi needs O(n^2) iterations; SOR needs O(n)."),
+            claims={"sub": user.keycloak_sub},
+            db=db_session,
+        )
+
+        assert result == {"topic": "iteration counts and convergence rates"}
+        assert [t.role for t in fake.calls_seen[0]["messages"]] == ["system", "user"]
+    finally:
+        await documents_service.delete_document(db_session, document)
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.commit()
+
+
+async def test_selection_topic_endpoint_wires_up_over_http(http_client, auth_headers, db_session):
+    upload_resp = await http_client.post(
+        "/documents/upload",
+        headers=auth_headers,
+        files={"file": ("topic-notes.txt", b"The derivative measures instantaneous rate of change.", "text/plain")},
+    )
+    document_id = upload_resp.json()["id"]
+
+    resp = await http_client.post(
+        f"/documents/{document_id}/selection-topic",
+        headers=auth_headers,
+        json={"selected_text": "the derivative"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert isinstance(resp.json()["topic"], str)
+
+    document = await db_session.get(Document, uuid.UUID(document_id))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_selection_topic_rejects_an_empty_selection(http_client, auth_headers, db_session):
+    upload_resp = await http_client.post(
+        "/documents/upload",
+        headers=auth_headers,
+        files={"file": ("topic-empty.txt", b"some content", "text/plain")},
+    )
+    document_id = upload_resp.json()["id"]
+
+    resp = await http_client.post(
+        f"/documents/{document_id}/selection-topic", headers=auth_headers, json={"selected_text": ""}
+    )
+    assert resp.status_code == 422
+
+    document = await db_session.get(Document, uuid.UUID(document_id))
+    await documents_service.delete_document(db_session, document)
+
+
+async def test_selection_topic_404s_for_another_users_document(someone_elses_document, http_client, auth_headers):
+    resp = await http_client.post(
+        f"/documents/{someone_elses_document.id}/selection-topic",
+        headers=auth_headers,
+        json={"selected_text": "x"},
+    )
+    assert resp.status_code == 404

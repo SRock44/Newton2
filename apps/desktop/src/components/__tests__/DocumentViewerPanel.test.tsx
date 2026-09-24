@@ -11,6 +11,7 @@ vi.mock("../../api", async () => {
     ...actual,
     getDocumentContent: vi.fn(),
     annotateDocumentSelection: vi.fn(),
+    getSelectionTopic: vi.fn(),
   };
 });
 vi.mock("../../lib/download", () => ({
@@ -46,6 +47,7 @@ vi.mock("pdfjs-dist", () => {
 
 const getDocumentContent = api.getDocumentContent as ReturnType<typeof vi.fn>;
 const annotateDocumentSelection = api.annotateDocumentSelection as ReturnType<typeof vi.fn>;
+const getSelectionTopic = api.getSelectionTopic as ReturnType<typeof vi.fn>;
 const fetchBytes = download.fetchBytes as ReturnType<typeof vi.fn>;
 
 function selectTextIn(node: Element) {
@@ -63,6 +65,7 @@ function selectTextIn(node: Element) {
 beforeEach(() => {
   getDocumentContent.mockReset();
   annotateDocumentSelection.mockReset();
+  getSelectionTopic.mockReset().mockResolvedValue("");
   fetchBytes.mockReset();
 });
 
@@ -179,5 +182,164 @@ describe("DocumentViewerPanel", () => {
 
     expect(onAsk).toHaveBeenCalledWith("The residual should be under 1e-8.");
     expect(annotateDocumentSelection).not.toHaveBeenCalled();
+  });
+});
+
+
+// The indicator above the chatbox: DocumentViewerPanel reports what a highlight is being used
+// for (Explain / Define / Summarize working then done, or Ask Newton), plus a few-word AI
+// label for it that arrives a moment later. App.tsx/Composer.tsx render it; see
+// lib/selectionActivity.ts.
+describe("DocumentViewerPanel — selection activity", () => {
+  const SENTENCE = "The residual should be under 1e-8.";
+
+  async function renderAndHighlight(onSelectionActivity: (a: unknown) => void, onAsk = vi.fn()) {
+    getDocumentContent.mockResolvedValue({ content: SENTENCE, editable: false });
+    const view = render(
+      <DocumentViewerPanel
+        token="tok"
+        documentId="doc-1"
+        initialFilename="a.md"
+        onClose={vi.fn()}
+        onAskAboutSelection={onAsk}
+        onSelectionActivity={onSelectionActivity}
+      />,
+    );
+    const body = await screen.findByTestId("doc-viewer-text");
+    selectTextIn(await within(body).findByText(/residual should be under/));
+    fireEvent.mouseUp(body);
+    return { ...view, body };
+  }
+
+  it("Ask Newton reports an 'ask' activity, then fills in the AI topic label when it arrives", async () => {
+    let resolveTopic: (t: string) => void = () => {};
+    getSelectionTopic.mockReturnValue(new Promise<string>((r) => (resolveTopic = r)));
+    const onActivity = vi.fn();
+    await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Ask Newton" }));
+    expect(getSelectionTopic).toHaveBeenCalledWith("tok", "doc-1", SENTENCE);
+    expect(onActivity).toHaveBeenLastCalledWith({ action: "ask", topic: null, working: false });
+
+    resolveTopic("the residual tolerance");
+    await waitFor(() =>
+      expect(onActivity).toHaveBeenLastCalledWith({ action: "ask", topic: "the residual tolerance", working: false }),
+    );
+  });
+
+  it("Define reports 'working' while the definition is generated, then 'done' once it's up", async () => {
+    let resolveAnnotate: (t: string) => void = () => {};
+    annotateDocumentSelection.mockReturnValue(new Promise<string>((r) => (resolveAnnotate = r)));
+    getSelectionTopic.mockResolvedValue("the residual tolerance");
+    const onActivity = vi.fn();
+    await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Define" }));
+    expect(onActivity).toHaveBeenCalledWith({ action: "define", topic: null, working: true });
+    await waitFor(() =>
+      expect(onActivity).toHaveBeenLastCalledWith({ action: "define", topic: "the residual tolerance", working: true }),
+    );
+
+    resolveAnnotate("A residual is the leftover error.");
+    await screen.findByText("A residual is the leftover error.");
+    await waitFor(() =>
+      expect(onActivity).toHaveBeenLastCalledWith({ action: "define", topic: "the residual tolerance", working: false }),
+    );
+  });
+
+  it("falls back to a quoted snippet of the highlight when the AI label can't be had", async () => {
+    getSelectionTopic.mockRejectedValue(new Error("offline"));
+    const onActivity = vi.fn();
+    await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Ask Newton" }));
+    await waitFor(() =>
+      expect(onActivity).toHaveBeenLastCalledWith({ action: "ask", topic: `“${SENTENCE}”`, working: false }),
+    );
+  });
+
+  it("falls back the same way when the label comes back empty", async () => {
+    getSelectionTopic.mockResolvedValue("   ");
+    const onActivity = vi.fn();
+    await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Ask Newton" }));
+    await waitFor(() =>
+      expect(onActivity).toHaveBeenLastCalledWith({ action: "ask", topic: `“${SENTENCE}”`, working: false }),
+    );
+  });
+
+  it("clears the indicator if the explain/define/summarize call fails (the error banner says why)", async () => {
+    annotateDocumentSelection.mockRejectedValue(new api.ApiError("model unavailable"));
+    const onActivity = vi.fn();
+    await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Summarize" }));
+    await screen.findByText("model unavailable");
+    expect(onActivity).toHaveBeenLastCalledWith(null);
+  });
+
+  it("dismissing the result popover clears its indicator", async () => {
+    annotateDocumentSelection.mockResolvedValue("It means the error is tiny.");
+    const onActivity = vi.fn();
+    await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Explain" }));
+    await screen.findByText("It means the error is tiny.");
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(onActivity).toHaveBeenLastCalledWith(null);
+  });
+
+  it("highlighting something new clears a finished explain/define/summarize indicator", async () => {
+    annotateDocumentSelection.mockResolvedValue("It means the error is tiny.");
+    const onActivity = vi.fn();
+    const { body } = await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Explain" }));
+    await screen.findByText("It means the error is tiny.");
+
+    selectTextIn(await within(body).findByText(/residual should be under/));
+    fireEvent.mouseUp(body);
+    expect(onActivity).toHaveBeenLastCalledWith(null);
+  });
+
+  it("closing the panel clears an explain indicator with it — but never an 'ask' one, whose quote is still in the composer", async () => {
+    annotateDocumentSelection.mockResolvedValue("It means the error is tiny.");
+    const explainActivity = vi.fn();
+    const first = await renderAndHighlight(explainActivity);
+    await userEvent.click(screen.getByRole("button", { name: "Explain" }));
+    await screen.findByText("It means the error is tiny.");
+    first.unmount();
+    expect(explainActivity).toHaveBeenLastCalledWith(null);
+
+    const askActivity = vi.fn();
+    const second = await renderAndHighlight(askActivity);
+    await userEvent.click(screen.getByRole("button", { name: "Ask Newton" }));
+    await waitFor(() => expect(askActivity).toHaveBeenCalled());
+    second.unmount();
+    expect(askActivity).not.toHaveBeenCalledWith(null);
+  });
+
+  it("drops a stale topic label that arrives after the activity was replaced", async () => {
+    let resolveFirst: (t: string) => void = () => {};
+    getSelectionTopic.mockReturnValueOnce(new Promise<string>((r) => (resolveFirst = r)));
+    getSelectionTopic.mockResolvedValue("the second topic");
+    annotateDocumentSelection.mockResolvedValue("ok");
+    const onActivity = vi.fn();
+    const { body } = await renderAndHighlight(onActivity);
+
+    await userEvent.click(screen.getByRole("button", { name: "Explain" }));
+    await screen.findByText("ok");
+    selectTextIn(await within(body).findByText(/residual should be under/));
+    fireEvent.mouseUp(body);
+    await userEvent.click(screen.getByRole("button", { name: "Ask Newton" }));
+    await waitFor(() =>
+      expect(onActivity).toHaveBeenLastCalledWith({ action: "ask", topic: "the second topic", working: false }),
+    );
+
+    resolveFirst("the FIRST topic");
+    await Promise.resolve();
+    expect(onActivity).not.toHaveBeenCalledWith(expect.objectContaining({ topic: "the FIRST topic" }));
   });
 });

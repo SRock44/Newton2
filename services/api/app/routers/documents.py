@@ -3,7 +3,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,7 @@ from app.services.documents import (
     update_document_content,
     upload_document,
 )
-from app.services.notes import AnnotateAction, annotate_selection
+from app.services.notes import AnnotateAction, annotate_selection, summarize_selection_topic
 from app.services.users import get_or_create_user
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -38,6 +38,10 @@ class DocumentAnnotateRequest(BaseModel):
     selected_text: str
     context: str
     action: AnnotateAction
+
+
+class DocumentSelectionTopicRequest(BaseModel):
+    selected_text: str = Field(min_length=1)
 
 
 def _has_bibliography(document: Document) -> bool:
@@ -152,6 +156,23 @@ async def annotate_document(
     await _get_owned_document(db, document_id, user.id)
     text = await annotate_selection(body.selected_text, body.context, body.action)
     return {"text": text}
+
+
+@router.post("/{document_id}/selection-topic")
+async def selection_topic(
+    document_id: uuid.UUID,
+    body: DocumentSelectionTopicRequest,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """A few-word label for what a highlighted passage is about -- the "<x>" in the
+    desktop app's "Asking Newton about <x>" / "Defining <x>" indicator above the chatbox
+    (see DocumentViewerPanel). Stateless like /annotate above, and owner-checked the same
+    way; nothing is stored. An empty "topic" means the model gave nothing usable, and the
+    frontend falls back to a plain snippet of the highlight."""
+    user = await get_or_create_user(db, claims)
+    await _get_owned_document(db, document_id, user.id)
+    return {"topic": await summarize_selection_topic(body.selected_text)}
 
 
 @router.get("/{document_id}/raw")

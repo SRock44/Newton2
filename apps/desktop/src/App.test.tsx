@@ -97,6 +97,10 @@ vi.mock("./api", () => ({
     tags: [],
   })),
   getDocumentContent: vi.fn(async () => ({ content: "", editable: true })),
+  // DocumentViewerPanel's highlight actions (Explain/Define/Summarize/Ask Newton) and the
+  // few-word AI label behind the composer's "Asking Newton about <x>" banner.
+  annotateDocumentSelection: vi.fn(async () => "A residual is the leftover error."),
+  getSelectionTopic: vi.fn(async () => "the residual tolerance"),
   getBillingStatus: vi.fn(async () => ({
     plan: "free",
     subscription_status: null,
@@ -168,6 +172,7 @@ import {
   deleteSession,
   getAccountStatus,
   getDocumentContent,
+  getSelectionTopic,
   listDocuments,
   listFlashcards,
   listSessions,
@@ -865,6 +870,74 @@ describe("App", () => {
     expect(composerInput.value).toContain("syllabus.pdf");
     expect(composerInput.value).toContain("residual should be under");
     expect(composerInput).toHaveFocus();
+  });
+
+  // The indicator above the chatbox for a highlight being used: the student can SEE that
+  // Ask Newton / Define registered and what it's acting on (Composer's banner, fed by
+  // DocumentViewerPanel's onSelectionActivity).
+  describe("highlight indicator above the chatbox", () => {
+    async function highlightInDocumentPanel() {
+      vi.mocked(getDocumentContent).mockResolvedValueOnce({ content: "The residual should be under 1e-8.", editable: true });
+      await signIn();
+      await (await messageList()).findByText("Hello from s1");
+      await userEvent.click(await (await messageList()).findByRole("button", { name: /syllabus\.pdf/i }));
+
+      const body = await screen.findByTestId("doc-viewer-text");
+      const textNode = await within(body).findByText(/residual should be under/);
+      const range = document.createRange();
+      range.selectNodeContents(textNode);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      Object.defineProperty(range, "getBoundingClientRect", {
+        value: () => ({ top: 100, left: 50, bottom: 120, right: 200, width: 150, height: 20 }),
+      });
+      fireEvent.mouseUp(body);
+    }
+
+    it("Ask Newton shows 'Asking Newton about <topic>' above the composer, and sending clears it", async () => {
+      await highlightInDocumentPanel();
+      await userEvent.click(await screen.findByRole("button", { name: "Ask Newton" }));
+
+      expect(await screen.findByText("Asking Newton about the residual tolerance")).toBeInTheDocument();
+      expect(vi.mocked(getSelectionTopic)).toHaveBeenCalledWith(expect.any(String), "doc-1", "The residual should be under 1e-8.");
+      // Still there while the student writes their question...
+      await userEvent.type(screen.getByRole("textbox"), "why 1e-8?");
+      expect(screen.getByText("Asking Newton about the residual tolerance")).toBeInTheDocument();
+
+      // ...and gone once it's actually sent.
+      await userEvent.keyboard("{Enter}");
+      expect(screen.queryByText(/Asking Newton about/)).not.toBeInTheDocument();
+    });
+
+    it("Cancel dismisses the indicator without sending anything", async () => {
+      await highlightInDocumentPanel();
+      await userEvent.click(await screen.findByRole("button", { name: "Ask Newton" }));
+      await screen.findByText("Asking Newton about the residual tolerance");
+
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByText(/Asking Newton about/)).not.toBeInTheDocument();
+    });
+
+    it("Define shows 'Defining <topic>…' then 'Newton defined <topic>', and dismissing the result clears it", async () => {
+      await highlightInDocumentPanel();
+      await userEvent.click(await screen.findByRole("button", { name: "Define" }));
+
+      await screen.findByText("A residual is the leftover error.");
+      expect(await screen.findByText("Newton defined the residual tolerance")).toBeInTheDocument();
+
+      // The result popover in the document has its own Dismiss (the banner has one too).
+      await userEvent.click(within(screen.getByTestId("doc-annotate-popover")).getByRole("button", { name: "Dismiss" }));
+      await waitFor(() => expect(screen.queryByText(/Newton defined/)).not.toBeInTheDocument());
+    });
+
+    it("falls back to a quoted snippet of the highlight when the AI label fails", async () => {
+      vi.mocked(getSelectionTopic).mockRejectedValueOnce(new Error("offline"));
+      await highlightInDocumentPanel();
+      await userEvent.click(await screen.findByRole("button", { name: "Ask Newton" }));
+
+      expect(await screen.findByText("Asking Newton about “The residual should be under 1e-8.”")).toBeInTheDocument();
+    });
   });
 
   // "Chat about this document" must behave exactly like manually clicking "+" ->

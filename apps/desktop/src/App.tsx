@@ -29,6 +29,7 @@ import type {
   UploadedDocument,
 } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
+import type { SelectionActivity } from "./lib/selectionActivity";
 import AgeGateScreen from "./components/AgeGateScreen";
 import LoginScreen from "./components/LoginScreen";
 import TitleBar from "./components/TitleBar";
@@ -174,6 +175,10 @@ function App() {
   // was clicked on it — purely a visible acknowledgement (Composer's banner) that the
   // student is now typing a change request, not a fresh message. See handleFocusComposer.
   const [requestingChangesFor, setRequestingChangesFor] = useState<string | null>(null);
+  // What a passage highlighted in the document viewer is being used for ("Asking Newton about
+  // <x>", "Defining <x>…") — set by DocumentViewerPanel, shown as a banner above the composer
+  // so the student can see their Explain/Define/Summarize/Ask Newton click registered.
+  const [selectionActivity, setSelectionActivity] = useState<SelectionActivity | null>(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>("closed");
@@ -542,6 +547,7 @@ function App() {
     setEditingMessage(null);
     setEditError(null);
     setRequestingChangesFor(null);
+    setSelectionActivity(null);
   }, [activeSessionId]);
 
   // Load message history whenever the active session changes.
@@ -949,6 +955,7 @@ function App() {
     // answered by this exact text, so the banner's job is done (same moment editing's
     // own state above gets cleared).
     setRequestingChangesFor(null);
+    setSelectionActivity(null);
 
     // The user's message AND an immediate "Newton is thinking" placeholder land in the
     // same synchronous update, before any WebSocket frame can possibly arrive -- so
@@ -1360,6 +1367,8 @@ function App() {
                       editError={editError}
                       requestingChangesFor={requestingChangesFor}
                       onCancelRequestChanges={handleCancelRequestChanges}
+                      selectionActivity={selectionActivity}
+                      onDismissSelectionActivity={() => setSelectionActivity(null)}
                     />
                   </div>
                   {chatDocumentPanel && (
@@ -1370,6 +1379,7 @@ function App() {
                       initialFilename={chatDocumentPanel.filename}
                       onClose={() => setChatDocumentPanel(null)}
                       onAskAboutSelection={handleAskAboutDocumentSelection}
+                      onSelectionActivity={setSelectionActivity}
                     />
                   )}
                 </div>

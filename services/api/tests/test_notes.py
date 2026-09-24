@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 from sqlalchemy import delete, select
 
 from app.db.models import Document, DocumentChunk, User
@@ -398,3 +399,62 @@ async def test_annotate_selection_never_records_frontier_usage(monkeypatch):
 
     assert result == "A short, on-topic answer."
     assert recorded == []
+
+
+# ---------------------------------------------------------------------------
+# Selection topic label -- the "<x>" in the app's "Asking Newton about <x>" indicator.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("the SOR iteration-count gap", "the SOR iteration-count gap"),
+        ('"iteration counts and convergence rates."', "iteration counts and convergence rates"),
+        ("`spectral radius`\n\nThis passage is about it.", "spectral radius"),
+        ("  **relaxation parameter**:  ", "relaxation parameter"),
+        ("", ""),
+        ("   \n  ", ""),
+    ],
+)
+def test_clean_topic_keeps_one_short_plain_line(raw, expected):
+    assert notes_service._clean_topic(raw) == expected
+
+
+def test_clean_topic_caps_a_runaway_label():
+    cleaned = notes_service._clean_topic("word " * 100)
+    assert len(cleaned) <= notes_service.MAX_TOPIC_CHARS
+    assert cleaned.endswith("…")
+
+
+async def test_summarize_selection_topic_makes_one_direct_call_and_never_bills(monkeypatch):
+    """One system+user turn, no tool belt/history, and -- like annotate_selection -- never
+    touches billing (an unbilled operational cost). Called in-process for the same reason
+    the annotate tests are: the hermetic http_client hits a separate uvicorn subprocess."""
+    fake = ScriptedToolCallingProvider([['"the SOR iteration-count gap."']])
+    monkeypatch.setattr(notes_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    recorded: list[tuple] = []
+
+    async def fake_record(user_id, model, prompt_tokens, completion_tokens):
+        recorded.append((user_id, model, prompt_tokens, completion_tokens))
+        return 5
+
+    monkeypatch.setattr(billing_service, "record_frontier_usage", fake_record)
+
+    topic = await notes_service.summarize_selection_topic("SOR needs 30-37% more iterations than predicted.")
+
+    assert topic == "the SOR iteration-count gap"
+    assert len(fake.calls_seen) == 1
+    assert [t.role for t in fake.calls_seen[0]["messages"]] == ["system", "user"]
+    assert recorded == []
+
+
+async def test_summarize_selection_topic_only_sends_a_bounded_slice_of_a_huge_highlight(monkeypatch):
+    fake = ScriptedToolCallingProvider([["a topic"]])
+    monkeypatch.setattr(notes_service, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    await notes_service.summarize_selection_topic("x" * 50_000)
+
+    user_turn = fake.calls_seen[0]["messages"][1]
+    assert len(user_turn.content) < notes_service.MAX_TOPIC_INPUT_CHARS + 100

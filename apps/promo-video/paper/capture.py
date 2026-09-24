@@ -12,8 +12,7 @@ display name so the paper carries an author. `restore` puts it all back.
 Stages (state persists in /tmp/paper_state.json):
   setup                              upload notes + synopsis, snapshot + set account flags
   say <base64 text> [--attach] [--timeout N]   one student message (--attach adds the synopsis)
-  review [--timeout N]               re-upload the finished PDF and two more real turns: attach +
-                                      review it, then highlight a passage and ask about it
+  topic <base64 text>                the few-word AI label the app shows for a highlighted passage
   fetch-paper                        find the generated PDF/.tex, save them to /tmp/paper_out
   truncate <n>                       delete turn n (0-based, a user message) and everything after
   show | dump
@@ -122,7 +121,7 @@ async def stage_setup(orig_override=None):
 async def send_message(s, tok, text, timeout):
     """One real turn over the real WS chat protocol: sends `text` as the student, waits
     for the "done" frame, and appends the (user, assistant) pair to `s["turns"]` -- the
-    one thing every stage that talks to the tutor shares (stage_say, stage_review)."""
+    one thing every stage that talks to the tutor shares (stage_say)."""
     h = {"Authorization": f"Bearer {tok}"}
     async with httpx.AsyncClient(timeout=30) as c:
         if "session" not in s:
@@ -177,57 +176,18 @@ async def stage_say(text, attach, timeout):
     await send_message(s, tok, text, timeout)
 
 
-async def stage_review(timeout):
-    """Two more real turns, continuing the SAME session, for the DocumentViewerPanel
-    scene: `restore --delete-docs` removed the finished PDF from Documents, so it's
-    re-uploaded here (the exact same bytes generated earlier -- see run_cap.sh's
-    `stage-pdf`) before the student can attach it again. Turn A attaches it and opens a
-    review; turn B is the "highlight -> Ask Newton" quote-and-follow-up, with no new
-    attachment (the document is already the one being discussed)."""
+async def stage_topic(text):
+    """The few-word AI label the app's "Asking Newton about <x>" banner shows for a highlight
+    (app.services.notes.summarize_selection_topic -- the SAME function POST
+    /documents/{id}/selection-topic calls). Real provider output, recorded so the film shows
+    what the product really produced for the highlighted sentence."""
+    from app.services.notes import summarize_selection_topic
+
     s = load()
-    tok = await token()
-    h = {"Authorization": f"Bearer {tok}"}
-    import glob
-
-    pdf_path = glob.glob(f"{SRC}/*.pdf")[0]
-    filename = os.path.basename(pdf_path)
-    async with httpx.AsyncClient(timeout=60) as c:
-        # a leftover from an earlier (truncated/retried) run of this same stage
-        for d in (await c.get(f"{API}/documents", headers=h)).json():
-            if d["filename"] == filename:
-                await c.delete(f"{API}/documents/{d['id']}", headers=h)
-                print("removed leftover reupload", d["id"])
-        raw = open(pdf_path, "rb").read()
-        r = await c.post(f"{API}/documents/upload", headers=h, files={"file": (filename, raw, "application/pdf")})
-        r.raise_for_status()
-        doc = r.json()
-        s["docs"]["paper_reupload"] = {"doc": doc}
-        save(s)
-        print("REUPLOADED", doc["id"], doc["filename"])
-
-    # Specific, paper-vocabulary wording -- this shared dev account has a lot of OTHER
-    # documents in it from unrelated test runs, and a generic "what does Table 3 show"
-    # embeds too close to some of those; naming the actual quantities (measured vs.
-    # predicted SOR iteration counts, spectral radius) is what reliably retrieves OUR
-    # chunks instead.
-    text_a = (
-        "Now that it's written, I want to go through the results with you -- attaching the finished "
-        "PDF so we're both looking at the same thing. Table 3 has the measured-vs-predicted SOR "
-        "iteration counts against the classical spectral-radius prediction -- can you walk me "
-        "through what it shows?"
-        f"\n\n[Attached document: {doc['id']}|{doc['filename']}]"
-    )
-    await send_message(s, tok, text_a, timeout)
-
-    quote = (
-        "The SOR prediction is less satisfactory: the measured count exceeds the asymptotic "
-        "prediction by roughly 30\u201337% on these grids."
-    )
-    text_b = (
-        f'Regarding this part of "{doc["filename"]}":\n> {quote}\n\n'
-        "Is that 30-37% roughly consistent across all three grid sizes, or does it grow with n?"
-    )
-    await send_message(s, tok, text_b, timeout)
+    topic = await summarize_selection_topic(text)
+    s["selection_topic"] = {"text": text, "topic": topic}
+    save(s)
+    print("TOPIC", json.dumps(topic, ensure_ascii=False))
 
 
 async def stage_fetch_paper():
@@ -315,9 +275,8 @@ def main():
     elif a[0] == "say":
         timeout = int(a[a.index("--timeout") + 1]) if "--timeout" in a else 300
         asyncio.run(stage_say(base64.b64decode(a[1]).decode("utf-8"), "--attach" in a, timeout))
-    elif a[0] == "review":
-        timeout = int(a[a.index("--timeout") + 1]) if "--timeout" in a else 300
-        asyncio.run(stage_review(timeout))
+    elif a[0] == "topic":
+        asyncio.run(stage_topic(base64.b64decode(a[1]).decode("utf-8")))
     elif a[0] == "fetch-paper":
         asyncio.run(stage_fetch_paper())
     elif a[0] == "truncate":
