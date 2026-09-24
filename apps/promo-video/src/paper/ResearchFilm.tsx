@@ -28,7 +28,6 @@ import {
   NOTES,
   OLD_DOCS,
   PAPER_PDF,
-  PAPER_REUPLOAD,
   PAPER_TEX,
   STUDENT,
   SYNOPSIS,
@@ -43,30 +42,24 @@ installFrozenTime("2026-02-03T10:24:00");
 
 const MAIN = { left: 190, top: 30, w: 1400, h: 860, scale: 1.1 };
 const M = T.marks;
-const RA = T.reviewAttach;
 const RP = T.reviewPanel;
-// A short, plain-ASCII fragment of REVIEW_QUOTE for finding it inside pdf.js's rendered text
-// layer -- see highlightRects() below. Deliberately shorter than the whole sentence: pdf.js
-// splits a line into several <span>s, and the concatenated-text search this does is safest on a
-// short run unlikely to straddle the exact character where the PDF's own kerning/hyphenation
-// splits one span from the next.
-const REVIEW_HIGHLIGHT_SNIPPET = "The SOR prediction is less satisfactory: the measured count exceeds the asymptotic prediction by";
+// The exact sentence highlighted in the rendered PDF -- same text as data.ts's REVIEW_QUOTE
+// (and what turn 3's real captured message quotes). findTextRange below searches pdf.js's
+// rendered text layer for this run across however many <span>s it's split into; trimRectToInk
+// then trims each returned rect to the page's own painted pixels, so the highlight's exact
+// length no longer matters the way it once seemed to (see trimRectToInk's own comment).
+const REVIEW_HIGHLIGHT_SNIPPET = "they are systematically larger than the spectral-radius prediction";
 
 const asDoc = (d: { id: string; filename: string; mime_type: string; created_at: string; has_bibliography?: boolean }): FilmDoc => d;
 const OLD_FILM_DOCS: FilmDoc[] = OLD_DOCS.map(asDoc);
 const NEW = (d: { doc: Parameters<typeof asDoc>[0] }, at: string): FilmDoc => ({ ...asDoc(d.doc), created_at: at });
 const notesDoc = NEW(NOTES, "2026-02-03T10:20:00Z");
 const synopsisDoc = NEW(SYNOPSIS, "2026-02-03T10:21:00Z");
-// The finished PDF, re-uploaded after it was written (see paper/capture.py's stage_review) so
-// the student can attach and discuss it -- a real, separate Document row, not the one
-// write_research_paper made (that one only lives for the duration of one capture run).
-const paperReuploadDoc = { ...asDoc(PAPER_REUPLOAD), created_at: "2026-02-03T10:42:00Z" };
 
 const pickerEntry = (d: FilmDoc) => ({ name: d.filename, date: new Date(d.created_at).toLocaleDateString() });
-/** Before the paper exists: attaching the synopsis (then the lab notes) to plan it. */
+/** Attaching the synopsis (then the lab notes) to plan the paper -- the only picker use left; the
+ * finished PDF never needs the picker, since it arrives as a card on Newton's own message. */
 const PICKER_DOCS = [synopsisDoc, notesDoc, ...OLD_FILM_DOCS].map(pickerEntry);
-/** After it's written: the finished PDF is newest, so it's first -- attaching it to discuss it. */
-const PICKER_DOCS_LATE = [paperReuploadDoc, synopsisDoc, notesDoc, ...OLD_FILM_DOCS].map(pickerEntry);
 
 const OLD_SESSIONS: ChatSession[] = [
   { id: "s2", title: null, status: "active", created_at: "2026-02-02T09:00:00Z" },
@@ -253,19 +246,14 @@ function MainWindow({ t }: { t: number }) {
   const started = t >= M[0].userAppear;
   const menuOpen =
     (t >= T.plusClick + 0.05 && t < T.menuExistingClick + 0.05) ||
-    (t >= T.plus2Click + 0.05 && t < T.menuExisting2Click + 0.05) ||
-    (t >= RA.plusClick + 0.05 && t < RA.menuExistingClick + 0.05);
+    (t >= T.plus2Click + 0.05 && t < T.menuExisting2Click + 0.05);
   const pickerOpen =
     (t >= T.menuExistingClick + 0.05 && t < T.pickerClick + 0.05) ||
-    (t >= T.menuExisting2Click + 0.05 && t < T.picker2Click + 0.05) ||
-    (t >= RA.menuExistingClick + 0.05 && t < RA.pickerClick + 0.05);
-  const pickerDocs = t < RA.plusClick ? PICKER_DOCS : PICKER_DOCS_LATE;
+    (t >= T.menuExisting2Click + 0.05 && t < T.picker2Click + 0.05);
   const sending = t < M[0].sendClick + 0.05;
-  const reviewSending = t >= RA.plusClick && t < M[3].sendClick + 0.05;
   const attachments: string[] = [];
   if (sending && t >= T.pickerClick + 0.05) attachments.push(SYNOPSIS.doc.filename);
   if (sending && t >= T.picker2Click + 0.05) attachments.push(NOTES.doc.filename);
-  if (reviewSending && t >= RA.pickerClick + 0.05) attachments.push(paperReuploadDoc.filename);
   const typingNow = M.some((m) => m.kind === "composer" && t >= m.clickField! && t < m.sendClick);
   const idle = !messages.length || t < M[1].sendClick;
   const beforeSend = M.every((m) => t < m.sendClick || t >= m.userAppear);
@@ -329,6 +317,7 @@ function MainWindow({ t }: { t: number }) {
                   onOpenSuggestedPanel={() => {}}
                   onOpenDocument={() => {}}
                   onSend={() => {}}
+                  openDocumentId={docOpen ? PAPER_PDF.doc.id : null}
                 />
                 <div className="math-keyboard-dock" />
                 <ScriptedComposer
@@ -338,21 +327,22 @@ function MainWindow({ t }: { t: number }) {
                   learnMode={false}
                   menuOpen={menuOpen}
                   pickerOpen={pickerOpen}
-                  pickerDocs={pickerDocs}
+                  pickerDocs={PICKER_DOCS}
                   attachments={attachments}
                 />
               </div>
-              {/* The real DocumentViewerPanel — opened from the attachment chip on the message
-                  that just attached the finished PDF, split with the chat exactly like the real
-                  app now does. pdf.js renders the real bytes (public/research-paper.pdf); the
-                  highlight and its toolbar are drawn by the film (see PdfHighlight below), not
-                  the panel's own internal selection state, so their look is directed rather than
-                  left to wherever a real browser selection happens to land. */}
+              {/* The real DocumentViewerPanel — opened from the document card write_research_paper's
+                  own reply carries (a real "[Attached document: ...]" marker, rendered exactly like
+                  a student's own attach), split with the chat exactly like the real app now does.
+                  pdf.js renders the real bytes (public/research-paper.pdf); the highlight and its
+                  toolbar are drawn by the film (see findTextRange/trimRectToInk below), not the
+                  panel's own internal selection state, so their look is directed rather than left
+                  to wherever a real browser selection happens to land. */}
               {docOpen && (
                 <DocumentViewerPanel
                   token="promo"
-                  documentId={paperReuploadDoc.id}
-                  initialFilename={paperReuploadDoc.filename}
+                  documentId={PAPER_PDF.doc.id}
+                  initialFilename={PAPER_PDF.doc.filename}
                   onClose={() => {}}
                   onAskAboutSelection={() => {}}
                 />
@@ -370,21 +360,85 @@ function MainWindow({ t }: { t: number }) {
  * overlaps `needle`, found by searching the container's ENTIRE text-layer content as one
  * concatenated string — a single `<span>` per page is usually one short run, not a whole
  * sentence, so a plain "find the node containing this text" search (fine for the Notepad's own
- * highlight, see show/ShowFilm.tsx's textRect) would not find anything here at all. One rect per
- * overlapping span is exactly how a real, wrapped text selection would render, too. */
-function findSpanElements(container: HTMLElement, needle: string): HTMLElement[] {
-  const spans = Array.from(container.querySelectorAll<HTMLElement>(".textLayer span"));
+ * highlight, see show/ShowFilm.tsx's textRect) would not find anything here at all.
+ *
+ * Returns a real DOM Range over exactly those characters, not whole elements: a first pass here
+ * that highlighted the whole matched `<span>` drew a bar that ran on well past the actual words.
+ * `Range.getClientRects()` is more precise (a real text selection uses exactly this), but even
+ * IT still reports a box wider than the visible glyphs for this particular justified line —
+ * confirmed by measuring it directly, not assumed: the pdf.js text layer's own box for a
+ * justified line matches the PDF's declared advance width for that run, which the SUBSTITUTE
+ * font actually painted onto the canvas can be narrower than. trimRectToInk (below) is what
+ * actually fixes the overshoot, by measuring the real painted pixels on the page's own canvas
+ * rather than trusting either box. */
+function findTextRange(container: HTMLElement, needle: string): Range | null {
+  // `container` (not just its first `.textLayer`): a multi-page PDF has one text layer per page,
+  // and the filter below is what actually restricts the walk to text-layer nodes, in document order.
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement?.closest(".textLayer") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+  });
+  const nodes: { node: Text; start: number; end: number }[] = [];
   let acc = "";
-  const bounds: { el: HTMLElement; start: number; end: number }[] = [];
-  for (const el of spans) {
-    const text = el.textContent ?? "";
-    bounds.push({ el, start: acc.length, end: acc.length + text.length });
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const text = node.textContent ?? "";
+    nodes.push({ node: node as Text, start: acc.length, end: acc.length + text.length });
     acc += text;
   }
   const idx = acc.indexOf(needle);
-  if (idx < 0) return [];
+  if (idx < 0) return null;
   const end = idx + needle.length;
-  return bounds.filter((b) => b.start < end && b.end > idx).map((b) => b.el);
+  const startEntry = nodes.find((n) => idx >= n.start && idx < n.end);
+  const endEntry = [...nodes].reverse().find((n) => end > n.start && end <= n.end);
+  if (!startEntry || !endEntry) return null;
+  const range = document.createRange();
+  range.setStart(startEntry.node, idx - startEntry.start);
+  range.setEnd(endEntry.node, end - endEntry.start);
+  return range;
+}
+
+/** Trims a highlight rect (viewport coordinates, same space `Range.getClientRects()` returns) to
+ * where the page's OWN rendered canvas actually has ink, rather than trusting the text layer's
+ * box — real pixels, not a declared advance width. Finds the `.doc-viewer-panel__page` the rect
+ * falls in, reads that page's canvas pixels for the rect's vertical band, and returns a
+ * right-trimmed copy stopping just past the rightmost non-background pixel. Falls back to the
+ * original rect (never widens it) if anything about that page can't be read. */
+function trimRectToInk(rect: DOMRect, container: HTMLElement): DOMRect {
+  const pages = Array.from(container.querySelectorAll<HTMLElement>(".doc-viewer-panel__page"));
+  const page = pages.find((p) => {
+    const pr = p.getBoundingClientRect();
+    return rect.top >= pr.top - 1 && rect.bottom <= pr.bottom + 1;
+  });
+  const canvas = page?.querySelector("canvas");
+  const ctx = canvas?.getContext("2d", { willReadFrequently: true });
+  if (!canvas || !ctx) return rect;
+  const canvasRect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / (canvasRect.width || 1);
+  const scaleY = canvas.height / (canvasRect.height || 1);
+  const x0 = Math.max(0, Math.floor((rect.left - canvasRect.left) * scaleX));
+  const y0 = Math.max(0, Math.floor((rect.top - canvasRect.top) * scaleY));
+  const w = Math.min(canvas.width - x0, Math.ceil(rect.width * scaleX));
+  const h = Math.min(canvas.height - y0, Math.max(1, Math.ceil(rect.height * scaleY)));
+  if (w <= 0 || h <= 0) return rect;
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(x0, y0, w, h).data;
+  } catch {
+    return rect; // a tainted/cross-origin canvas — never expected here, but never crash the film over it
+  }
+  let maxInk = -1;
+  for (let yy = 0; yy < h; yy++) {
+    for (let xx = w - 1; xx > maxInk; xx--) {
+      const i = (yy * w + xx) * 4;
+      if (data[i] < 150 && data[i + 1] < 150 && data[i + 2] < 150) {
+        maxInk = xx;
+        break;
+      }
+    }
+  }
+  if (maxInk < 0) return rect; // no ink found in the band at all — leave it as it was
+  const trimmedWidth = Math.min(rect.width, (maxInk + 2) / scaleX);
+  return new DOMRect(rect.left, rect.top, trimmedWidth, rect.height);
 }
 
 // ------------------------------------------------------------------ composition
@@ -442,10 +496,23 @@ export const ResearchFilm: React.FC = () => {
     // stabilize a poll BEFORE place()'s own scrollTo has actually landed there (a real, observed
     // one-frame flicker — the previous scroll position briefly reappears) — this makes "settled"
     // require the actual on-screen position to have stopped moving too, not just its ceiling.
-    const height = () =>
-      Array.from(document.querySelectorAll<HTMLElement>(".chat-pane, .doc-detail-body, .doc-viewer-panel__body"))
+    const height = () => {
+      const base = Array.from(document.querySelectorAll<HTMLElement>(".chat-pane, .doc-detail-body, .doc-viewer-panel__body"))
         .map((el) => `${el.scrollHeight}@${el.scrollTop}`)
         .join(",");
+      // The highlight's own drawn width (after trimRectToInk, the same call the real drawing
+      // code makes) folded into the fingerprint too, so "settled" also waits for the page's
+      // canvas to have actually finished painting before this frame is captured.
+      const panelBody = document.querySelector<HTMLElement>(".doc-viewer-panel__body");
+      const range = panelBody ? findTextRange(panelBody, REVIEW_HIGHLIGHT_SNIPPET) : null;
+      const hl = range
+        ? Array.from(range.getClientRects())
+            .map((r) => trimRectToInk(r, panelBody!))
+            .map((r) => `${Math.round(r.left)},${Math.round(r.width)}`)
+            .join(";")
+        : "";
+      return `${base}|${hl}`;
+    };
     let iterations = 0;
     let last = "";
     let stable = 0;
@@ -494,34 +561,43 @@ export const ResearchFilm: React.FC = () => {
       });
 
       // The highlighted sentence in the real, pdf.js-rendered PDF, and the toolbar over it —
-      // both directed by the film (see findSpanElements above), not the panel's own real
-      // selection state. Scrolled into a nice reading position first, since the sentence sits
-      // near the bottom of page 1 and the panel opens on page 1's top.
+      // both directed by the film (see findTextRange above), not the panel's own real selection
+      // state. Scrolled into a nice reading position first, since the sentence sits near the
+      // bottom of page 1 and the panel opens on page 1's top.
       hlBox.replaceChildren();
       toolbar.style.opacity = "0";
       const panelBody = root.querySelector<HTMLElement>(".doc-viewer-panel__body");
       if (panelBody && t >= RP.highlightStart - 0.4) {
-        let els = findSpanElements(panelBody, REVIEW_HIGHLIGHT_SNIPPET);
-        if (els.length) {
-          const first = measure(els[0], panelBody);
-          panelBody.scrollTop = Math.max(0, first.top + panelBody.scrollTop - panelBody.clientHeight * 0.4);
-          els = findSpanElements(panelBody, REVIEW_HIGHLIGHT_SNIPPET); // re-measure after the scroll
+        const range = findTextRange(panelBody, REVIEW_HIGHLIGHT_SNIPPET);
+        let rects = range ? Array.from(range.getClientRects()) : [];
+        if (rects.length) {
+          const bodyRect = panelBody.getBoundingClientRect();
+          const bodyScale = panelBody.offsetWidth ? bodyRect.width / panelBody.offsetWidth : 1;
+          const firstTop = (rects[0].top - bodyRect.top) / bodyScale + panelBody.scrollTop;
+          panelBody.scrollTop = Math.max(0, firstTop - panelBody.clientHeight * 0.4);
+          rects = Array.from(range!.getClientRects()); // the same Range, re-measured after the scroll
         }
-        if (els.length && t >= RP.highlightStart) {
+        if (rects.length && t >= RP.highlightStart) {
           const sweep = easeOut(clamp01((t - RP.highlightStart) / RP.highlightDur));
+          const rr = root.getBoundingClientRect();
+          const scale = root.offsetWidth ? rr.width / root.offsetWidth : 1;
           let top = Infinity;
           let left = Infinity;
-          for (const el of els) {
-            const r = measure(el, root);
+          for (const rawRect of rects) {
+            const rect = trimRectToInk(rawRect, panelBody);
+            const rLeft = (rect.left - rr.left) / scale;
+            const rTop = (rect.top - rr.top) / scale;
+            const rWidth = rect.width / scale;
+            const rHeight = rect.height / scale;
             const box = document.createElement("div");
             box.className = "promo-doc-highlight";
-            box.style.left = `${r.left + 1}px`;
-            box.style.top = `${r.top}px`;
-            box.style.width = `${Math.max(0, r.width - 2) * sweep}px`;
-            box.style.height = `${r.height}px`;
+            box.style.left = `${rLeft + 1}px`;
+            box.style.top = `${rTop}px`;
+            box.style.width = `${Math.max(0, rWidth - 2) * sweep}px`;
+            box.style.height = `${rHeight}px`;
             hlBox.appendChild(box);
-            top = Math.min(top, r.top);
-            left = Math.min(left, r.left);
+            top = Math.min(top, rTop);
+            left = Math.min(left, rLeft);
           }
           if (t >= RP.toolbarIn) {
             toolbar.style.left = `${Math.max(left, 4)}px`;
@@ -589,7 +665,7 @@ export const ResearchFilm: React.FC = () => {
         >
           <MainWindow t={t} />
         </div>
-        {/* the highlighted sentence in the real PDF, and its toolbar — see findSpanElements
+        {/* the highlighted sentence in the real PDF, and its toolbar — see findTextRange
             above; belongs to the main window, so it fades with it (never outlives it) */}
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 15, opacity: mainOpacity }}>
           <div ref={highlightBoxRef} style={{ position: "absolute", inset: 0 }} />

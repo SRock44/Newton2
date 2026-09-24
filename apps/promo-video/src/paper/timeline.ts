@@ -7,11 +7,11 @@ import { TURNS, turn, typedText } from "./data";
 //   1. Documents: upload the scratch lab notes, then the project synopsis (both real files)
 //   2. A new chat: attach the synopsis from Documents, ask for an arXiv-style paper plan
 //   3. Newton's plan card -> "Request Changes" -> the student's edits -> the revised plan
-//   4. "Approve & Write": Newton researches sources and writes the paper (time-lapsed)
-//   5. Attach the finished PDF and ask Newton to walk through a table -- a real reply, tables
-//      and all
-//   6. Open that PDF right there in the chat (DocumentViewerPanel, split with the chat), highlight
-//      a real sentence in it, and ask Newton about it -- another real reply
+//   4. "Approve & Write": Newton researches sources and writes the paper (time-lapsed), ending
+//      with real "[Attached document: ...]" markers for the PDF and its .tex -- rendered as real,
+//      clickable document cards right on that message
+//   5. Open the PDF from that card, right there in the chat (DocumentViewerPanel, split with the
+//      chat), highlight a real sentence in it, and ask Newton about it -- another real reply
 
 export const TYPE_CPS = 120;
 export const REVEAL_CPS = 700; // streamed replies, sped up like a promo would
@@ -119,7 +119,7 @@ for (let k = 0; k < 3; k++) {
   t = (m.planPan?.to ?? m.end) + 0.6;
 }
 
-const lastMark = marks[marks.length - 1];
+const writeMark = marks[marks.length - 1];
 
 // ------------------------------------------------------------------------ tool timing, shared
 // by the k-loop above and the two hand-built turns below (a real reply's tool chips and its
@@ -152,36 +152,22 @@ function plainComposerTurn(k: number, clickField: number): TurnMark {
   return { k, kind: "composer", clickField, typeStart, typed: text, typeEnd, sendClick, userAppear, asstAppear, tools, revealStart, revealEnd, end: revealEnd };
 }
 
-// ------------------------------------------------------------------------ 5. review the paper
-// Same chat, same session: the student re-attaches the finished PDF from Documents (a real,
-// separate upload -- see paper/capture.py's stage_review, run after `restore --delete-docs`
-// removed the copy write_research_paper made) and asks Newton to walk through a table. A real
-// turn, not a plan/approve one, so it goes through plainComposerTurn like turn 4 below.
-const ra0 = lastMark.end + 1.4;
-export const reviewAttach = {
-  plusClick: ra0,
-  menuExistingClick: ra0 + 0.9,
-  pickerClick: ra0 + 1.8, // the finished PDF, from the picker
-  composerClick: ra0 + 2.4,
-};
-const reviewMark = plainComposerTurn(3, reviewAttach.composerClick);
-marks.push(reviewMark);
-
-// ------------------------------------------------------------------------ 6. highlight -> Ask Newton
-// Not a captured turn on its own -- pure UI: open the PDF from the attachment chip on the
-// message just sent (DocumentViewerPanel, split with the chat), highlight a real sentence in
-// it, and click "Ask Newton". What gets typed and sent next (turn 4) already contains that
-// exact quote, because it's exactly what the real capture sent -- see data.ts's REVIEW_QUOTE.
+// ------------------------------------------------------------------------ 5. highlight -> Ask Newton
+// Same chat, same session -- no re-attach needed: the write turn's own reply already carries the
+// finished PDF as a real, clickable document card (see data.ts's file comment). Pure UI from
+// here: open it from that card (DocumentViewerPanel, split with the chat), highlight a real
+// sentence in it, and click "Ask Newton". What gets typed and sent next (turn 3) already contains
+// that exact quote, because it's exactly what the real capture sent -- see data.ts's REVIEW_QUOTE.
 export const reviewPanel = {
-  chipClick: reviewMark.end + 1.0,
-  panelIn: reviewMark.end + 1.3,
+  chipClick: writeMark.end + 1.0,
+  panelIn: writeMark.end + 1.3,
   panelInDur: 0.6,
-  highlightStart: reviewMark.end + 2.6,
+  highlightStart: writeMark.end + 2.6,
   highlightDur: 0.7,
-  toolbarIn: reviewMark.end + 3.5,
-  askClick: reviewMark.end + 4.4,
+  toolbarIn: writeMark.end + 3.5,
+  askClick: writeMark.end + 4.4,
 };
-const followUpMark = plainComposerTurn(4, reviewPanel.askClick + 0.5);
+const followUpMark = plainComposerTurn(3, reviewPanel.askClick + 0.5);
 marks.push(followUpMark);
 
 export const viewerOut = followUpMark.end + 1.6; // the panel stays open into the outro, then fades
@@ -193,7 +179,6 @@ export const T = {
   ...docs,
   ...attach,
   marks,
-  reviewAttach,
   reviewPanel,
   viewerOut,
   introEnd: 1.6,

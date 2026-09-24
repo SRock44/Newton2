@@ -13,10 +13,13 @@ interface MessageBubbleProps {
   token: string;
   sessionId: string | null;
   onOpenSuggestedPanel: (panel: string) => void;
-  /** Navigates to a specific document on the Documents page (see App.tsx's
-   * handleOpenDocument / mainView) — threaded down the same way onOpenSuggestedPanel
-   * is, for an attached-document chip's click. */
+  /** Opens (or, for the currently-open one, closes) an attached document's chip split
+   * with this chat — see App.tsx's handleOpenDocumentInChat / DocumentViewerPanel. */
   onOpenDocument: (documentId: string, filename: string) => void;
+  /** The document currently open in that split panel, if any — so an attached-document
+   * chip for that exact document can render itself as active (see
+   * AttachedDocumentChip.tsx's `active` prop). */
+  openDocumentId?: string | null;
   /** Sends a plain-text chat message on the student's behalf — for an "options" pick or
    * a "paper-plan" approval (see MessageContent/CodeBlock). Optional so existing call
    * sites/tests that never render one of those blocks don't need to pass it. */
@@ -409,6 +412,7 @@ function MessageBubble({
   sessionId,
   onOpenSuggestedPanel,
   onOpenDocument,
+  openDocumentId,
   onSend,
   onFocusComposer,
   nextMessageContent,
@@ -519,7 +523,13 @@ function MessageBubble({
         {attachedDocuments.length > 0 && (
           <div className="attached-documents">
             {attachedDocuments.map((doc) => (
-              <AttachedDocumentChip key={doc.id} documentId={doc.id} filename={doc.filename} onOpen={onOpenDocument} />
+              <AttachedDocumentChip
+                key={doc.id}
+                documentId={doc.id}
+                filename={doc.filename}
+                onOpen={onOpenDocument}
+                active={doc.id === openDocumentId}
+              />
             ))}
           </div>
         )}

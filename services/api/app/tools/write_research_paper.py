@@ -887,7 +887,7 @@ class WriteResearchPaperTool(Tool):
         # keeps the .tex and deletes the PDF, or vice versa, still has the .bib that
         # actually goes with the \cite{} keys in that source.
         async with SessionLocal() as db:
-            await upload_document_bytes(
+            pdf_doc = await upload_document_bytes(
                 db,
                 uid,
                 f"{base_name}.pdf",
@@ -895,7 +895,7 @@ class WriteResearchPaperTool(Tool):
                 result.pdf_bytes,
                 paper_sources=final_sources or None,
             )
-            await upload_document_bytes(
+            tex_doc = await upload_document_bytes(
                 db,
                 uid,
                 f"{base_name}.tex",
@@ -904,9 +904,16 @@ class WriteResearchPaperTool(Tool):
                 paper_sources=final_sources or None,
             )
 
+        # The same "[Attached document: id|filename]" marker a student's own composer attach
+        # produces (see Composer.tsx) -- MessageBubble.tsx renders it as a real, clickable card
+        # regardless of which role's message it's in, so relaying this verbatim (per this tool's
+        # own docstring / the tutor prompt's instruction) is what makes a just-written paper
+        # appear as a card the student can open right there, not just a filename in prose.
+        attach_markers = f"[Attached document: {pdf_doc.id}|{pdf_doc.filename}]\n[Attached document: {tex_doc.id}|{tex_doc.filename}]"
+
         return (
             f'Done — "{title}" ({style_label} format, {len(clean_sections)} section(s), '
             f"{len(final_sources)} source(s) actually cited) has been compiled to a real "
             f'PDF and saved to your Documents as "{base_name}.pdf" (the raw LaTeX source '
             f'is also saved as "{base_name}.tex").'
-        ) + grounding_summary
+        ) + grounding_summary + "\n\n" + attach_markers

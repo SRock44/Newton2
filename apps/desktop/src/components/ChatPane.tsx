@@ -14,6 +14,9 @@ interface ChatPaneProps {
   sessionId: string | null;
   onOpenSuggestedPanel: (panel: string) => void;
   onOpenDocument: (documentId: string, filename: string) => void;
+  /** The document currently open in the split panel next to this chat, if any — see
+   * MessageBubble.tsx's own `openDocumentId` prop. */
+  openDocumentId?: string | null;
   /** Sends a plain-text chat message on the student's behalf — for an "options" pick or
    * a "paper-plan" approval (see MessageBubble/MessageContent/CodeBlock). Optional so
    * existing call sites/tests that never render one of those blocks don't need it. */
@@ -41,6 +44,7 @@ function ChatPane({
   sessionId,
   onOpenSuggestedPanel,
   onOpenDocument,
+  openDocumentId,
   onSend,
   onFocusComposer,
   firstRun,
@@ -104,6 +108,7 @@ function ChatPane({
               sessionId={sessionId}
               onOpenSuggestedPanel={onOpenSuggestedPanel}
               onOpenDocument={onOpenDocument}
+              openDocumentId={openDocumentId}
               onSend={onSend}
               onFocusComposer={onFocusComposer}
               nextMessageContent={messages[index + 1]?.content}

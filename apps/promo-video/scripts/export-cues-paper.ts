@@ -8,7 +8,6 @@ import { typedText } from "../src/paper/data";
 import { CLICKS } from "../src/paper/script";
 import { T, TYPE_CPS } from "../src/paper/timeline";
 
-const RA = T.reviewAttach;
 const RP = T.reviewPanel;
 
 const keys: { t: number; space: boolean }[] = [];
@@ -23,7 +22,7 @@ for (const m of T.marks) {
 }
 
 // The "Approve & Write" turn specifically (marks[2]) -- NOT the last mark, which is now the
-// review follow-up (marks[4]).
+// review follow-up (marks[3]).
 const write = T.marks[2];
 const wTools = write.tools;
 const wStart = wTools[0].start;
@@ -39,7 +38,7 @@ const cues = {
   pops: T.marks.flatMap((m) => [m.userAppear, m.asstAppear]),
   chipTicks: T.marks.flatMap((m) => m.tools.map((x) => x.start)),
   dings: [],
-  snaps: [T.pickerClick + 0.1, T.picker2Click + 0.1, RA.pickerClick + 0.1, RP.askClick + 0.1],
+  snaps: [T.pickerClick + 0.1, T.picker2Click + 0.1, RP.askClick + 0.1],
   uploadRises: [
     { t: T.up1Click + 0.1, dur: T.up1Done - T.up1Click - 0.1 },
     { t: T.up2Click + 0.1, dur: T.up2Done - T.up2Click - 0.1 },

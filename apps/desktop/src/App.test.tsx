@@ -815,6 +815,21 @@ describe("App", () => {
     expect((await messageList()).getByText("Hello from s1")).toBeInTheDocument();
   });
 
+  // Product owner, verbatim, on the document card: "clicking on it expands/closes."
+  it("clicking the same document's card again closes the panel instead of reopening it", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+    const chip = await (await messageList()).findByRole("button", { name: /syllabus\.pdf/i });
+
+    await userEvent.click(chip);
+    const region = await screen.findByRole("region", { name: /syllabus\.pdf/i });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(chip);
+    expect(region).not.toBeInTheDocument();
+    expect(chip).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("highlighting text in the document panel and choosing Ask Newton quotes it into the composer", async () => {
     vi.mocked(getDocumentContent).mockResolvedValueOnce({ content: "The residual should be under 1e-8.", editable: true });
     await signIn();

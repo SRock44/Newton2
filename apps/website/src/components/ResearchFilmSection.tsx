@@ -12,11 +12,12 @@ import pageStyles from "@/app/page.module.css";
 // The film (apps/promo-video's ResearchFilm) renders the real desktop-app components: a
 // researcher uploads messy lab notes and a project synopsis, attaches both to a chat, and asks
 // for an arXiv-style paper. Newton plans it, takes a round of changes, then writes and compiles
-// the LaTeX. Once it's written, the student attaches the finished PDF right back into the same
-// chat, opens it there (DocumentViewerPanel, split with the conversation, real pdf.js rendering
-// -- not a navigation away), highlights a real sentence in it, and asks about it. Every word,
-// number and page is real captured output from the deployed backend (see WEBSITE-ROADMAP.md,
-// Phase 3.14).
+// the LaTeX. That reply ends with the real PDF and its .tex source as clickable document cards
+// (write_research_paper's own "[Attached document: ...]" markers, rendered exactly like a
+// student's own attach) -- the student opens the PDF right from that card, split with the
+// conversation (DocumentViewerPanel, real pdf.js rendering -- not a navigation away), highlights
+// a real sentence in it, and asks about it. Every word, number and page is real captured output
+// from the deployed backend (see WEBSITE-ROADMAP.md, Phase 3.14).
 
 export default function ResearchFilmSection() {
   return (
@@ -41,7 +42,7 @@ export default function ResearchFilmSection() {
       <FilmPlayer
         src="/demo/newton-research.mp4"
         poster="/demo/newton-research-poster.jpg"
-        ariaLabel="Screen film of a graduate student writing a paper with Newton: uploading scratch lab notes and a project synopsis, attaching both to one chat, reviewing and revising Newton's paper plan, approving it, then attaching the finished PDF back into the chat, opening it split with the conversation, highlighting a sentence in it and asking Newton about it."
+        ariaLabel="Screen film of a graduate student writing a paper with Newton: uploading scratch lab notes and a project synopsis, attaching both to one chat, reviewing and revising Newton's paper plan, approving it, then opening the finished PDF from the real, clickable document card on Newton's reply, split with the conversation, highlighting a sentence in it and asking Newton about it."
       />
     </section>
   );

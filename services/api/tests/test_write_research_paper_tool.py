@@ -320,6 +320,20 @@ async def test_run_writes_a_paper_and_creates_real_document_rows(paper_user, db_
     assert "Solar Power Trends.pdf" in result
     assert "Solar Power Trends.tex" in result
 
+    # A "[Attached document: id|filename]" marker per created document -- the same one a
+    # student's own composer attach produces (see Composer.tsx) -- so the tutor can relay it
+    # verbatim and the new paper renders as a real, clickable card, not just a filename in
+    # prose (see app/agents/tutor.py's instruction to do exactly that).
+    docs_now = (
+        (await db_session.execute(select(Document).where(Document.user_id == paper_user.id)))
+        .scalars()
+        .all()
+    )
+    pdf_now = next(d for d in docs_now if d.filename.endswith(".pdf"))
+    tex_now = next(d for d in docs_now if d.filename.endswith(".tex"))
+    assert f"[Attached document: {pdf_now.id}|{pdf_now.filename}]" in result
+    assert f"[Attached document: {tex_now.id}|{tex_now.filename}]" in result
+
     # The compiled tex actually contains the rewritten \cite{} and a real .bib was sent.
     assert len(capture) == 1
     assert "\\cite{doe2024solar}" in capture[0]["tex"]

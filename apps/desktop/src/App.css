@@ -3128,35 +3128,73 @@ body.is-resizing-panel * {
   margin-bottom: var(--space-2);
 }
 
+/* A real, clickable document card — closer to Claude.ai's own file cards than a plain
+   inline chip, since a document Newton just produced deserves the same weight as one
+   the student attached: a colored type badge, the name, the type, one rounded button. */
 .attached-document-chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  width: 260px;
+  max-width: 100%;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background-color: var(--color-surface-2);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
   border: 1px solid var(--color-border-2);
+  box-shadow: var(--shadow-sm);
   color: var(--color-text);
   font-family: inherit;
-  font-size: var(--font-size-sm);
+  text-align: left;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .attached-document-chip:hover {
-  background-color: var(--color-surface-3);
+  background-color: var(--color-surface-2);
   border-color: var(--color-accent);
 }
 
-.attached-document-chip-icon {
+.attached-document-chip--active {
+  background-color: var(--color-accent-tint);
+  border-color: var(--color-accent);
+}
+
+.attached-document-chip-badge {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+.attached-document-chip-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .attached-document-chip-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 240px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.attached-document-chip-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
 }
 
 .message-stopped-note {

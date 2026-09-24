@@ -1084,13 +1084,15 @@ function App() {
     setMainView("documents");
   }
 
-  // An attached-document chip in a chat message (see MessageBubble/AttachedDocumentChip)
-  // was clicked: open it split with the chat it's a message in (DocumentViewerPanel),
-  // rather than navigating away from that conversation. Product owner, verbatim: "I
-  // should be able to open the final PDF in the chat ... it should then open split with
-  // the chatbox."
+  // An attached-document chip/card in a chat message (see MessageBubble/
+  // AttachedDocumentChip) was clicked: open it split with the chat it's a message in
+  // (DocumentViewerPanel), rather than navigating away from that conversation. Product
+  // owner, verbatim: "I should be able to open the final PDF in the chat ... it should
+  // then open split with the chatbox", and, on the card itself: "clicking on it
+  // expands/closes" — clicking the document that's ALREADY open closes it instead of
+  // re-opening it.
   function handleOpenDocumentInChat(documentId: string, filename: string) {
-    setChatDocumentPanel({ id: documentId, filename });
+    setChatDocumentPanel((prev) => (prev?.id === documentId ? null : { id: documentId, filename }));
   }
 
   // DocumentViewerPanel's "Ask Newton" on a highlighted excerpt: quotes it into the
@@ -1309,6 +1311,7 @@ function App() {
                       sessionId={activeSessionId}
                       onOpenSuggestedPanel={handleOpenSuggestedPanel}
                       onOpenDocument={handleOpenDocumentInChat}
+                      openDocumentId={chatDocumentPanel?.id ?? null}
                       onSend={handleSend}
                       onFocusComposer={handleFocusComposer}
                       firstRun={!onboardingSeen}

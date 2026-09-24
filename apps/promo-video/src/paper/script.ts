@@ -6,7 +6,6 @@ import { T } from "./timeline";
 // the timeline (no React), so the soundtrack exporter reads the very same clicks.
 
 const M = T.marks;
-const RA = T.reviewAttach;
 const RP = T.reviewPanel;
 
 const keys: CursorKey[] = [];
@@ -50,12 +49,8 @@ for (const m of M) {
   else pt(m.userAppear + 1.3, 1330, 600);
 }
 
-// ---- attach the finished PDF and ask Newton to walk through a table (turn 3, marks[3])
-click(RA.plusClick, "plus", { x: 700, y: 880 });
-click(RA.menuExistingClick, "menu-existing", { x: 800, y: 800 });
-click(RA.pickerClick, "picker-deck", { x: 800, y: 760 }); // the finished PDF is newest, so it's first
-
-// ---- open that PDF right there in the chat, highlight a real sentence, ask about it (turn 4)
+// ---- open the finished PDF from its card on Newton's own message, highlight a real sentence,
+// and ask about it (turn 3, marks[3])
 click(RP.chipClick, "doc-chip", { x: 900, y: 210 });
 pt(RP.panelIn + RP.panelInDur + 0.2, 1600, 460); // rests over the newly opened panel
 pt(RP.highlightStart + RP.highlightDur + 0.1, 1600, 640); // over the sentence just highlighted
@@ -74,7 +69,7 @@ export const Z: Keyframe<number>[] = [
   { t: T.newChatClick - 0.4, v: 1.06 },
   { t: T.newChatClick, v: 1 },
   { t: T.composerClick - 0.4, v: 1.03 },
-  { t: RA.plusClick - 0.4, v: 1 },
+  { t: RP.chipClick - 0.6, v: 1 },
   { t: RP.panelIn - 0.3, v: 1 },
   { t: RP.panelIn + RP.panelInDur + 0.3, v: 1.08 }, // in on the document panel opening
   { t: T.outroStart, v: 1.08 },
@@ -95,9 +90,8 @@ export const CAPTIONS = [
   { from: M[0].asstAppear, to: M[1].preClick! - 0.2, text: "Newton plans an arXiv-style paper — from what your notes actually show." },
   { from: M[1].preClick!, to: M[2].sendClick - 0.2, text: "Push back on the plan. Newton revises it." },
   { from: M[2].sendClick, to: M[2].end, text: "Approve: Newton writes and compiles the real LaTeX." },
-  { from: RA.plusClick - 0.1, to: M[3].asstAppear - 0.2, text: "Attach the finished PDF — right in the same chat." },
-  { from: M[3].asstAppear, to: RP.chipClick - 0.3, text: "Newton checks the real numbers before it answers." },
-  { from: RP.chipClick - 0.1, to: RP.highlightStart - 0.2, text: "Open the PDF without leaving the conversation." },
+  { from: M[2].end - 0.1, to: RP.chipClick - 0.3, text: "The finished PDF arrives as a real, clickable file — right in the chat." },
+  { from: RP.chipClick - 0.1, to: RP.highlightStart - 0.2, text: "Open it without leaving the conversation." },
   { from: RP.highlightStart, to: RP.askClick + 0.3, text: "Highlight anything in it, and ask." },
-  { from: M[4].asstAppear, to: T.viewerOut, text: "Newton answers from the exact sentence you pointed at." },
+  { from: M[3].asstAppear, to: T.viewerOut, text: "Newton answers from the exact sentence you pointed at." },
 ];

@@ -157,6 +157,13 @@ async def send_message(s, tok, text, timeout):
     print("REPLY_END")
 
 
+async def stage_flags():
+    tok = await token()
+    sub = jose_jwt.get_unverified_claims(tok)["sub"]
+    await set_flags(sub, "pro", False, False, AUTHOR)
+    print("FLAGS set: pro, focus off, learn off")
+
+
 async def stage_say(text, attach, timeout):
     s = load()
     tok = await token()
@@ -301,6 +308,10 @@ def main():
         return
     if a[0] == "setup":
         asyncio.run(stage_setup(json.loads(a[a.index("--orig") + 1]) if "--orig" in a else None))
+    elif a[0] == "flags":
+        # Re-applies pro/no-focus/no-learn without touching turns/docs -- for redoing a later
+        # turn (e.g. a re-write) after `restore` put the account back to its real settings.
+        asyncio.run(stage_flags())
     elif a[0] == "say":
         timeout = int(a[a.index("--timeout") + 1]) if "--timeout" in a else 300
         asyncio.run(stage_say(base64.b64decode(a[1]).decode("utf-8"), "--attach" in a, timeout))

@@ -5,11 +5,14 @@ import { latexPrefixes, safePrefix, typedText } from "../show/data";
 // paper/captured.json (see paper/capture.py): two real files uploaded to Documents (scratch lab
 // notes and a project synopsis), the real chat that planned the paper (a real ```paper-plan
 // card, revised on request), the real `write_research_paper` run — real web search and source
-// fetches, real LaTeX compile — the real PDF it produced (paper/generated/, copied to
+// fetches, real LaTeX compile — the real PDF it produced (paper/out/, copied to
 // public/research-paper.pdf and rendered by the film's own DocumentViewerPanel via pdf.js, the
-// same component the real app now uses), and a real follow-up conversation reviewing it (a
-// second real capture stage, stage_review, re-uploading that same PDF once it was written). The
-// student's messages are the scripted half.
+// same component the real app now uses), and a real follow-up turn asking about a sentence in it.
+// write_research_paper's own reply ends with the real "[Attached document: id|filename]" markers
+// for the PDF and its .tex source (see services/api/app/tools/write_research_paper.py) — the
+// SAME markers a student's own composer attach produces — so MessageBubble renders them as real,
+// clickable document cards right there; the follow-up turn opens the PDF from that card, no
+// separate re-upload/re-attach needed. The student's messages are the scripted half.
 
 export interface CapturedTool {
   type: string;
@@ -32,10 +35,6 @@ interface CapDoc {
 
 export const NOTES = captured.docs.notes as { doc: CapDoc; content: string };
 export const SYNOPSIS = captured.docs.synopsis as { doc: CapDoc; content: string };
-// The finished PDF, re-uploaded so the student can attach and discuss it — a real, separate
-// upload (see paper/capture.py's stage_review), not the same Document row write_research_paper
-// created (that account snapshot only lives for the duration of one capture run).
-export const PAPER_REUPLOAD = (captured.docs as Record<string, { doc: CapDoc }>).paper_reupload.doc;
 export const TURNS = captured.turns as CapturedTurn[];
 
 const paperEntries = Object.values(captured.paper) as { doc: CapDoc; content: string }[];
@@ -63,11 +62,10 @@ export const OLD_DOCS = [
 export const STUDENT = "Priya";
 export const APPROVE_TEXT = "Looks good — go ahead and write it.";
 
-/** The sentence highlighted in the finished PDF for the "Ask Newton" scene — a real sentence
- * from the paper's own Introduction (page 1), and exactly what turn 4's real captured message
- * quotes (see paper/capture.py's stage_review). */
+/** The sentence highlighted in the finished PDF for the "Ask Newton" scene — a real sentence from
+ * the paper's own Discussion section, and exactly what turn 3's real captured message quotes. */
 export const REVIEW_QUOTE =
-  "The SOR prediction is less satisfactory: the measured count exceeds the asymptotic prediction by roughly 30–37% on these grids.";
+  "they are systematically larger than the spectral-radius prediction: the predicted counts are 50, 97, and 191, giving measured-to-predicted ratios 1.30, 1.33, and 1.37.";
 
 /** The turn pairs, by role. Turn k = (user, assistant). */
 export const turn = (k: number) => ({ user: TURNS[2 * k], assistant: TURNS[2 * k + 1] });
