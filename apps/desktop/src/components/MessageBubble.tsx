@@ -520,6 +520,19 @@ function MessageBubble({
             ))}
           </div>
         )}
+        <MessageContent
+          content={displayContent || " "}
+          persistKey={persistKey}
+          streaming={message.streaming}
+          token={token}
+          onSend={onSend}
+          onFocusComposer={onFocusComposer}
+          nextMessageContent={nextMessageContent}
+          isLatestPaperPlanMessage={isLatestPaperPlanMessage}
+        />
+        {/* Below the message text, not above it (App.tsx/MessageBubble.tsx feedback): a
+            student reads what Newton said FIRST, and the document it's about is right
+            there to open next, with no scrolling back up past the reply to reach it. */}
         {attachedDocuments.length > 0 && (
           <div className="attached-documents">
             {attachedDocuments.map((doc) => (
@@ -533,16 +546,6 @@ function MessageBubble({
             ))}
           </div>
         )}
-        <MessageContent
-          content={displayContent || " "}
-          persistKey={persistKey}
-          streaming={message.streaming}
-          token={token}
-          onSend={onSend}
-          onFocusComposer={onFocusComposer}
-          nextMessageContent={nextMessageContent}
-          isLatestPaperPlanMessage={isLatestPaperPlanMessage}
-        />
         {message.suggestedActions && message.suggestedActions.length > 0 && (
           <div className="suggested-actions">
             {message.suggestedActions.map((action, i) => (

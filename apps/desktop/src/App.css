@@ -3125,7 +3125,8 @@ body.is-resizing-panel * {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  /* Below the message text now, not above it -- see MessageBubble.tsx. */
+  margin-top: var(--space-2);
 }
 
 /* A real, clickable document card — closer to Claude.ai's own file cards than a plain

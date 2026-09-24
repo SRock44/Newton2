@@ -241,6 +241,25 @@ describe("MessageBubble", () => {
     expect(screen.getByRole("button", { name: /syllabus\.pdf/i })).toBeInTheDocument();
   });
 
+  it("renders the document card BELOW the message text, not above it", () => {
+    // Feedback: a student had to scroll back up past Newton's reply to reach the
+    // document it produced. The card now comes after the text in DOM order, so it's
+    // the next thing you see, not something you scroll up to find.
+    const message: ChatMessage = {
+      role: "assistant",
+      content: "Done — here's your paper.\n\n[Attached document: doc-1|paper.pdf]",
+    };
+    render(
+      <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+    );
+
+    const text = screen.getByText(/Done — here's your paper/);
+    const chip = screen.getByRole("button", { name: /paper\.pdf/i });
+    // DOCUMENT_POSITION_FOLLOWING: `chip` comes after `text` in the document.
+    // eslint-disable-next-line no-bitwise
+    expect(text.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("clicking an attached-document chip navigates to that document", async () => {
     const user = userEvent.setup();
     const onOpenDocument = vi.fn();
