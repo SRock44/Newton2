@@ -119,6 +119,7 @@ function CodeBlock({
         onApprove={onSend ?? (() => {})}
         onRequestChanges={onFocusComposer ?? (() => {})}
         interactive={isLatestPaperPlanMessage ?? true}
+        answeredWith={nextMessageContent}
       />
     );
   }

@@ -105,6 +105,59 @@ describe("PaperPlanCard", () => {
     });
   });
 
+  // BUG: "Approve & Write" stayed clickable forever after being clicked, since approving this
+  // exact plan never produces a NEWER plan block (Newton's reply is the written paper, not
+  // another plan) — so `interactive` alone never goes false. Fixed the same way
+  // ArtifactPlanCard.tsx's "Build it" already was.
+  describe("locking after Approve & Write (a real, paid write_research_paper run each time)", () => {
+    it("locks after the first click so a second click cannot start another write", async () => {
+      const user = userEvent.setup();
+      const onApprove = vi.fn();
+      render(<PaperPlanCard json={PLAN_JSON} onApprove={onApprove} onRequestChanges={vi.fn()} interactive />);
+
+      const approve = screen.getByRole("button", { name: /approve.*write/i });
+      await user.click(approve);
+      expect(onApprove).toHaveBeenCalledTimes(1);
+
+      // The buttons are gone entirely, replaced by an honest in-progress note.
+      expect(screen.queryByRole("button", { name: /approve.*write/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /request changes/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/writing your paper/i)).toBeInTheDocument();
+      expect(onApprove).toHaveBeenCalledTimes(1);
+    });
+
+    it("renders locked from the start when the conversation already moved past it", () => {
+      // Reopening the conversation later: local state is gone, but the real next message in
+      // the conversation still proves this plan was already acted on.
+      render(
+        <PaperPlanCard
+          json={PLAN_JSON}
+          onApprove={vi.fn()}
+          onRequestChanges={vi.fn()}
+          interactive
+          answeredWith={APPROVE_MESSAGE}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: /approve.*write/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/writing your paper/i)).toBeInTheDocument();
+      // The plan itself still renders — only the actions are gone.
+      expect(screen.getByText("The Impact of Spaced Repetition on Retention")).toBeInTheDocument();
+    });
+
+    it("stays interactive while it hasn't been approved yet", () => {
+      render(<PaperPlanCard json={PLAN_JSON} onApprove={vi.fn()} onRequestChanges={vi.fn()} interactive />);
+      expect(screen.getByRole("button", { name: /approve.*write/i })).toBeInTheDocument();
+      expect(screen.queryByText(/writing your paper/i)).not.toBeInTheDocument();
+    });
+
+    it("Request Changes does not lock the card on its own", async () => {
+      const user = userEvent.setup();
+      render(<PaperPlanCard json={PLAN_JSON} onApprove={vi.fn()} onRequestChanges={vi.fn()} interactive />);
+      await user.click(screen.getByRole("button", { name: /request changes/i }));
+      expect(screen.getByRole("button", { name: /approve.*write/i })).toBeInTheDocument();
+    });
+  });
+
   describe("when not interactive (superseded by a later plan)", () => {
     it("hides both action buttons and shows a stale note instead", () => {
       render(
@@ -210,5 +263,19 @@ describe("MessageContent + paper-plan code fence", () => {
 
     await user.click(screen.getByRole("button", { name: /request changes/i }));
     expect(onFocusComposer).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks Approve & Write end-to-end once the conversation's next message proves it was used", () => {
+    const content = "```paper-plan\n" + PLAN_JSON + "\n```";
+    render(
+      <MessageContent
+        content={content}
+        onSend={vi.fn()}
+        onFocusComposer={vi.fn()}
+        nextMessageContent={APPROVE_MESSAGE}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /approve.*write/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/writing your paper/i)).toBeInTheDocument();
   });
 });

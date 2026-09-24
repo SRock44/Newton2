@@ -3600,6 +3600,14 @@ body.is-resizing-panel * {
   color: var(--color-text-faint);
 }
 
+/* Replaces the actions once "Approve & Write" has been used — see PaperPlanCard.tsx's
+   "one real, paid write_research_paper run" contract. Same faint register as the stale note. */
+.paper-plan-card__locked-note {
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  color: var(--color-text-faint);
+}
+
 /* ---------- Step check (Learn Mode — attempt the next math step yourself) ---------- */
 
 .step-check {
@@ -5420,6 +5428,145 @@ body.is-resizing-panel * {
   font-size: var(--font-size-sm);
   line-height: var(--line-height-relaxed);
   white-space: pre-wrap;
+}
+
+/* ---------- Chat + document split (DocumentViewerPanel) ----------
+ * An attached-document chip opens its document ALONGSIDE the chat it's a message in
+ * (App.tsx's chatDocumentPanel), rather than navigating away from that conversation.
+ * .chat-split is the same flex row whether or not a panel is open — .chat-split__chat
+ * just fills it alone when there's no second item — so opening/closing one never
+ * restructures the DOM the chat itself lives in. */
+
+.chat-split {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.chat-split__chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.doc-viewer-panel {
+  width: var(--doc-panel-width, 560px);
+  min-width: 360px;
+  max-width: 960px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.doc-viewer-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.doc-viewer-panel__filename {
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.doc-viewer-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.doc-viewer-panel__icon-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-md);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.doc-viewer-panel__icon-btn:hover:not(:disabled) {
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.doc-viewer-panel__icon-btn:disabled {
+  opacity: 0.4;
+}
+
+.doc-viewer-panel__zoom-level {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-faint);
+  min-width: 3.2em;
+  text-align: center;
+}
+
+.doc-viewer-panel__status {
+  margin: 0 var(--space-4);
+}
+
+.doc-viewer-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  padding: var(--space-4);
+}
+
+.doc-viewer-panel__text {
+  max-width: none;
+}
+
+.doc-viewer-panel__pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.doc-viewer-panel__page {
+  position: relative;
+  box-shadow: var(--shadow-sm);
+}
+
+.doc-viewer-panel__page canvas {
+  display: block;
+}
+
+/* The real, positioned text pdf.js draws over its own rendered canvas — this is what
+ * makes highlighting a PDF possible at all (see DocumentViewerPanel.tsx's PdfPage).
+ * The exact rule set pdfjs-dist ships in web/pdf_viewer.css for .textLayer, trimmed to
+ * just what a plain highlight-and-select needs (no find-bar/edit-mode extras). */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  transform-origin: 0 0;
+}
+
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
 }
 
 /* ---------- Responsive ----------

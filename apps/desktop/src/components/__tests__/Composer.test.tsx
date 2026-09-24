@@ -268,6 +268,50 @@ describe("Composer", () => {
     });
   });
 
+  // DocumentViewerPanel's "Ask Newton" on a highlighted excerpt (see App.tsx's
+  // handleAskAboutDocumentSelection) — same "set it, don't send it" contract as a
+  // pending attachment: the draft is pre-filled and focused, nothing is sent.
+  describe("pendingDraftText (DocumentViewerPanel's \"Ask Newton\")", () => {
+    it("quotes the excerpt into the draft and focuses the composer, without sending anything", () => {
+      const onSend = vi.fn();
+      const onPendingDraftConsumed = vi.fn();
+      render(
+        <Composer
+          onSend={onSend}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          pendingDraftText={'Regarding this part of "paper.pdf":\n> the residual\n\n'}
+          onPendingDraftConsumed={onPendingDraftConsumed}
+        />,
+      );
+
+      const textarea = screen.getByRole("textbox");
+      expect(textarea).toHaveValue('Regarding this part of "paper.pdf":\n> the residual\n\n');
+      expect(textarea).toHaveFocus();
+      expect(onPendingDraftConsumed).toHaveBeenCalledTimes(1);
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it("the student can still edit it and send it themselves", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(
+        <Composer
+          onSend={onSend}
+          disabled={false}
+          token="test-token"
+          sessionId="test-session"
+          pendingDraftText="Regarding this part: "
+          onPendingDraftConsumed={vi.fn()}
+        />,
+      );
+      await user.type(screen.getByRole("textbox"), "please simplify it");
+      await user.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledWith("Regarding this part: please simplify it");
+    });
+  });
+
   describe("attaching several documents to one message", () => {
     async function pick(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
       await user.click(screen.getByRole("button", { name: /add attachment/i }));

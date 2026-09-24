@@ -16,7 +16,7 @@ interface MessageBubbleProps {
   /** Navigates to a specific document on the Documents page (see App.tsx's
    * handleOpenDocument / mainView) — threaded down the same way onOpenSuggestedPanel
    * is, for an attached-document chip's click. */
-  onOpenDocument: (documentId: string) => void;
+  onOpenDocument: (documentId: string, filename: string) => void;
   /** Sends a plain-text chat message on the student's behalf — for an "options" pick or
    * a "paper-plan" approval (see MessageContent/CodeBlock). Optional so existing call
    * sites/tests that never render one of those blocks don't need to pass it. */

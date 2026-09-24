@@ -140,6 +140,23 @@ export function setContextPanelWidth(width: number): void {
   writeWidth(CONTEXT_PANEL_WIDTH_KEY, width, CONTEXT_PANEL_MIN_WIDTH, CONTEXT_PANEL_MAX_WIDTH);
 }
 
+export const DOC_PANEL_DEFAULT_WIDTH = 560;
+export const DOC_PANEL_MIN_WIDTH = 360;
+export const DOC_PANEL_MAX_WIDTH = 960;
+
+const DOC_PANEL_WIDTH_KEY = "newton:prefs:docPanelWidth";
+
+/** DocumentViewerPanel's width in px, split with the chat (see App.tsx's
+ * chatDocumentPanel) — same drag-to-resize convention as the sidebar/context panel
+ * above, its handle on its LEFT edge like ContextPanel's. */
+export function getDocPanelWidth(): number {
+  return readWidth(DOC_PANEL_WIDTH_KEY, DOC_PANEL_DEFAULT_WIDTH, DOC_PANEL_MIN_WIDTH, DOC_PANEL_MAX_WIDTH);
+}
+
+export function setDocPanelWidth(width: number): void {
+  writeWidth(DOC_PANEL_WIDTH_KEY, width, DOC_PANEL_MIN_WIDTH, DOC_PANEL_MAX_WIDTH);
+}
+
 /* ---------- Appearance (theme + accent) ---------- */
 
 export type ThemePreference = "light" | "dark" | "system";

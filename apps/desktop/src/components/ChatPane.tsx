@@ -13,7 +13,7 @@ interface ChatPaneProps {
   token: string;
   sessionId: string | null;
   onOpenSuggestedPanel: (panel: string) => void;
-  onOpenDocument: (documentId: string) => void;
+  onOpenDocument: (documentId: string, filename: string) => void;
   /** Sends a plain-text chat message on the student's behalf — for an "options" pick or
    * a "paper-plan" approval (see MessageBubble/MessageContent/CodeBlock). Optional so
    * existing call sites/tests that never render one of those blocks don't need it. */

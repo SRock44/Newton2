@@ -259,7 +259,7 @@ describe("MessageBubble", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /notes\.txt/i }));
-    expect(onOpenDocument).toHaveBeenCalledWith("doc-42");
+    expect(onOpenDocument).toHaveBeenCalledWith("doc-42", "notes.txt");
     expect(onOpenDocument).toHaveBeenCalledTimes(1);
   });
 

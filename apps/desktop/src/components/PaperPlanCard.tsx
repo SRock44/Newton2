@@ -38,7 +38,17 @@
  * lib/paperPlanIndex.ts + ChatPane.tsx) and passed in here as the `interactive` prop;
  * this component itself has no access to (and makes no assumption about) any other
  * plan blocks that may exist elsewhere in the conversation.
+ *
+ * Being the latest plan is not the same as being unanswered, though: approving THIS
+ * exact plan never produces a newer plan block (Newton's reply is the written paper,
+ * not another plan), so `interactive` alone would leave "Approve & Write" clickable
+ * forever — a real, paid `write_research_paper` run each time. Locked the same way
+ * ArtifactPlanCard.tsx's "Build it" is: local state for the instant it's clicked, plus
+ * `answeredWith` (the next message's text, if any — see CodeBlock.tsx's
+ * `nextMessageContent`) so a remount or reload finds it already locked too.
  */
+import { useState } from "react";
+
 interface PaperPlanSection {
   heading: string;
   summary: string;
@@ -61,9 +71,15 @@ interface PaperPlanCardProps {
   /** Whether this is the most recent paper-plan block in the visible conversation (see
    * the contract comment above). Only then do the action buttons render as clickable. */
   interactive: boolean;
+  /** The plain text of the chat message right after this one, if any — the same
+   * `nextMessageContent` prop OptionsPicker/StepCheck/Checkpoint/ArtifactPlanCard use.
+   * Its mere existence means this plan was already acted on, so the actions render
+   * locked even after a remount or a reload. */
+  answeredWith?: string;
 }
 
 export const APPROVE_MESSAGE = "Looks good — go ahead and write it.";
+export const WRITING_NOTE = "Writing your paper — it'll appear in your Documents when it's ready.";
 
 /** The card numbers its own outline (an <ol>), so a heading the model already wrote as "1. Introduction"
  * would read "1. 1. Introduction". Drops one leading "1." / "2)" / "3 -" style number. */
@@ -110,11 +126,22 @@ function parsePaperPlan(json: string): PaperPlanBlock | null {
   }
 }
 
-function PaperPlanCard({ json, onApprove, onRequestChanges, interactive }: PaperPlanCardProps) {
+function PaperPlanCard({ json, onApprove, onRequestChanges, interactive, answeredWith }: PaperPlanCardProps) {
+  const [sent, setSent] = useState(false);
   const plan = parsePaperPlan(json);
 
   if (!plan) {
     return <div className="paper-plan-card paper-plan-card--error">Couldn't render this plan.</div>;
+  }
+
+  const locked = sent || answeredWith !== undefined;
+
+  function handleApprove() {
+    // Guard the handler too, not just the disabled attribute: a double-click can land
+    // two events before React re-renders, and each one is a real, paid write_research_paper run.
+    if (locked) return;
+    setSent(true);
+    onApprove(APPROVE_MESSAGE);
   }
 
   return (
@@ -142,17 +169,19 @@ function PaperPlanCard({ json, onApprove, onRequestChanges, interactive }: Paper
           </ul>
         </div>
       )}
-      {interactive ? (
+      {!interactive ? (
+        <div className="paper-plan-card__stale-note">A newer plan has replaced this one.</div>
+      ) : locked ? (
+        <div className="paper-plan-card__locked-note">{WRITING_NOTE}</div>
+      ) : (
         <div className="paper-plan-card__actions">
-          <button type="button" className="btn-primary" onClick={() => onApprove(APPROVE_MESSAGE)}>
+          <button type="button" className="btn-primary" onClick={handleApprove}>
             Approve &amp; Write
           </button>
           <button type="button" className="btn-secondary" onClick={onRequestChanges}>
             Request Changes
           </button>
         </div>
-      ) : (
-        <div className="paper-plan-card__stale-note">A newer plan has replaced this one.</div>
       )}
     </div>
   );

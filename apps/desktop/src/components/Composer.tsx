@@ -60,6 +60,14 @@ interface ComposerProps {
   /** Called once the pending attachment above has actually been applied, so the parent
    * can clear it and never re-apply it (e.g. if the student then removes the chip). */
   onPendingAttachmentConsumed?: () => void;
+  /** DocumentViewerPanel's "Ask Newton" on a highlighted excerpt (see App.tsx's
+   * handleAskAboutDocumentSelection): quotes the excerpt into the draft and focuses the
+   * composer, same "set it, don't send it" contract as pendingAttachment above — the
+   * student still writes and sends their own instruction. */
+  pendingDraftText?: string | null;
+  /** Called once the pending draft above has actually been applied — see
+   * onPendingAttachmentConsumed. */
+  onPendingDraftConsumed?: () => void;
   /** Message editing (ROADMAP.md): non-null while the student is editing a previous
    * message of their own — set by App.tsx's handleEditMessage (via the context menu's
    * "Edit message"), cleared on cancel or once the edit is actually sent. Repopulates
@@ -103,6 +111,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     sessionId,
     pendingAttachment,
     onPendingAttachmentConsumed,
+    pendingDraftText,
+    onPendingDraftConsumed,
     editing,
     onCancelEdit,
     editError,
@@ -283,6 +293,16 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     onPendingAttachmentConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAttachment]);
+
+  // DocumentViewerPanel's "Ask Newton" (App.tsx's handleAskAboutDocumentSelection) —
+  // same shape as the attachment effect above, just setting the draft text instead.
+  useEffect(() => {
+    if (!pendingDraftText) return;
+    setDraft(pendingDraftText);
+    onPendingDraftConsumed?.();
+    textareaRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDraftText]);
 
   // Close either popover on an outside click or Escape — same idea as ContextMenu.tsx's
   // dismiss handling, just scoped to this one anchored wrapper instead of the whole

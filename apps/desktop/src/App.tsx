@@ -38,6 +38,7 @@ import ChatPane from "./components/ChatPane";
 import Composer from "./components/Composer";
 import type { ComposerHandle, ConversationPracticeOptions } from "./components/Composer";
 import DocumentsPanel from "./components/DocumentsPanel";
+import DocumentViewerPanel from "./components/DocumentViewerPanel";
 import HomeView from "./components/HomeView";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import CalendarPanel from "./components/CalendarPanel";
@@ -211,6 +212,17 @@ function App() {
   const [pendingComposerDocument, setPendingComposerDocument] = useState<
     { sessionId: string; id: string; name: string } | null
   >(null);
+  // A document opened alongside THIS chat (an attachment chip's "click", see
+  // handleOpenDocumentInChat below) — split with the chat instead of navigating away
+  // from it, unlike mainView/"documents" (which is a real full-page nav, for the
+  // Documents sidebar item and Home's "recent documents" list, where there's no chat to
+  // stay next to). Cleared on close, on switching sessions, or on leaving chat entirely.
+  const [chatDocumentPanel, setChatDocumentPanel] = useState<{ id: string; filename: string } | null>(null);
+  // "Ask Newton" on a highlighted excerpt in that panel (see
+  // handleAskAboutDocumentSelection below) — same "set it, don't send it" contract as
+  // pendingComposerDocument above, just quoting text into the draft instead of
+  // attaching a document.
+  const [pendingComposerDraft, setPendingComposerDraft] = useState<{ sessionId: string; text: string } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   // True only once THIS socket's application-level auth handshake has actually
@@ -1027,13 +1039,16 @@ function App() {
   async function handleNewChat() {
     await createNewSession();
     setMainView("chat");
+    setChatDocumentPanel(null);
   }
 
   // Sidebar session click: switch chats and, if Documents was showing, bring chat back
   // into view — one of several obvious ways back (see the mainView comment above).
+  // The document panel is scoped to the chat it was opened next to, so it closes too.
   function handleSelectSession(id: string) {
     setActiveSessionId(id);
     setMainView("chat");
+    setChatDocumentPanel(null);
   }
 
   // "Chat about this document" (DocumentsPanel): start a fresh chat, then hand the
@@ -1061,11 +1076,38 @@ function App() {
     setMainView("home");
   }
 
-  // An attached-document chip in a chat message (see MessageBubble/AttachedDocumentChip)
-  // was clicked: jump to the Documents page with that exact document selected.
+  // Home's "Recent documents & notes" widget: jump to the Documents page with that
+  // exact document selected — there's no chat open next to Home to split with, so this
+  // stays a real navigation (unlike handleOpenDocumentInChat below).
   function handleOpenDocument(documentId: string) {
     setOpenDocumentId(documentId);
     setMainView("documents");
+  }
+
+  // An attached-document chip in a chat message (see MessageBubble/AttachedDocumentChip)
+  // was clicked: open it split with the chat it's a message in (DocumentViewerPanel),
+  // rather than navigating away from that conversation. Product owner, verbatim: "I
+  // should be able to open the final PDF in the chat ... it should then open split with
+  // the chatbox."
+  function handleOpenDocumentInChat(documentId: string, filename: string) {
+    setChatDocumentPanel({ id: documentId, filename });
+  }
+
+  // DocumentViewerPanel's "Ask Newton" on a highlighted excerpt: quotes it into the
+  // composer next to the panel and focuses it (Composer's pendingDraftText) — the
+  // student still writes and sends their own instruction, same as every other attach
+  // flow in this app. Scoped to the session the panel is open next to, mirroring
+  // pendingComposerDocument.
+  function handleAskAboutDocumentSelection(excerpt: string) {
+    if (!activeSessionId || !chatDocumentPanel) return;
+    const quoted = excerpt
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+    setPendingComposerDraft({
+      sessionId: activeSessionId,
+      text: `Regarding this part of "${chatDocumentPanel.filename}":\n${quoted}\n\n`,
+    });
   }
 
   // Backs every "Open Flashcards"-style suggested-action button on a message (see
@@ -1253,51 +1295,73 @@ function App() {
                   <p>Loading your chats…</p>
                 </div>
               ) : (
-                <>
-                  <ChatPane
-                    messages={messages}
-                    loading={messagesLoading}
-                    loadError={messagesError}
-                    token={token}
-                    sessionId={activeSessionId}
-                    onOpenSuggestedPanel={handleOpenSuggestedPanel}
-                    onOpenDocument={handleOpenDocument}
-                    onSend={handleSend}
-                    onFocusComposer={handleFocusComposer}
-                    firstRun={!onboardingSeen}
-                    onDismissFirstRun={handleDismissOnboarding}
-                    editingMessageId={editingMessage?.id ?? null}
-                  />
-                  {/* MathLive's virtual keyboard is retargeted here instead of its
-                      default page-covering overlay — see lib/mathKeyboardDock.ts and
-                      App.css's ".math-keyboard-dock" for the full "why". A flex
-                      sibling of ChatPane/Composer: showing the keyboard pushes the
-                      composer down rather than ever overlapping it, and starts at
-                      zero height so it takes no space until actually shown. */}
-                  <div id="math-keyboard-dock" className="math-keyboard-dock" />
-                  <Composer
-                    ref={composerRef}
-                    onSend={handleSend}
-                    onStop={handleStop}
-                    disabled={isStreaming || !activeSessionId}
-                    streaming={isStreaming}
-                    token={token}
-                    sessionId={activeSessionId}
-                    pendingAttachment={
-                      pendingComposerDocument?.sessionId === activeSessionId ? pendingComposerDocument : null
-                    }
-                    onPendingAttachmentConsumed={() => setPendingComposerDocument(null)}
-                    editing={editingMessage}
-                    onCancelEdit={handleCancelEdit}
-                    editError={editError}
-                  />
-                </>
+                // Split with an open DocumentViewerPanel (an attached-document chip's
+                // click, see handleOpenDocumentInChat) rather than a plain stack of
+                // ChatPane+Composer — the same flex row whether or not a panel is open,
+                // so opening/closing one never restructures the DOM around it.
+                <div className="chat-split">
+                  <div className="chat-split__chat">
+                    <ChatPane
+                      messages={messages}
+                      loading={messagesLoading}
+                      loadError={messagesError}
+                      token={token}
+                      sessionId={activeSessionId}
+                      onOpenSuggestedPanel={handleOpenSuggestedPanel}
+                      onOpenDocument={handleOpenDocumentInChat}
+                      onSend={handleSend}
+                      onFocusComposer={handleFocusComposer}
+                      firstRun={!onboardingSeen}
+                      onDismissFirstRun={handleDismissOnboarding}
+                      editingMessageId={editingMessage?.id ?? null}
+                    />
+                    {/* MathLive's virtual keyboard is retargeted here instead of its
+                        default page-covering overlay — see lib/mathKeyboardDock.ts and
+                        App.css's ".math-keyboard-dock" for the full "why". A flex
+                        sibling of ChatPane/Composer: showing the keyboard pushes the
+                        composer down rather than ever overlapping it, and starts at
+                        zero height so it takes no space until actually shown. */}
+                    <div id="math-keyboard-dock" className="math-keyboard-dock" />
+                    <Composer
+                      ref={composerRef}
+                      onSend={handleSend}
+                      onStop={handleStop}
+                      disabled={isStreaming || !activeSessionId}
+                      streaming={isStreaming}
+                      token={token}
+                      sessionId={activeSessionId}
+                      pendingAttachment={
+                        pendingComposerDocument?.sessionId === activeSessionId ? pendingComposerDocument : null
+                      }
+                      onPendingAttachmentConsumed={() => setPendingComposerDocument(null)}
+                      pendingDraftText={
+                        pendingComposerDraft?.sessionId === activeSessionId ? pendingComposerDraft.text : null
+                      }
+                      onPendingDraftConsumed={() => setPendingComposerDraft(null)}
+                      editing={editingMessage}
+                      onCancelEdit={handleCancelEdit}
+                      editError={editError}
+                    />
+                  </div>
+                  {chatDocumentPanel && (
+                    <DocumentViewerPanel
+                      key={chatDocumentPanel.id}
+                      token={token}
+                      documentId={chatDocumentPanel.id}
+                      initialFilename={chatDocumentPanel.filename}
+                      onClose={() => setChatDocumentPanel(null)}
+                      onAskAboutSelection={handleAskAboutDocumentSelection}
+                    />
+                  )}
+                </div>
               )}
             </>
           )}
         </main>
 
-        <ContextPanel
+        {/* The document viewer takes the space Newton context would normally use —
+            showing both at once left neither with room to be useful. */}
+        {!chatDocumentPanel && <ContextPanel
           token={token}
           sessionCount={sessions.length}
           messageCount={messages.length}
@@ -1306,7 +1370,7 @@ function App() {
             0,
           )}
           mainView={mainView}
-        />
+        />}
       </div>
 
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}

@@ -786,16 +786,61 @@ describe("App", () => {
   });
 
   // Item 2: an attached-document chip in a message is a real, clickable attachment —
-  // clicking it jumps straight to that document on the Documents page.
-  it("clicking an attached-document chip in a message switches to Documents with that document selected", async () => {
+  // clicking it opens that document split alongside the chat it's a message in
+  // (DocumentViewerPanel), not a navigation away from that conversation. Product
+  // owner, verbatim: "I should be able to open the final PDF in the chat ... it should
+  // then open split with the chatbox."
+  it("clicking an attached-document chip in a message opens it split with the chat, not a navigation away", async () => {
     await signIn();
     await (await messageList()).findByText("Hello from s1");
 
     const chip = await (await messageList()).findByRole("button", { name: /syllabus\.pdf/i });
     await userEvent.click(chip);
 
-    expect(screen.getByRole("heading", { name: "Documents" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /syllabus\.pdf/i })).toBeInTheDocument();
     await waitFor(() => expect(vi.mocked(getDocumentContent)).toHaveBeenCalledWith(expect.any(String), "doc-1"));
+    // Still in the same chat — nothing navigated away from it.
+    expect(screen.queryByRole("heading", { name: "Documents" })).not.toBeInTheDocument();
+    expect((await messageList()).getByText("Hello from s1")).toBeInTheDocument();
+  });
+
+  it("closing the document panel leaves the chat exactly as it was", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+    await userEvent.click(await (await messageList()).findByRole("button", { name: /syllabus\.pdf/i }));
+    await screen.findByRole("region", { name: /syllabus\.pdf/i });
+
+    await userEvent.click(screen.getByRole("button", { name: /close document viewer/i }));
+    expect(screen.queryByRole("region", { name: /syllabus\.pdf/i })).not.toBeInTheDocument();
+    expect((await messageList()).getByText("Hello from s1")).toBeInTheDocument();
+  });
+
+  it("highlighting text in the document panel and choosing Ask Newton quotes it into the composer", async () => {
+    vi.mocked(getDocumentContent).mockResolvedValueOnce({ content: "The residual should be under 1e-8.", editable: true });
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+    await userEvent.click(await (await messageList()).findByRole("button", { name: /syllabus\.pdf/i }));
+
+    const body = await screen.findByTestId("doc-viewer-text");
+    const textNode = await within(body).findByText(/residual should be under/);
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    // jsdom doesn't compute real layout, but getBoundingClientRect exists and the
+    // component only reads its numbers for positioning, not for correctness (same
+    // helper as DocumentsPanel.test.tsx's own selectTextIn).
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({ top: 100, left: 50, bottom: 120, right: 200, width: 150, height: 20 }),
+    });
+    fireEvent.mouseUp(body);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Ask Newton" }));
+    const composerInput = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(composerInput.value).toContain("syllabus.pdf");
+    expect(composerInput.value).toContain("residual should be under");
+    expect(composerInput).toHaveFocus();
   });
 
   // "Chat about this document" must behave exactly like manually clicking "+" ->
