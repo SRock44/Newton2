@@ -26,4 +26,11 @@ describe("ResearchFilmSection", () => {
     expect(screen.getByText(/works at every level/i)).toBeInTheDocument();
     expect(document.querySelector("#demo-research")).not.toBeNull();
   });
+
+  it("mentions discussing the finished PDF back in the chat, not just producing it", () => {
+    render(<ResearchFilmSection />);
+    const video = document.querySelector("video")!;
+    expect(video.getAttribute("aria-label")).toMatch(/highlighting a sentence/i);
+    expect(screen.getByText(/discusses the finished PDF/i)).toBeInTheDocument();
+  });
 });

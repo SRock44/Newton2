@@ -1,3 +1,4 @@
+import type { CapturedTurn } from "./data";
 import { TURNS, turn, typedText } from "./data";
 
 // One continuous take. Every time is derived from the captured content (lengths of what is typed
@@ -7,8 +8,10 @@ import { TURNS, turn, typedText } from "./data";
 //   2. A new chat: attach the synopsis from Documents, ask for an arXiv-style paper plan
 //   3. Newton's plan card -> "Request Changes" -> the student's edits -> the revised plan
 //   4. "Approve & Write": Newton researches sources and writes the paper (time-lapsed)
-//   5. Back in Documents: the finished PDF and its LaTeX source; Download opens the real PDF,
-//      which is scrolled through page by page
+//   5. Attach the finished PDF and ask Newton to walk through a table -- a real reply, tables
+//      and all
+//   6. Open that PDF right there in the chat (DocumentViewerPanel, split with the chat), highlight
+//      a real sentence in it, and ask Newton about it -- another real reply
 
 export const TYPE_CPS = 120;
 export const REVEAL_CPS = 700; // streamed replies, sped up like a promo would
@@ -116,34 +119,72 @@ for (let k = 0; k < 3; k++) {
   t = (m.planPan?.to ?? m.end) + 0.6;
 }
 
-// ------------------------------------------------------------------------ 5. the paper
 const lastMark = marks[marks.length - 1];
-const p0 = lastMark.end + 1.6;
-export const paperScene = {
-  nav2Click: p0,
-  cardClick: p0 + 1.8,
-  downloadClick: p0 + 3.9,
-  viewerIn: p0 + 4.2,
-  viewerInDur: 0.9,
-};
-/** the PDF viewer's scroll: which page is at the top, over time */
-export const viewerStops = [
-  { page: 1, from: paperScene.viewerIn + 1.4, hold: 2.6 },
-  { page: 3, from: 0, hold: 3.4 }, // equations + the first tables
-  { page: 4, from: 0, hold: 3.4 }, // predicted vs measured
-  { page: 6, from: 0, hold: 2.6 }, // references
-];
-export const VIEWER_MOVE = 1.1;
-{
-  let cur = paperScene.viewerIn + 1.4;
-  viewerStops.forEach((s, i) => {
-    if (i > 0) cur += VIEWER_MOVE;
-    s.from = cur;
-    cur += s.hold;
-  });
+
+// ------------------------------------------------------------------------ tool timing, shared
+// by the k-loop above and the two hand-built turns below (a real reply's tool chips and its
+// streamed reveal, from cursor time `from`).
+function assistantTiming(assistant: CapturedTurn, from: number) {
+  let cursor = from;
+  const tools: ToolMark[] = [];
+  const capturedTools = assistant.tools ?? [];
+  for (const s of capturedTools.filter((x) => x.type === "tool_start")) {
+    const dur = s.tool === "write_research_paper" ? WRITE_DUR : s.tool === "research_fetch" || s.tool === "web_search" ? FETCH_DUR : TOOL_DUR;
+    const end = capturedTools.find((x) => x.type === "tool_end" && x.tool === s.tool && x.label === s.label);
+    tools.push({ tool: s.tool, label: s.label, verified: end?.verified ?? null, start: cursor, done: cursor + dur });
+    cursor += dur + TOOL_GAP;
+  }
+  const revealStart = cursor + 0.1;
+  const revealEnd = revealStart + Math.max(1.0, assistant.content.length / REVEAL_CPS);
+  return { tools, revealStart, revealEnd };
 }
-const viewerEnd = viewerStops[viewerStops.length - 1].from + viewerStops[viewerStops.length - 1].hold;
-export const viewerOut = viewerEnd + 0.4;
+
+/** A plain composer turn (no plan card, no preClick) -- turns 3 and 4 below. */
+function plainComposerTurn(k: number, clickField: number): TurnMark {
+  const { user, assistant } = turn(k);
+  const text = typedText(user.content);
+  const typeStart = clickField + 0.25;
+  const typeEnd = typeStart + text.length / TYPE_CPS;
+  const sendClick = typeEnd + 0.4;
+  const userAppear = sendClick + 0.15;
+  const asstAppear = userAppear + 0.45;
+  const { tools, revealStart, revealEnd } = assistantTiming(assistant, asstAppear);
+  return { k, kind: "composer", clickField, typeStart, typed: text, typeEnd, sendClick, userAppear, asstAppear, tools, revealStart, revealEnd, end: revealEnd };
+}
+
+// ------------------------------------------------------------------------ 5. review the paper
+// Same chat, same session: the student re-attaches the finished PDF from Documents (a real,
+// separate upload -- see paper/capture.py's stage_review, run after `restore --delete-docs`
+// removed the copy write_research_paper made) and asks Newton to walk through a table. A real
+// turn, not a plan/approve one, so it goes through plainComposerTurn like turn 4 below.
+const ra0 = lastMark.end + 1.4;
+export const reviewAttach = {
+  plusClick: ra0,
+  menuExistingClick: ra0 + 0.9,
+  pickerClick: ra0 + 1.8, // the finished PDF, from the picker
+  composerClick: ra0 + 2.4,
+};
+const reviewMark = plainComposerTurn(3, reviewAttach.composerClick);
+marks.push(reviewMark);
+
+// ------------------------------------------------------------------------ 6. highlight -> Ask Newton
+// Not a captured turn on its own -- pure UI: open the PDF from the attachment chip on the
+// message just sent (DocumentViewerPanel, split with the chat), highlight a real sentence in
+// it, and click "Ask Newton". What gets typed and sent next (turn 4) already contains that
+// exact quote, because it's exactly what the real capture sent -- see data.ts's REVIEW_QUOTE.
+export const reviewPanel = {
+  chipClick: reviewMark.end + 1.0,
+  panelIn: reviewMark.end + 1.3,
+  panelInDur: 0.6,
+  highlightStart: reviewMark.end + 2.6,
+  highlightDur: 0.7,
+  toolbarIn: reviewMark.end + 3.5,
+  askClick: reviewMark.end + 4.4,
+};
+const followUpMark = plainComposerTurn(4, reviewPanel.askClick + 0.5);
+marks.push(followUpMark);
+
+export const viewerOut = followUpMark.end + 1.6; // the panel stays open into the outro, then fades
 export const viewerOutDur = 0.7;
 
 export const T = {
@@ -152,7 +193,8 @@ export const T = {
   ...docs,
   ...attach,
   marks,
-  paper: paperScene,
+  reviewAttach,
+  reviewPanel,
   viewerOut,
   introEnd: 1.6,
   outroStart: viewerOut + viewerOutDur + 0.6,
@@ -160,3 +202,4 @@ export const T = {
 };
 
 export { TURNS };
+export type { CapturedTurn };

@@ -14,9 +14,10 @@ import TitleBar from "../../../desktop/src/components/TitleBar";
 import Sidebar from "../../../desktop/src/components/Sidebar";
 import ChatPane from "../../../desktop/src/components/ChatPane";
 import DocumentsPanel from "../../../desktop/src/components/DocumentsPanel";
+import DocumentViewerPanel from "../../../desktop/src/components/DocumentViewerPanel";
 import NewtonMark from "../../../desktop/src/components/NewtonMark";
 import type { ChatMessage, ChatSession, MainView, ToolActivityEntry } from "../../../desktop/src/types";
-import { clamp01, easeInOut, easeOut, FPS, lerp, measure, prog, track, typed, type Keyframe } from "../anim";
+import { clamp01, easeInOut, easeOut, FPS, lerp, measure, prog, typed } from "../anim";
 import { cameraTransform, cursorAt, findTarget, installFrozenTime, WALLPAPER, type Pt } from "../engine";
 import { Caption, CursorArrow, ScriptedComposer } from "../ui";
 import { activeFilm } from "../filmId";
@@ -26,37 +27,46 @@ import {
   APPROVE_TEXT,
   NOTES,
   OLD_DOCS,
-  PAPER_PAGES,
   PAPER_PDF,
+  PAPER_REUPLOAD,
   PAPER_TEX,
   STUDENT,
   SYNOPSIS,
   TURNS,
-  paperPage,
   safePrefix,
   typedText,
 } from "./data";
 import { CAPTIONS, CLICKS, CURSOR, FX, FY, Z } from "./script";
-import { REVEAL_CPS, T, TYPE_CPS, VIEWER_MOVE, viewerStops, type TurnMark } from "./timeline";
+import { REVEAL_CPS, T, TYPE_CPS, type TurnMark } from "./timeline";
 
 installFrozenTime("2026-02-03T10:24:00");
 
 const MAIN = { left: 190, top: 30, w: 1400, h: 860, scale: 1.1 };
 const M = T.marks;
-const P = T.paper;
+const RA = T.reviewAttach;
+const RP = T.reviewPanel;
+// A short, plain-ASCII fragment of REVIEW_QUOTE for finding it inside pdf.js's rendered text
+// layer -- see highlightRects() below. Deliberately shorter than the whole sentence: pdf.js
+// splits a line into several <span>s, and the concatenated-text search this does is safest on a
+// short run unlikely to straddle the exact character where the PDF's own kerning/hyphenation
+// splits one span from the next.
+const REVIEW_HIGHLIGHT_SNIPPET = "The SOR prediction is less satisfactory: the measured count exceeds the asymptotic prediction by";
 
 const asDoc = (d: { id: string; filename: string; mime_type: string; created_at: string; has_bibliography?: boolean }): FilmDoc => d;
 const OLD_FILM_DOCS: FilmDoc[] = OLD_DOCS.map(asDoc);
 const NEW = (d: { doc: Parameters<typeof asDoc>[0] }, at: string): FilmDoc => ({ ...asDoc(d.doc), created_at: at });
 const notesDoc = NEW(NOTES, "2026-02-03T10:20:00Z");
 const synopsisDoc = NEW(SYNOPSIS, "2026-02-03T10:21:00Z");
-const pdfDoc = NEW(PAPER_PDF, "2026-02-03T10:40:00Z");
-const texDoc = NEW(PAPER_TEX, "2026-02-03T10:40:00Z");
+// The finished PDF, re-uploaded after it was written (see paper/capture.py's stage_review) so
+// the student can attach and discuss it -- a real, separate Document row, not the one
+// write_research_paper made (that one only lives for the duration of one capture run).
+const paperReuploadDoc = { ...asDoc(PAPER_REUPLOAD), created_at: "2026-02-03T10:42:00Z" };
 
-const PICKER_DOCS = [synopsisDoc, notesDoc, ...OLD_FILM_DOCS].map((d) => ({
-  name: d.filename,
-  date: new Date(d.created_at).toLocaleDateString(),
-}));
+const pickerEntry = (d: FilmDoc) => ({ name: d.filename, date: new Date(d.created_at).toLocaleDateString() });
+/** Before the paper exists: attaching the synopsis (then the lab notes) to plan it. */
+const PICKER_DOCS = [synopsisDoc, notesDoc, ...OLD_FILM_DOCS].map(pickerEntry);
+/** After it's written: the finished PDF is newest, so it's first -- attaching it to discuss it. */
+const PICKER_DOCS_LATE = [paperReuploadDoc, synopsisDoc, notesDoc, ...OLD_FILM_DOCS].map(pickerEntry);
 
 const OLD_SESSIONS: ChatSession[] = [
   { id: "s2", title: null, status: "active", created_at: "2026-02-02T09:00:00Z" },
@@ -94,6 +104,10 @@ function customTarget(root: HTMLElement, name: string): Pt | null | undefined {
       const btn = Array.from(root.querySelectorAll(".doc-detail-actions button")).find((b) => b.textContent?.trim() === "Download");
       return center(rect(btn ?? null));
     }
+    // The attachment chip on the message that just attached the finished PDF — the LAST one in
+    // the conversation (turn 0's own two chips, from the synopsis/notes attach, come first).
+    case "doc-chip":
+      return center(last(".attached-document-chip"));
   }
   return undefined;
 }
@@ -112,15 +126,19 @@ function elementFor(root: HTMLElement, name: string): Element | null {
       return lastOf(".paper-plan-card__actions .btn-primary");
     case "doc-download":
       return Array.from(root.querySelectorAll(".doc-detail-actions button")).find((b) => b.textContent?.trim() === "Download") ?? null;
+    case "doc-chip":
+      return lastOf(".attached-document-chip");
     case "doc-card":
     case "doc-detail":
       return null;
   }
+  // "doc-ask" falls through to here: the film's own scripted toolbar button already carries a
+  // matching data-promo attribute (see ResearchFilm's JSX), which this resolves directly.
   return findTarget(root, name);
 }
 const PRESSABLE = new Set([
   "send", "newchat", "nav-documents", "upload-btn", "menu-existing", "picker-deck", "picker-1", "plus",
-  "plan-changes", "plan-approve", "doc-download",
+  "plan-changes", "plan-approve", "doc-download", "doc-chip", "doc-ask",
 ]);
 
 // ------------------------------------------------------------------ chat content from time
@@ -161,9 +179,8 @@ function buildChat(t: number) {
 }
 
 // ------------------------------------------------------------------ documents phases
-type DocPhase = "A" | "B" | "C" | "D" | "E" | "F";
+type DocPhase = "A" | "B" | "C" | "D" | "E";
 function docPhase(t: number): DocPhase {
-  if (t >= P.nav2Click) return "F";
   if (t < T.up1Click + 0.1) return "A";
   if (t < T.up1Done) return "B";
   if (t < T.up2Click + 0.1) return "C";
@@ -176,40 +193,13 @@ const PHASE_DOCS: Record<DocPhase, FilmDoc[]> = {
   C: [notesDoc, ...OLD_FILM_DOCS],
   D: [notesDoc, ...OLD_FILM_DOCS],
   E: [synopsisDoc, notesDoc, ...OLD_FILM_DOCS],
-  F: [pdfDoc, texDoc, synopsisDoc, notesDoc, ...OLD_FILM_DOCS],
 };
-const PHASE_SELECTED: Partial<Record<DocPhase, string>> = { C: notesDoc.id, E: synopsisDoc.id, F: pdfDoc.id };
+const PHASE_SELECTED: Partial<Record<DocPhase, string>> = { C: notesDoc.id, E: synopsisDoc.id };
 
 /** The REAL Documents page. Remounted per phase so each phase is a pure function of time: the API
  * mock serves that phase's list, and for an "uploading" phase a real file is chosen so the page
  * sits on its own "Uploading…" state. */
 function DocsView({ phase }: { phase: DocPhase }) {
-  useEffect(() => {
-    if (phase !== "F") return;
-    // The panel only offers a PDF's embedded viewer when the document is picked from the loaded
-    // list, so pick it the way a user does: click the first card once it has rendered.
-    const handle = delayRender("documents: open the paper");
-    let done = false;
-    let steps = 0;
-    const finish = () => {
-      if (!done) {
-        done = true;
-        continueRender(handle);
-      }
-    };
-    const step = () => {
-      const card = document.querySelector<HTMLElement>(".doc-entry .recent-item-card");
-      if (card) {
-        card.click();
-        return window.setTimeout(finish, 60);
-      }
-      if (++steps > 100) return finish();
-      window.setTimeout(step, 40);
-    };
-    step();
-    return finish;
-  }, [phase]);
-
   useEffect(() => {
     if (phase !== "B" && phase !== "D") return;
     const handle = delayRender("documents: choose file");
@@ -246,7 +236,7 @@ function DocsView({ phase }: { phase: DocPhase }) {
       token="promo"
       onClose={() => {}}
       onChatAboutDocument={() => {}}
-      initialSelectedDocumentId={phase === "F" ? null : (PHASE_SELECTED[phase] ?? null)}
+      initialSelectedDocumentId={PHASE_SELECTED[phase] ?? null}
     />
   );
 }
@@ -254,22 +244,28 @@ function DocsView({ phase }: { phase: DocPhase }) {
 // ------------------------------------------------------------------ main window
 function MainWindow({ t }: { t: number }) {
   const phase = docPhase(t);
-  const inDocs = (t >= T.navClick + 0.05 && t < T.newChatClick + 0.05) || t >= P.nav2Click + 0.05;
+  const inDocs = t >= T.navClick + 0.05 && t < T.newChatClick + 0.05;
   const inNewChat = t >= T.newChatClick + 0.05;
   const view: MainView = inDocs ? "documents" : "chat";
+  const docOpen = t >= RP.chipClick + 0.1 && t < T.viewerOut;
 
   const { messages, composerText } = buildChat(t);
   const started = t >= M[0].userAppear;
   const menuOpen =
     (t >= T.plusClick + 0.05 && t < T.menuExistingClick + 0.05) ||
-    (t >= T.plus2Click + 0.05 && t < T.menuExisting2Click + 0.05);
+    (t >= T.plus2Click + 0.05 && t < T.menuExisting2Click + 0.05) ||
+    (t >= RA.plusClick + 0.05 && t < RA.menuExistingClick + 0.05);
   const pickerOpen =
     (t >= T.menuExistingClick + 0.05 && t < T.pickerClick + 0.05) ||
-    (t >= T.menuExisting2Click + 0.05 && t < T.picker2Click + 0.05);
+    (t >= T.menuExisting2Click + 0.05 && t < T.picker2Click + 0.05) ||
+    (t >= RA.menuExistingClick + 0.05 && t < RA.pickerClick + 0.05);
+  const pickerDocs = t < RA.plusClick ? PICKER_DOCS : PICKER_DOCS_LATE;
   const sending = t < M[0].sendClick + 0.05;
+  const reviewSending = t >= RA.plusClick && t < M[3].sendClick + 0.05;
   const attachments: string[] = [];
   if (sending && t >= T.pickerClick + 0.05) attachments.push(SYNOPSIS.doc.filename);
   if (sending && t >= T.picker2Click + 0.05) attachments.push(NOTES.doc.filename);
+  if (reviewSending && t >= RA.pickerClick + 0.05) attachments.push(paperReuploadDoc.filename);
   const typingNow = M.some((m) => m.kind === "composer" && t >= m.clickField! && t < m.sendClick);
   const idle = !messages.length || t < M[1].sendClick;
   const beforeSend = M.every((m) => t < m.sendClick || t >= m.userAppear);
@@ -322,29 +318,46 @@ function MainWindow({ t }: { t: number }) {
           {inDocs ? (
             <DocsView phase={phase} />
           ) : (
-            <>
-              <ChatPane
-                messages={messages}
-                loading={false}
-                loadError={null}
-                token="promo"
-                sessionId={activeId}
-                onOpenSuggestedPanel={() => {}}
-                onOpenDocument={() => {}}
-                onSend={() => {}}
-              />
-              <div className="math-keyboard-dock" />
-              <ScriptedComposer
-                text={composerText}
-                caretOn={caretOn}
-                placeholder="Ask Newton anything…"
-                learnMode={false}
-                menuOpen={menuOpen}
-                pickerOpen={pickerOpen}
-                pickerDocs={PICKER_DOCS}
-                attachments={attachments}
-              />
-            </>
+            <div className="chat-split">
+              <div className="chat-split__chat">
+                <ChatPane
+                  messages={messages}
+                  loading={false}
+                  loadError={null}
+                  token="promo"
+                  sessionId={activeId}
+                  onOpenSuggestedPanel={() => {}}
+                  onOpenDocument={() => {}}
+                  onSend={() => {}}
+                />
+                <div className="math-keyboard-dock" />
+                <ScriptedComposer
+                  text={composerText}
+                  caretOn={caretOn}
+                  placeholder="Ask Newton anything…"
+                  learnMode={false}
+                  menuOpen={menuOpen}
+                  pickerOpen={pickerOpen}
+                  pickerDocs={pickerDocs}
+                  attachments={attachments}
+                />
+              </div>
+              {/* The real DocumentViewerPanel — opened from the attachment chip on the message
+                  that just attached the finished PDF, split with the chat exactly like the real
+                  app now does. pdf.js renders the real bytes (public/research-paper.pdf); the
+                  highlight and its toolbar are drawn by the film (see PdfHighlight below), not
+                  the panel's own internal selection state, so their look is directed rather than
+                  left to wherever a real browser selection happens to land. */}
+              {docOpen && (
+                <DocumentViewerPanel
+                  token="promo"
+                  documentId={paperReuploadDoc.id}
+                  initialFilename={paperReuploadDoc.filename}
+                  onClose={() => {}}
+                  onAskAboutSelection={() => {}}
+                />
+              )}
+            </div>
           )}
         </main>
       </div>
@@ -352,60 +365,27 @@ function MainWindow({ t }: { t: number }) {
   );
 }
 
-// ------------------------------------------------------------------ the PDF viewer
-const VIEWER = { left: 496, top: 26, w: 760, h: 840, scale: 1.22 };
-const PAGE_W = 690; // layout units; the real page images are scaled to this
-const PAGE_H = Math.round(PAGE_W * (1650 / 1275));
-const PAGE_GAP = 14;
-const PAGE_STEP = PAGE_H + PAGE_GAP;
-
-/** The scroll offset (layout units) at time t: hold on each stop, ease to the next. */
-function viewerScroll(t: number): number {
-  const kfs: Keyframe<number>[] = [];
-  viewerStops.forEach((s, i) => {
-    const y = (s.page - 1) * PAGE_STEP;
-    if (i === 0) kfs.push({ t: 0, v: y });
-    kfs.push({ t: s.from, v: y });
-    kfs.push({ t: s.from + s.hold, v: y });
-  });
-  return track(kfs, t);
+// ------------------------------------------------------------------ the highlighted sentence
+/** Every real, positioned run of text pdf.js drew (see DocumentViewerPanel.tsx's PdfPage) that
+ * overlaps `needle`, found by searching the container's ENTIRE text-layer content as one
+ * concatenated string — a single `<span>` per page is usually one short run, not a whole
+ * sentence, so a plain "find the node containing this text" search (fine for the Notepad's own
+ * highlight, see show/ShowFilm.tsx's textRect) would not find anything here at all. One rect per
+ * overlapping span is exactly how a real, wrapped text selection would render, too. */
+function findSpanElements(container: HTMLElement, needle: string): HTMLElement[] {
+  const spans = Array.from(container.querySelectorAll<HTMLElement>(".textLayer span"));
+  let acc = "";
+  const bounds: { el: HTMLElement; start: number; end: number }[] = [];
+  for (const el of spans) {
+    const text = el.textContent ?? "";
+    bounds.push({ el, start: acc.length, end: acc.length + text.length });
+    acc += text;
+  }
+  const idx = acc.indexOf(needle);
+  if (idx < 0) return [];
+  const end = idx + needle.length;
+  return bounds.filter((b) => b.start < end && b.end > idx).map((b) => b.el);
 }
-
-/** An operating-system PDF viewer showing the paper Newton compiled — the real PDF's pages. */
-function PdfViewer({ t }: { t: number }) {
-  const y = viewerScroll(t);
-  const page = Math.min(PAGE_PAGES, Math.max(1, Math.round(y / PAGE_STEP) + 1));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#3a3d41", fontFamily: "var(--font-sans)" }}>
-      <div style={{ height: 40, background: "#25272a", display: "flex", alignItems: "center", gap: 8, padding: "0 14px", color: "#d9dbde", fontSize: 13 }}>
-        <span style={{ width: 12, height: 12, borderRadius: 6, background: "#ff5f57" }} />
-        <span style={{ width: 12, height: 12, borderRadius: 6, background: "#febc2e" }} />
-        <span style={{ width: 12, height: 12, borderRadius: 6, background: "#28c840" }} />
-        <span style={{ marginLeft: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{PAPER_PDF.doc.filename}</span>
-      </div>
-      <div style={{ height: 32, background: "#303235", color: "#c9ccd0", fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
-        <span>
-          Page {page} of {PAGE_PAGES}
-        </span>
-        <span style={{ opacity: 0.7 }}>100%</span>
-      </div>
-      <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
-        <div style={{ position: "absolute", left: (VIEWER.w - PAGE_W) / 2, top: PAGE_GAP - y, width: PAGE_W }}>
-          {Array.from({ length: PAGE_PAGES }, (_, i) => (
-            <img
-              key={i}
-              src={staticFile(paperPage(i + 1))}
-              width={PAGE_W}
-              height={PAGE_H}
-              style={{ display: "block", marginBottom: PAGE_GAP, boxShadow: "0 2px 10px rgba(0,0,0,0.5)", background: "#fff" }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-const PAGE_PAGES = PAPER_PAGES;
 
 // ------------------------------------------------------------------ composition
 export const ResearchFilm: React.FC = () => {
@@ -415,7 +395,8 @@ export const ResearchFilm: React.FC = () => {
   const rootRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
   const rippleRef = useRef<HTMLDivElement>(null);
-  const pdfPaneRef = useRef<HTMLDivElement>(null);
+  const highlightBoxRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const placeRef = useRef<() => void>(() => {});
   const assetRef = useRef<number | null>(null);
   if (assetRef.current === null) assetRef.current = delayRender("fonts");
@@ -431,12 +412,11 @@ export const ResearchFilm: React.FC = () => {
       "italic 500 16px 'Fraunces Variable'",
       "400 16px 'Fraunces Variable'",
     ].map((f) => document.fonts.load(f, "Aa1(∑"));
-    const images = Array.from({ length: PAGE_PAGES }, (_, i) => {
-      const img = new Image();
-      img.src = staticFile(paperPage(i + 1));
-      return img.decode().catch(() => {});
-    });
-    Promise.all([...fonts, ...images])
+    // Warms the browser cache for the real PDF DocumentViewerPanel is about to fetch (through
+    // the mocked /raw route, see api.ts) — not required for correctness (that fetch has its own
+    // delayRender), just avoids paying its latency twice.
+    const pdf = fetch(staticFile("research-paper.pdf")).catch(() => {});
+    Promise.all([...fonts, pdf])
       .then(() => document.fonts.ready)
       .catch(() => {})
       .finally(() => continueRender(assetHandle));
@@ -458,9 +438,13 @@ export const ResearchFilm: React.FC = () => {
         continueRender(handle);
       }
     };
+    // scrollTop alongside scrollHeight: a chat pane pinned to the bottom can have its height
+    // stabilize a poll BEFORE place()'s own scrollTo has actually landed there (a real, observed
+    // one-frame flicker — the previous scroll position briefly reappears) — this makes "settled"
+    // require the actual on-screen position to have stopped moving too, not just its ceiling.
     const height = () =>
-      Array.from(document.querySelectorAll<HTMLElement>(".chat-pane, .doc-detail-body"))
-        .map((el) => el.scrollHeight)
+      Array.from(document.querySelectorAll<HTMLElement>(".chat-pane, .doc-detail-body, .doc-viewer-panel__body"))
+        .map((el) => `${el.scrollHeight}@${el.scrollTop}`)
         .join(",");
     let iterations = 0;
     let last = "";
@@ -470,11 +454,9 @@ export const ResearchFilm: React.FC = () => {
       iterations++;
       placeRef.current();
       const h = height();
-      // after the paper is written the app loads the PDF for its preview a beat after the list
-      const pdfPending = docPhase(t) === "F" && !document.querySelector(".doc-detail-body--pdf");
-      stable = h === last && !pdfPending ? stable + 1 : 0;
+      stable = h === last ? stable + 1 : 0;
       last = h;
-      if (stable >= 4 || iterations > 60) return finish();
+      if (stable >= 8 || iterations > 90) return finish();
       timer = window.setTimeout(poll, 60);
     };
     timer = window.setTimeout(poll, 60);
@@ -489,8 +471,9 @@ export const ResearchFilm: React.FC = () => {
       const root = rootRef.current;
       const cur = cursorRef.current;
       const rip = rippleRef.current;
-      const pane = pdfPaneRef.current;
-      if (!root || !cur || !rip || !pane) return;
+      const hlBox = highlightBoxRef.current;
+      const toolbar = toolbarRef.current;
+      if (!root || !cur || !rip || !hlBox || !toolbar) return;
 
       // The chat stays pinned to the bottom (instant, not the app's smooth scroll) — except while
       // it pans across a freshly written plan card, from the card's top to its buttons.
@@ -510,18 +493,42 @@ export const ResearchFilm: React.FC = () => {
         el.scrollTo({ top, behavior: "instant" });
       });
 
-      // The app previews a PDF in an <iframe> (which a headless renderer can't draw): lay the
-      // real compiled paper's first page over the preview pane instead.
-      const body = root.querySelector<HTMLElement>(".doc-detail-body--pdf");
-      if (body && docPhase(t) === "F") {
-        const r = measure(body, root);
-        pane.style.left = `${r.left}px`;
-        pane.style.top = `${r.top}px`;
-        pane.style.width = `${r.width}px`;
-        pane.style.height = `${r.height}px`;
-        pane.style.opacity = "1";
-      } else {
-        pane.style.opacity = "0";
+      // The highlighted sentence in the real, pdf.js-rendered PDF, and the toolbar over it —
+      // both directed by the film (see findSpanElements above), not the panel's own real
+      // selection state. Scrolled into a nice reading position first, since the sentence sits
+      // near the bottom of page 1 and the panel opens on page 1's top.
+      hlBox.replaceChildren();
+      toolbar.style.opacity = "0";
+      const panelBody = root.querySelector<HTMLElement>(".doc-viewer-panel__body");
+      if (panelBody && t >= RP.highlightStart - 0.4) {
+        let els = findSpanElements(panelBody, REVIEW_HIGHLIGHT_SNIPPET);
+        if (els.length) {
+          const first = measure(els[0], panelBody);
+          panelBody.scrollTop = Math.max(0, first.top + panelBody.scrollTop - panelBody.clientHeight * 0.4);
+          els = findSpanElements(panelBody, REVIEW_HIGHLIGHT_SNIPPET); // re-measure after the scroll
+        }
+        if (els.length && t >= RP.highlightStart) {
+          const sweep = easeOut(clamp01((t - RP.highlightStart) / RP.highlightDur));
+          let top = Infinity;
+          let left = Infinity;
+          for (const el of els) {
+            const r = measure(el, root);
+            const box = document.createElement("div");
+            box.className = "promo-doc-highlight";
+            box.style.left = `${r.left + 1}px`;
+            box.style.top = `${r.top}px`;
+            box.style.width = `${Math.max(0, r.width - 2) * sweep}px`;
+            box.style.height = `${r.height}px`;
+            hlBox.appendChild(box);
+            top = Math.min(top, r.top);
+            left = Math.min(left, r.left);
+          }
+          if (t >= RP.toolbarIn) {
+            toolbar.style.left = `${Math.max(left, 4)}px`;
+            toolbar.style.top = `${Math.max(top - 44, 4)}px`;
+            toolbar.style.opacity = String(easeOut(clamp01((t - RP.toolbarIn) / 0.25)));
+          }
+        }
       }
 
       const p = cursorAt(root, t, CURSOR, customTarget);
@@ -547,11 +554,6 @@ export const ResearchFilm: React.FC = () => {
   const outroP = easeInOut(prog(t, T.outroStart, 0.8));
   const mainScale = MAIN.scale * (0.94 + 0.06 * winIn) * (1 - 0.05 * outroP);
   const mainOpacity = winIn * (1 - outroP);
-  const vIn = easeOut(prog(t, P.viewerIn, P.viewerInDur));
-  const vOut = easeInOut(prog(t, T.viewerOut, 0.7));
-  const vVisible = vIn * (1 - vOut) * (1 - outroP);
-  const dim = 1 - 0.42 * vIn * (1 - vOut);
-  const blur = 2.5 * vIn * (1 - vOut);
   const captionOpacity = (from: number, to: number) =>
     easeOut(prog(t, from, 0.35)) * (1 - easeOut(prog(t, to - 0.35, 0.35)));
   const introOpacity = easeOut(prog(t, 0.25, 0.7)) * (1 - easeInOut(prog(t, 1.25, 0.6)));
@@ -583,43 +585,28 @@ export const ResearchFilm: React.FC = () => {
             height: MAIN.h,
             transform: `scale(${mainScale})`,
             opacity: mainOpacity,
-            filter: dim < 1 ? `brightness(${dim}) blur(${blur}px)` : undefined,
           }}
         >
           <MainWindow t={t} />
         </div>
-        {/* page 1 of the real compiled PDF, laid over the Documents preview pane */}
-        {/* it belongs to the main window, so it fades, dims and blurs with it (never outlives it) */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            zIndex: 15,
-            opacity: mainOpacity,
-            filter: dim < 1 ? `brightness(${dim}) blur(${blur}px)` : undefined,
-          }}
-        >
-        <div
-          ref={pdfPaneRef}
-          style={{ position: "absolute", overflow: "hidden", opacity: 0, background: "#fff", borderRadius: 4 }}
-        >
-          <img src={staticFile(paperPage(1))} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }} />
-        </div>
-        </div>
-        <div
-          className="promo-win"
-          style={{
-            left: VIEWER.left + (1 - vVisible) * 60,
-            top: VIEWER.top,
-            width: VIEWER.w,
-            height: VIEWER.h,
-            transform: `scale(${VIEWER.scale * (0.96 + 0.04 * vVisible)})`,
-            opacity: vVisible,
-            zIndex: 20,
-          }}
-        >
-          <PdfViewer t={t} />
+        {/* the highlighted sentence in the real PDF, and its toolbar — see findSpanElements
+            above; belongs to the main window, so it fades with it (never outlives it) */}
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 15, opacity: mainOpacity }}>
+          <div ref={highlightBoxRef} style={{ position: "absolute", inset: 0 }} />
+          <div ref={toolbarRef} className="notepad-window__selection-toolbar doc-annotate-toolbar" style={{ position: "absolute", opacity: 0 }}>
+            <button type="button" tabIndex={-1}>
+              Explain
+            </button>
+            <button type="button" tabIndex={-1}>
+              Define
+            </button>
+            <button type="button" tabIndex={-1}>
+              Summarize
+            </button>
+            <button type="button" tabIndex={-1} data-promo="doc-ask">
+              Ask Newton
+            </button>
+          </div>
         </div>
         <div ref={rippleRef} className="promo-ripple" />
         <div ref={cursorRef} className="promo-cursor">
@@ -646,5 +633,3 @@ export const ResearchFilm: React.FC = () => {
     </div>
   );
 };
-
-export { VIEWER_MOVE };

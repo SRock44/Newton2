@@ -2,11 +2,14 @@
 // rendered from (so sound can never drift from picture). Consumed by make_audio.py.
 //
 // Uploads rise and land, the attach snaps, plan and reply messages pop, source lookups blip, a soft
-// hum runs while the paper is written and a chime marks it done, and each turn of the finished PDF
-// gets a page-turn.
+// hum runs while the paper is written and a chime marks it done, and a soft whoosh marks the
+// document panel opening and the highlight sweeping in.
 import { typedText } from "../src/paper/data";
 import { CLICKS } from "../src/paper/script";
-import { T, TYPE_CPS, viewerStops } from "../src/paper/timeline";
+import { T, TYPE_CPS } from "../src/paper/timeline";
+
+const RA = T.reviewAttach;
+const RP = T.reviewPanel;
 
 const keys: { t: number; space: boolean }[] = [];
 for (const m of T.marks) {
@@ -19,7 +22,9 @@ for (const m of T.marks) {
   }
 }
 
-const write = T.marks[T.marks.length - 1];
+// The "Approve & Write" turn specifically (marks[2]) -- NOT the last mark, which is now the
+// review follow-up (marks[4]).
+const write = T.marks[2];
 const wTools = write.tools;
 const wStart = wTools[0].start;
 const wEnd = wTools[wTools.length - 1].done;
@@ -34,7 +39,7 @@ const cues = {
   pops: T.marks.flatMap((m) => [m.userAppear, m.asstAppear]),
   chipTicks: T.marks.flatMap((m) => m.tools.map((x) => x.start)),
   dings: [],
-  snaps: [T.pickerClick + 0.1, T.picker2Click + 0.1],
+  snaps: [T.pickerClick + 0.1, T.picker2Click + 0.1, RA.pickerClick + 0.1, RP.askClick + 0.1],
   uploadRises: [
     { t: T.up1Click + 0.1, dur: T.up1Done - T.up1Click - 0.1 },
     { t: T.up2Click + 0.1, dur: T.up2Done - T.up2Click - 0.1 },
@@ -42,13 +47,13 @@ const cues = {
   uploadDones: [T.up1Done, T.up2Done],
   pings,
   blips: searchTools.map((x) => x.start),
-  pageTurns: viewerStops.map((s) => s.from),
+  // Reuses the same soft "page turn" whoosh for the highlight sweeping in over the real sentence.
+  pageTurns: [RP.highlightStart],
   readyChime: wEnd + 0.05,
   whooshes: [
     { t: 0.4, dur: 0.8, dir: "in" },
     { t: T.windowIn, dur: 0.9, dir: "in" },
-    { t: T.paper.viewerIn, dur: T.paper.viewerInDur, dir: "in" },
-    { t: T.viewerOut, dur: 0.7, dir: "out" },
+    { t: RP.panelIn, dur: RP.panelInDur, dir: "in" },
     { t: T.outroStart, dur: 0.8, dir: "out" },
   ],
   building: { start: wStart, end: wEnd },

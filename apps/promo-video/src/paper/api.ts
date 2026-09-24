@@ -1,5 +1,5 @@
-import { continueRender, delayRender } from "remotion";
-import { NOTES, OLD_DOCS, PAPER_PDF, PAPER_TEX, SYNOPSIS } from "./data";
+import { continueRender, delayRender, staticFile } from "remotion";
+import { NOTES, OLD_DOCS, PAPER_PDF, PAPER_REUPLOAD, PAPER_TEX, SYNOPSIS } from "./data";
 import { activeFilm } from "../filmId";
 
 // The Documents page fetches from the API on mount. This film renders frame by frame, so every
@@ -21,10 +21,6 @@ export const filmState: { docs: FilmDoc[] } = { docs: [] };
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
-// The real PDF is shown by the film itself (the page images); the app's own <iframe> preview just
-// needs something PDF-shaped to be handed.
-const TINY_PDF = new TextEncoder().encode("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF");
-
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -42,19 +38,32 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Promise<Response>(() => {});
   }
 
+  // DocumentViewerPanel renders this with pdf.js, real page-by-page canvas + text layer -- so
+  // (unlike the app's other, <iframe>-based PDF preview) it needs the finished paper's REAL
+  // bytes, not a PDF-shaped stub. Its own async fetch (of the static asset this film ships,
+  // public/research-paper.pdf) is why this one branch returns early instead of falling into the
+  // `let res` cascade below.
+  if (method === "GET" && path === `/documents/${PAPER_REUPLOAD.id}/raw`) {
+    const bytes = await realFetch(staticFile("research-paper.pdf")).then((r) => r.arrayBuffer());
+    release();
+    return new Response(bytes, { status: 200, headers: { "content-type": "application/pdf" } });
+  }
+
   let res: Response;
   if (method === "GET" && path === "/documents") {
     res = json(filmState.docs);
   } else if (method === "GET" && /^\/documents\/[^/]+\/content$/.test(path)) {
     const id = path.split("/")[2];
-    const known = [NOTES, SYNOPSIS, PAPER_PDF, PAPER_TEX].find((d) => d.doc.id === id);
-    if (known) res = json({ content: known.content, editable: false });
-    else {
-      const old = OLD_DOCS.find((d) => d.id === id);
-      res = json({ content: old?.text ?? "", editable: false });
+    if (id === PAPER_REUPLOAD.id) {
+      res = json({ content: PAPER_PDF.content, editable: false });
+    } else {
+      const known = [NOTES, SYNOPSIS, PAPER_PDF, PAPER_TEX].find((d) => d.doc.id === id);
+      if (known) res = json({ content: known.content, editable: false });
+      else {
+        const old = OLD_DOCS.find((d) => d.id === id);
+        res = json({ content: old?.text ?? "", editable: false });
+      }
     }
-  } else if (method === "GET" && path === `/documents/${PAPER_PDF.doc.id}/raw`) {
-    res = new Response(TINY_PDF, { status: 200, headers: { "content-type": "application/pdf" } });
   } else if (method === "GET" && path === "/billing/status") {
     res = json({
       plan: "pro",

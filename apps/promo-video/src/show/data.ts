@@ -62,7 +62,11 @@ export const NOTE_LIST = [
 export const turn = (k: number) => ({ user: TURNS[2 * k], assistant: TURNS[2 * k + 1] });
 
 /** Text of a user message with the attach marker stripped (what the student typed). */
-export const typedText = (content: string) => content.replace(/\n\n\[Attached document: [^\]]+\]/, "");
+// /g and \n*: a message can carry more than one attachment marker (see paper/timeline.ts's
+// turn 0, which attaches both the synopsis and the lab notes, joined by a single "\n" after
+// one "\n\n") -- a single-shot, exactly-two-newline replace only strips the first and leaves
+// the rest to leak into the "typed" composer text right before Send (verified: it did).
+export const typedText = (content: string) => content.replace(/\n*\[Attached document: [^\]]+\]/g, "");
 
 const ATTEMPT_RE = /^My attempt: \$([\s\S]*)\$$/;
 /** The LaTeX a student types into a Step Check card, or null for an ordinary message. */
@@ -109,11 +113,27 @@ export const NOTE_TYPED_FULL = noteState(false, false).content;
 
 // ---------------------------------------------------------------------------------------
 // Progressive reveal that never shows half-open math, bold, code or a half-open fenced block.
+/** Never let `cut` land strictly inside a 2/3-char markdown delimiter token -- slicing one in
+ * half hides it from every count below (each one only matches a WHOLE token), which can
+ * misjudge an already-closed span as still open with no closing token left to find, and fall
+ * through to `return text` (the whole rest of the message, however long) for exactly the one or
+ * two `n` values that land inside that token. A real, observed one-frame reveal glitch --
+ * pulling `cut` back to just before the split token avoids it. */
+function snapPastPartialToken(text: string, cut: number): number {
+  for (const tok of ["```", "$$", "**"]) {
+    for (let start = Math.max(0, cut - (tok.length - 1)); start < cut; start++) {
+      if (start + tok.length > cut && text.slice(start, start + tok.length) === tok) return start;
+    }
+  }
+  return cut;
+}
+
 export function safePrefix(text: string, n: number): string {
   if (n >= text.length) return text;
   if (n <= 0) return "";
   let cut = n;
   for (let guard = 0; guard < 8; guard++) {
+    cut = snapPastPartialToken(text, cut);
     const head = text.slice(0, cut);
     const fences = (head.match(/```/g) ?? []).length;
     if (fences % 2 === 1) {

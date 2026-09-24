@@ -1,12 +1,13 @@
 import type { Keyframe } from "../anim";
 import type { Click, CursorKey } from "../engine";
-import { T, VIEWER_MOVE, viewerStops } from "./timeline";
+import { T } from "./timeline";
 
 // The cursor's route, the camera, and the captions for the research film. Pure data derived from
 // the timeline (no React), so the soundtrack exporter reads the very same clicks.
 
 const M = T.marks;
-const P = T.paper;
+const RA = T.reviewAttach;
+const RP = T.reviewPanel;
 
 const keys: CursorKey[] = [];
 export const CLICKS: Click[] = [];
@@ -49,11 +50,17 @@ for (const m of M) {
   else pt(m.userAppear + 1.3, 1330, 600);
 }
 
-// ---- the finished paper, in Documents
-click(P.nav2Click, "nav-documents", { x: 300, y: 830 });
-click(P.cardClick, "doc-card", { x: 700, y: 330 });
-click(P.downloadClick, "doc-download", { x: 1450, y: 210 });
-pt(P.viewerIn + 1.2, 1300, 640); // rests over the viewer
+// ---- attach the finished PDF and ask Newton to walk through a table (turn 3, marks[3])
+click(RA.plusClick, "plus", { x: 700, y: 880 });
+click(RA.menuExistingClick, "menu-existing", { x: 800, y: 800 });
+click(RA.pickerClick, "picker-deck", { x: 800, y: 760 }); // the finished PDF is newest, so it's first
+
+// ---- open that PDF right there in the chat, highlight a real sentence, ask about it (turn 4)
+click(RP.chipClick, "doc-chip", { x: 900, y: 210 });
+pt(RP.panelIn + RP.panelInDur + 0.2, 1600, 460); // rests over the newly opened panel
+pt(RP.highlightStart + RP.highlightDur + 0.1, 1600, 640); // over the sentence just highlighted
+click(RP.askClick, "doc-ask", { x: 1650, y: 700 });
+pt(RP.askClick + 1.0, 1300, 610); // rests over the panel again while the follow-up streams in
 
 keys.sort((a, b) => a.t - b.t);
 for (let i = 1; i < keys.length; i++) if (keys[i].t <= keys[i - 1].t) keys[i].t = keys[i - 1].t + 0.001;
@@ -67,11 +74,10 @@ export const Z: Keyframe<number>[] = [
   { t: T.newChatClick - 0.4, v: 1.06 },
   { t: T.newChatClick, v: 1 },
   { t: T.composerClick - 0.4, v: 1.03 },
-  { t: P.nav2Click - 0.4, v: 1.03 },
-  { t: P.nav2Click + 0.6, v: 1.06 },
-  { t: P.viewerIn, v: 1.06 },
-  { t: P.viewerIn + 1.0, v: 1 },
-  { t: T.outroStart, v: 1 },
+  { t: RA.plusClick - 0.4, v: 1 },
+  { t: RP.panelIn - 0.3, v: 1 },
+  { t: RP.panelIn + RP.panelInDur + 0.3, v: 1.08 }, // in on the document panel opening
+  { t: T.outroStart, v: 1.08 },
   { t: T.total, v: 1 },
 ];
 export const FX: Keyframe<number>[] = [
@@ -89,8 +95,9 @@ export const CAPTIONS = [
   { from: M[0].asstAppear, to: M[1].preClick! - 0.2, text: "Newton plans an arXiv-style paper — from what your notes actually show." },
   { from: M[1].preClick!, to: M[2].sendClick - 0.2, text: "Push back on the plan. Newton revises it." },
   { from: M[2].sendClick, to: M[2].end, text: "Approve: Newton writes and compiles the real LaTeX." },
-  { from: P.nav2Click, to: P.viewerIn - 0.3, text: "Saved to your Documents: the PDF and its LaTeX source." },
-  { from: P.viewerIn + 0.2, to: T.viewerOut, text: "A real arXiv-style paper: equations, tables, and references." },
+  { from: RA.plusClick - 0.1, to: M[3].asstAppear - 0.2, text: "Attach the finished PDF — right in the same chat." },
+  { from: M[3].asstAppear, to: RP.chipClick - 0.3, text: "Newton checks the real numbers before it answers." },
+  { from: RP.chipClick - 0.1, to: RP.highlightStart - 0.2, text: "Open the PDF without leaving the conversation." },
+  { from: RP.highlightStart, to: RP.askClick + 0.3, text: "Highlight anything in it, and ask." },
+  { from: M[4].asstAppear, to: T.viewerOut, text: "Newton answers from the exact sentence you pointed at." },
 ];
-
-export { VIEWER_MOVE, viewerStops };

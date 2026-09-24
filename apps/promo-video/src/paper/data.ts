@@ -5,8 +5,11 @@ import { latexPrefixes, safePrefix, typedText } from "../show/data";
 // paper/captured.json (see paper/capture.py): two real files uploaded to Documents (scratch lab
 // notes and a project synopsis), the real chat that planned the paper (a real ```paper-plan
 // card, revised on request), the real `write_research_paper` run — real web search and source
-// fetches, real LaTeX compile — and the real PDF it produced (paper/generated/, rendered to
-// public/paper-page-N.png). The student's messages are the scripted half.
+// fetches, real LaTeX compile — the real PDF it produced (paper/generated/, copied to
+// public/research-paper.pdf and rendered by the film's own DocumentViewerPanel via pdf.js, the
+// same component the real app now uses), and a real follow-up conversation reviewing it (a
+// second real capture stage, stage_review, re-uploading that same PDF once it was written). The
+// student's messages are the scripted half.
 
 export interface CapturedTool {
   type: string;
@@ -29,13 +32,15 @@ interface CapDoc {
 
 export const NOTES = captured.docs.notes as { doc: CapDoc; content: string };
 export const SYNOPSIS = captured.docs.synopsis as { doc: CapDoc; content: string };
+// The finished PDF, re-uploaded so the student can attach and discuss it — a real, separate
+// upload (see paper/capture.py's stage_review), not the same Document row write_research_paper
+// created (that account snapshot only lives for the duration of one capture run).
+export const PAPER_REUPLOAD = (captured.docs as Record<string, { doc: CapDoc }>).paper_reupload.doc;
 export const TURNS = captured.turns as CapturedTurn[];
 
 const paperEntries = Object.values(captured.paper) as { doc: CapDoc; content: string }[];
 export const PAPER_PDF = paperEntries.find((e) => e.doc.filename.endsWith(".pdf"))!;
 export const PAPER_TEX = paperEntries.find((e) => e.doc.filename.endsWith(".tex"))!;
-export const PAPER_PAGES = 6;
-export const paperPage = (i: number) => `paper-page-${i}.png`;
 
 /** The student's earlier documents (their own files, not Newton output). */
 export const OLD_DOCS = [
@@ -57,6 +62,12 @@ export const OLD_DOCS = [
 
 export const STUDENT = "Priya";
 export const APPROVE_TEXT = "Looks good — go ahead and write it.";
+
+/** The sentence highlighted in the finished PDF for the "Ask Newton" scene — a real sentence
+ * from the paper's own Introduction (page 1), and exactly what turn 4's real captured message
+ * quotes (see paper/capture.py's stage_review). */
+export const REVIEW_QUOTE =
+  "The SOR prediction is less satisfactory: the measured count exceeds the asymptotic prediction by roughly 30–37% on these grids.";
 
 /** The turn pairs, by role. Turn k = (user, assistant). */
 export const turn = (k: number) => ({ user: TURNS[2 * k], assistant: TURNS[2 * k + 1] });
