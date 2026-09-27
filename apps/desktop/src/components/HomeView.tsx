@@ -30,6 +30,7 @@ import {
 } from "../api";
 import type { ChatSession, GamificationStats, WeakArea } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
+import { parseDueDate } from "../lib/dueDate";
 import { documentTypeLabel } from "../lib/fileType";
 import { toSnippet } from "../lib/snippet";
 import {
@@ -116,8 +117,8 @@ type DueItem = {
   due: string;
 };
 
-function formatShortDate(iso: string): string {
-  const date = new Date(iso);
+export function formatShortDate(iso: string): string {
+  const date = parseDueDate(iso);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
@@ -340,7 +341,7 @@ function HomeView({
             due: earliestDue,
           });
         }
-        combined.sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime());
+        combined.sort((a, b) => parseDueDate(a.due).getTime() - parseDueDate(b.due).getTime());
         setDueItems(combined.slice(0, DUE_SOON_LIMIT));
       } catch {
         if (!cancelled) setDueItems([]);

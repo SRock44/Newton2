@@ -1,0 +1,1528 @@
+{
+ "orig": {
+  "plan": "free",
+  "focus": true,
+  "learn": true
+ },
+ "sub": "57d21219-5a90-4382-b3da-07c3537a42d3",
+ "started": "2026-09-27T00:08:48.200291+00:00",
+ "doc": {
+  "doc": {
+   "id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "filename": "MATH1220_Midterm2_Study_Packet.docx",
+   "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "created_at": "2026-09-27T00:08:48.223465+00:00",
+   "has_bibliography": false
+  },
+  "content": "MATH 1220 \u2014 Calculus II \u00b7 Midterm 2 Study Packet\nProf. Alvarez \u00b7 Spring 2026 \u00b7 Midterm 2 covers the techniques of integration\nSchedule and deadlines\nFri, Feb 6, 2026 \u2014 Homework 9 due: integration by parts (problems 1\u201312). 3% of the course grade.\nWed, Feb 11, 2026 \u2014 Quiz 4: trigonometric integrals (in class, 20 minutes). 2% of the course grade.\nFri, Feb 13, 2026 \u2014 Homework 10 due: powers of sine and cosine, tangent and secant.\nWed, Feb 18, 2026 \u2014 Homework 11 due: trigonometric substitution (the right-triangle method).\nFri, Feb 20, 2026 \u2014 Homework 12 due: partial fractions.\nTue, Feb 24, 2026 \u2014 Practice midterm due (graded for completion, 2% of the course grade).\nThu, Feb 26, 2026 \u2014 Midterm 2 (in class, 75 minutes, 20% of the course grade): substitution, parts, trigonometric integrals, trigonometric substitution and partial fractions.\n1. u-substitution\nUse it when the integrand contains a function and (a constant multiple of) its derivative. Let u be the inner function, replace u and du, integrate, then substitute back.\nExample.  \u222b 2x cos(x\u00b2) dx:  u = x\u00b2, du = 2x dx, so the integral is \u222b cos u du = sin u + C = sin(x\u00b2) + C.\nExample.  \u222b x / (x\u00b2 + 1) dx:  u = x\u00b2 + 1, du = 2x dx, so the integral is (1/2) \u222b du/u = (1/2) ln(x\u00b2 + 1) + C.\n2. Integration by parts\n\u222b u dv = u v \u2212 \u222b v du.  Choose u by LIATE: Logarithmic, Inverse trig, Algebraic, Trig, Exponential.\nExample.  \u222b x e^x dx:  u = x, dv = e^x dx, so du = dx, v = e^x.  Result: e^x (x \u2212 1) + C.\nExample.  \u222b ln x dx:  u = ln x, dv = dx, so du = dx/x, v = x.  Result: x ln x \u2212 x + C.\n3. Trigonometric integrals\nPowers of sine and cosine. If either power is odd, save one factor, convert the rest with sin\u00b2 x + cos\u00b2 x = 1, and substitute. If both powers are even, use the half-angle identities sin\u00b2 x = (1 \u2212 cos 2x)/2 and cos\u00b2 x = (1 + cos 2x)/2.\nExample.  \u222b sin\u00b2 x dx = x/2 \u2212 sin(2x)/4 + C   (half-angle identity).\nExample.  \u222b sin\u00b3 x dx = \u222b (1 \u2212 cos\u00b2 x) sin x dx = \u2212cos x + cos\u00b3 x / 3 + C   (u = cos x).\nExample.  \u222b sin\u00b2 x cos\u00b3 x dx = sin\u00b3 x / 3 \u2212 sin\u2075 x / 5 + C   (cosine is odd, u = sin x).\n4. Trigonometric substitution (the right-triangle method)\nDraw a right triangle to turn a square root into a trig function. For \u221a(a\u00b2 \u2212 x\u00b2) let x = a sin \u03b8; for \u221a(a\u00b2 + x\u00b2) let x = a tan \u03b8; for \u221a(x\u00b2 \u2212 a\u00b2) let x = a sec \u03b8. Integrate in \u03b8, then use the triangle to convert back to x.\nExample.  \u222b dx / \u221a(4 \u2212 x\u00b2):  x = 2 sin \u03b8 gives \u222b d\u03b8 = \u03b8 + C = arcsin(x/2) + C.\nExample.  \u222b dx / (x\u00b2 \u221a(x\u00b2 + 4)):  x = 2 tan \u03b8 gives (1/4) \u222b cos \u03b8 / sin\u00b2 \u03b8 d\u03b8 = \u22121/(4 sin \u03b8) + C, and the triangle gives sin \u03b8 = x / \u221a(x\u00b2 + 4), so the result is \u2212\u221a(x\u00b2 + 4) / (4x) + C.\n5. Partial fractions\nFor a rational function whose denominator factors, split it into simpler fractions, solve for the constants by plugging in the roots, and integrate each piece.\nExample.  \u222b (3x + 5) / ((x + 1)(x + 3)) dx:  write (3x + 5)/((x+1)(x+3)) = A/(x+1) + B/(x+3). Then 3x + 5 = A(x + 3) + B(x + 1); x = \u22121 gives A = 1, x = \u22123 gives B = 2. Result: ln|x + 1| + 2 ln|x + 3| + C."
+ },
+ "doc_list": [
+  {
+   "id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "filename": "MATH1220_Midterm2_Study_Packet.docx",
+   "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "created_at": "2026-09-27T00:08:48.223465+00:00",
+   "has_bibliography": false
+  },
+  {
+   "id": "426f73fd-a812-4278-b147-fddca3670652",
+   "filename": "topic-empty.txt",
+   "mime_type": "text/plain",
+   "created_at": "2026-09-24T15:50:38.440259+00:00",
+   "has_bibliography": false
+  },
+  {
+   "id": "ad1cded8-f789-4bdc-9249-3e5a6f4eabf2",
+   "filename": "topic-notes.txt",
+   "mime_type": "text/plain",
+   "created_at": "2026-09-24T15:50:38.245021+00:00",
+   "has_bibliography": false
+  }
+ ],
+ "turns": [
+  {
+   "role": "user",
+   "content": "Midterm 2 is coming up on February 26 and I'm behind. My study packet is attached -- it has the schedule and all five techniques (u-substitution, parts, trig integrals, trig substitution, partial fractions). Can you set me up to study for it? I want my deadlines tracked, flashcards, and a practice exam.\n\n[Attached document: 2835f943-8248-4def-89dc-9b060d5041ec|MATH1220_Midterm2_Study_Packet.docx]"
+  },
+  {
+   "role": "assistant",
+   "content": "You're all set for Feb 26 \u2014 I built your full study session from your Midterm 2 packet:\n\n**1. Deadlines tracked - 7 study plan items added:**\nFrom your packet schedule: HW 9 (Feb 6), Quiz 4 (Feb 11), HW 10 (Feb 13), HW 11 (Feb 18), HW 12 (Feb 20), Practice Midterm (Feb 24), and Midterm 2 (Feb 26). Check your Study Plan to see them in order.\n\n**2. Flashcards - 15 cards generated:**\nCovering all five techniques: u-substitution, integration by parts (LIATE), trig integrals, trig substitution, and partial fractions. Great for catching up fast.\n\n**3. Practice exam - 15 questions built:**\nMedium difficulty over the same five techniques, so it looks like your real 75-minute midterm.\n\nI checked your past performance, but you don't have any review history yet \u2014 so once you run through the flashcards and take that practice exam, I can tell you exactly what you're struggling with and what to focus on.\n\nSince you're behind, I'd suggest: start with the flashcards today, then take the practice exam to find your gaps, then work the plan items in order.\n\nOpen Flashcards to start \u2014 you've got this!",
+   "tools": [
+    {
+     "type": "tool_start",
+     "tool": "use_capability",
+     "label": "Checking available tools",
+     "verified": null
+    },
+    {
+     "type": "tool_end",
+     "tool": "use_capability",
+     "label": "Checking available tools",
+     "verified": false
+    },
+    {
+     "type": "tool_start",
+     "tool": "get_weak_areas",
+     "label": "Finding what you're weak on",
+     "verified": null
+    },
+    {
+     "type": "tool_end",
+     "tool": "get_weak_areas",
+     "label": "Finding what you're weak on",
+     "verified": false
+    },
+    {
+     "type": "tool_start",
+     "tool": "start_study_session",
+     "label": "Preparing your study session",
+     "verified": null
+    },
+    {
+     "type": "tool_end",
+     "tool": "start_study_session",
+     "label": "Preparing your study session",
+     "verified": false
+    }
+   ],
+   "suggested_actions": []
+  },
+  {
+   "role": "user",
+   "content": "I ran through some flashcards and took the practice exam -- 11 out of 15. Where should I focus before the midterm?"
+  },
+  {
+   "role": "assistant",
+   "content": "Nice work \u2014 11/15 is a solid base to build on for Feb 26.\n\nI looked at your real flashcard + exam performance, and there's a clear pattern. You're not missing the computations, you're missing the **setup decisions** \u2014 *which* form to start with:\n\n**1. Priority focus: Partial fractions setups**\nYou missed 2 here \u2014 repeated linear factors like `(x-1)^2` and irreducible quadratics like `x^2+1`. Practice just writing the *correct form*:\n- `(3x+1)/((x-1)^2(x+2))` needs `A/(x-1) + B/(x-1)^2 + C/(x+2)`\n- `(2x+1)/(x(x^2+1))` needs `A/x + (Bx+C)/(x^2+1)`\n\nThat's straight from your HW 12 section.\n\n**2. Integration by parts + LIATE**\nYour \"Again/Hard\" card was `\u222b x e^x dx` and you missed the LIATE choice for `\u222b x^2 ln x dx`. Rule to drill: Log beats power beats exponential for `u`. So `u = ln x`, not `x^2`.\n\n**3. Trig integrals vs. trig substitution**\nYour other \"Hard\" card was the both-even case for `sin^m x cos^n x` \u2014 that's half-angle formulas, not u-sub. And the `\u221a(9-x^2)` question \u2014 that's `x = 3 sin \u03b8` by the right-triangle method.\n\nIn short: u-substitution is solid for you. Spend this week on parts \u2192 trig rules \u2192 partial fractions forms in that packet order.\n\nWant me to build you a small targeted set \u2014 just setup-choice flashcards + partial fractions questions \u2014 to drill exactly these gaps before your HW deadlines?",
+   "tools": [
+    {
+     "type": "tool_start",
+     "tool": "use_capability",
+     "label": "Checking available tools",
+     "verified": null
+    },
+    {
+     "type": "tool_end",
+     "tool": "use_capability",
+     "label": "Checking available tools",
+     "verified": false
+    },
+    {
+     "type": "tool_start",
+     "tool": "get_weak_areas",
+     "label": "Finding what you're weak on",
+     "verified": null
+    },
+    {
+     "type": "tool_end",
+     "tool": "get_weak_areas",
+     "label": "Finding what you're weak on",
+     "verified": false
+    }
+   ],
+   "suggested_actions": []
+  }
+ ],
+ "captured_at": "2026-09-27T00:08:49.299776+00:00",
+ "session": "cc2fdc1b-4c2a-49cf-b611-970967a1403a",
+ "snapshots": {
+  "session": {
+   "study_plan": [
+    {
+     "id": "c13a104d-45f2-497e-a9d0-07fc9d61ea6f",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "Homework 9",
+     "due_date": "2026-02-06",
+     "due_date_text": "Fri, Feb 6, 2026",
+     "notes": "Integration by parts (problems 1\u201312); 3% of the course grade.",
+     "source": "syllabus_upload",
+     "created_at": "2026-09-27T00:09:15.640867+00:00"
+    },
+    {
+     "id": "4726734f-4eca-42a1-97a6-5a779ea96f8c",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "Quiz 4",
+     "due_date": "2026-02-11",
+     "due_date_text": "Wed, Feb 11, 2026",
+     "notes": "Trigonometric integrals; in class, 20 minutes; 2% of the course grade.",
+     "source": "syllabus_upload",
+     "created_at": "2026-09-27T00:09:15.640867+00:00"
+    },
+    {
+     "id": "bf752c4a-3660-4bc2-aca0-1ac4a92db329",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "Homework 10",
+     "due_date": "2026-02-13",
+     "due_date_text": "Fri, Feb 13, 2026",
+     "notes": "Powers of sine and cosine, tangent and secant.",
+     "source": "syllabus_upload",
+     "created_at": "2026-09-27T00:09:15.640867+00:00"
+    },
+    {
+     "id": "c10df84f-6401-4df8-a463-b7041b016377",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "Homework 11",
+     "due_date": "2026-02-18",
+     "due_date_text": "Wed, Feb 18, 2026",
+     "notes": "Trigonometric substitution (the right-triangle method).",
+     "source": "syllabus_upload",
+     "created_at": "2026-09-27T00:09:15.640867+00:00"
+    },
+    {
+     "id": "e29b6c0a-7d8e-4389-a4e6-13bedf22ea1c",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "Homework 12",
+     "due_date": "2026-02-20",
+     "due_date_text": "Fri, Feb 20, 2026",
+     "notes": "Partial fractions.",
+     "source": "syllabus_upload",
+     "created_at": "2026-09-27T00:09:15.640867+00:00"
+    },
+    {
+     "id": "3da6c058-7e50-4d1a-958e-3db323e9872b",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "Practice Midterm",
+     "due_date": "2026-02-24",
+     "due_date_text": "Tue, Feb 24, 2026",
+     "notes": "Graded for completion; 2% of the course grade.",
+     "source": "syllabus_upload",
+     "created_at": "2026-09-27T00:09:15.640867+00:00"
+    },
+    {
+     "id": "1e5c7fcd-73e8-45ad-b610-65b14715e3f8",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "Midterm 2",
+     "due_date": "2026-02-26",
+     "due_date_text": "Thu, Feb 26, 2026",
+     "notes": "In class, 75 minutes; 20% of the course grade; covers substitution, parts, trigonometric integrals, trigonometric substitution, and partial fractions.",
+     "source": "syllabus_upload",
+     "created_at": "2026-09-27T00:09:15.640867+00:00"
+    }
+   ],
+   "flashcards": [
+    {
+     "id": "eb6272ec-6855-40c7-9540-1f56f1b70ace",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "When should you use u-substitution?",
+     "back": "When the integrand contains a function and a constant multiple of its derivative; let u be the inner function.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "b41c9e0a-0a5e-4b4d-8aac-562bee1ab06d",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "State the integration by parts formula.",
+     "back": "\u222b u dv = uv \u2212 \u222b v du.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "cf72b83b-8575-4c73-907f-bba9e72c853c",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "What does LIATE stand for in choosing u for integration by parts?",
+     "back": "Logarithmic, Inverse trigonometric, Algebraic, Trigonometric, Exponential.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "376c0ea6-061d-4ee2-b6a8-6812953ab94b",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b ln x dx.",
+     "back": "x ln x \u2212 x + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "e454bbb1-bcda-43ae-af75-37fb179747b4",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b x e^x dx.",
+     "back": "e^x (x \u2212 1) + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "374d8144-2aca-4ee3-917c-3713209f0410",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "For \u222b sin^m x cos^n x dx, what do you do if either power is odd?",
+     "back": "Save one factor from the odd power, convert the remaining powers using sin\u00b2x + cos\u00b2x = 1, and substitute.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "b60f0347-feef-439f-af4d-e3c723d92890",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "For \u222b sin^m x cos^n x dx, what do you do if both powers are even?",
+     "back": "Use the half-angle identities sin\u00b2x = (1 \u2212 cos 2x)/2 and cos\u00b2x = (1 + cos 2x)/2.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "88bd0b8f-c8a1-4404-8f00-30634b950059",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b sin\u00b2 x dx.",
+     "back": "x/2 \u2212 sin(2x)/4 + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "438ddf97-4c21-44b3-9fef-2d463460c14b",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b sin\u00b3 x dx.",
+     "back": "\u2212cos x + (cos\u00b3 x)/3 + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "8995f59b-461e-4d1a-8ebf-fc0ef0d5ba73",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Which trig substitution is used for \u221a(a\u00b2 \u2212 x\u00b2)?",
+     "back": "x = a sin \u03b8.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "8be383f2-ff9d-49dd-a035-f2db78de6bd5",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Which trig substitution is used for \u221a(a\u00b2 + x\u00b2)?",
+     "back": "x = a tan \u03b8.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "5bb20af0-42e6-4173-b411-5a5f4324ac45",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Which trig substitution is used for \u221a(x\u00b2 \u2212 a\u00b2)?",
+     "back": "x = a sec \u03b8.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "c39898a3-34ea-4874-9e25-6b3d9a9c2d98",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b dx / \u221a(4 \u2212 x\u00b2).",
+     "back": "arcsin(x/2) + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "cd0b2d44-d05a-44f1-b4e7-a0c5cec3d192",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "What is the first step of partial fraction decomposition?",
+     "back": "Factor the denominator and split the rational function into simpler fractions with unknown constants.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "f3fea001-1ccb-4e12-82a7-28e02bcb2de2",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "How do you solve for the constants in a partial fractions decomposition?",
+     "back": "Plug in the roots of the denominator (or compare coefficients) and solve for the constants.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    }
+   ],
+   "flashcards_due": [
+    {
+     "id": "eb6272ec-6855-40c7-9540-1f56f1b70ace",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "When should you use u-substitution?",
+     "back": "When the integrand contains a function and a constant multiple of its derivative; let u be the inner function.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "b41c9e0a-0a5e-4b4d-8aac-562bee1ab06d",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "State the integration by parts formula.",
+     "back": "\u222b u dv = uv \u2212 \u222b v du.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "cf72b83b-8575-4c73-907f-bba9e72c853c",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "What does LIATE stand for in choosing u for integration by parts?",
+     "back": "Logarithmic, Inverse trigonometric, Algebraic, Trigonometric, Exponential.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "376c0ea6-061d-4ee2-b6a8-6812953ab94b",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b ln x dx.",
+     "back": "x ln x \u2212 x + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "e454bbb1-bcda-43ae-af75-37fb179747b4",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b x e^x dx.",
+     "back": "e^x (x \u2212 1) + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "374d8144-2aca-4ee3-917c-3713209f0410",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "For \u222b sin^m x cos^n x dx, what do you do if either power is odd?",
+     "back": "Save one factor from the odd power, convert the remaining powers using sin\u00b2x + cos\u00b2x = 1, and substitute.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "b60f0347-feef-439f-af4d-e3c723d92890",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "For \u222b sin^m x cos^n x dx, what do you do if both powers are even?",
+     "back": "Use the half-angle identities sin\u00b2x = (1 \u2212 cos 2x)/2 and cos\u00b2x = (1 + cos 2x)/2.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "88bd0b8f-c8a1-4404-8f00-30634b950059",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b sin\u00b2 x dx.",
+     "back": "x/2 \u2212 sin(2x)/4 + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "438ddf97-4c21-44b3-9fef-2d463460c14b",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b sin\u00b3 x dx.",
+     "back": "\u2212cos x + (cos\u00b3 x)/3 + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "8995f59b-461e-4d1a-8ebf-fc0ef0d5ba73",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Which trig substitution is used for \u221a(a\u00b2 \u2212 x\u00b2)?",
+     "back": "x = a sin \u03b8.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "8be383f2-ff9d-49dd-a035-f2db78de6bd5",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Which trig substitution is used for \u221a(a\u00b2 + x\u00b2)?",
+     "back": "x = a tan \u03b8.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "5bb20af0-42e6-4173-b411-5a5f4324ac45",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Which trig substitution is used for \u221a(x\u00b2 \u2212 a\u00b2)?",
+     "back": "x = a sec \u03b8.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "c39898a3-34ea-4874-9e25-6b3d9a9c2d98",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "Evaluate \u222b dx / \u221a(4 \u2212 x\u00b2).",
+     "back": "arcsin(x/2) + C.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "cd0b2d44-d05a-44f1-b4e7-a0c5cec3d192",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "What is the first step of partial fraction decomposition?",
+     "back": "Factor the denominator and split the rational function into simpler fractions with unknown constants.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    },
+    {
+     "id": "f3fea001-1ccb-4e12-82a7-28e02bcb2de2",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "front": "How do you solve for the constants in a partial fractions decomposition?",
+     "back": "Plug in the roots of the denominator (or compare coefficients) and solve for the constants.",
+     "direction": "recognition",
+     "due": "2026-09-27T00:09:15.640344+00:00",
+     "state": "learning",
+     "last_review": null,
+     "created_at": "2026-09-27T00:09:15.640344+00:00"
+    }
+   ],
+   "exams": [
+    {
+     "id": "27c292e2-bb53-4de9-920f-06939c6a5e17",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "MATH1220_Midterm2_Study_Packet.docx",
+     "difficulty": "medium",
+     "score": null,
+     "created_at": "2026-09-27T00:09:15.691641+00:00",
+     "completed_at": null
+    }
+   ],
+   "exam_details": {
+    "27c292e2-bb53-4de9-920f-06939c6a5e17": {
+     "id": "27c292e2-bb53-4de9-920f-06939c6a5e17",
+     "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "title": "MATH1220_Midterm2_Study_Packet.docx",
+     "difficulty": "medium",
+     "score": null,
+     "created_at": "2026-09-27T00:09:15.691641+00:00",
+     "completed_at": null,
+     "questions": [
+      {
+       "id": "cfe45527-a270-474d-99df-c5b83cb00e11",
+       "question_index": 0,
+       "question": "Evaluate \u222b x / (x\u00b2 + 1) dx.",
+       "choices": [
+        "(1/2) ln(x\u00b2 + 1) + C",
+        "ln(x\u00b2 + 1) + C",
+        "arctan(x) + C",
+        "(1/2) arctan(x\u00b2) + C"
+       ]
+      },
+      {
+       "id": "baada3a2-9b3b-4055-b106-48f9730a9016",
+       "question_index": 1,
+       "question": "Evaluate \u222b x e^x dx using integration by parts.",
+       "choices": [
+        "e^x(x - 1) + C",
+        "e^x(x + 1) + C",
+        "x e^x + C",
+        "e^x + C"
+       ]
+      },
+      {
+       "id": "89133a68-82fb-4e87-a46c-0404cf219cba",
+       "question_index": 2,
+       "question": "Using LIATE, what is the correct choice of u and dv for \u222b x\u00b2 ln x dx?",
+       "choices": [
+        "u = ln x, dv = x\u00b2 dx",
+        "u = x\u00b2, dv = ln x dx",
+        "u = x\u00b2 ln x, dv = dx",
+        "u = 1, dv = x\u00b2 ln x dx"
+       ]
+      },
+      {
+       "id": "35debb9a-8b75-43dc-af43-1c285b45a588",
+       "question_index": 3,
+       "question": "Evaluate \u222b sin\u00b2 x dx.",
+       "choices": [
+        "x/2 - sin(2x)/4 + C",
+        "x/2 + sin(2x)/4 + C",
+        "-cos x + C",
+        "x - sin(2x)/2 + C"
+       ]
+      },
+      {
+       "id": "e42667e5-5f2d-45a6-8d86-419cbc68a767",
+       "question_index": 4,
+       "question": "Evaluate \u222b sin\u00b3 x dx.",
+       "choices": [
+        "-cos x + cos\u00b3 x/3 + C",
+        "cos x - cos\u00b3 x/3 + C",
+        "sin\u2074 x/4 + C",
+        "-cos x - cos\u00b3 x/3 + C"
+       ]
+      },
+      {
+       "id": "42b189da-1de1-4c8a-bdc8-f0e5143cd67d",
+       "question_index": 5,
+       "question": "Evaluate \u222b sin\u00b2 x cos\u00b3 x dx.",
+       "choices": [
+        "sin\u00b3 x/3 - sin\u2075 x/5 + C",
+        "-cos\u00b3 x/3 + cos\u2075 x/5 + C",
+        "sin\u00b3 x/3 + sin\u2075 x/5 + C",
+        "sin x - sin\u00b3 x/3 + C"
+       ]
+      },
+      {
+       "id": "6285b971-a744-436b-a683-a0c7a411fa0f",
+       "question_index": 6,
+       "question": "According to the right-triangle method, which substitution is appropriate for \u222b \u221a(9 - x\u00b2) dx?",
+       "choices": [
+        "x = 3 sin \u03b8",
+        "x = 3 tan \u03b8",
+        "x = 3 sec \u03b8",
+        "u = 9 - x\u00b2"
+       ]
+      },
+      {
+       "id": "4f6889ca-e434-4c83-a8b0-3621700756f5",
+       "question_index": 7,
+       "question": "If x = 2 tan \u03b8, which expression equals sin \u03b8?",
+       "choices": [
+        "x / \u221a(x\u00b2 + 4)",
+        "2 / \u221a(x\u00b2 + 4)",
+        "\u221a(x\u00b2 + 4) / x",
+        "x / 2"
+       ]
+      },
+      {
+       "id": "4145e185-41cb-451e-9044-ffaff5e931dd",
+       "question_index": 8,
+       "question": "Evaluate \u222b dx / \u221a(4 - x\u00b2).",
+       "choices": [
+        "arcsin(x/2) + C",
+        "arcsin(2x) + C",
+        "ln|x + \u221a(4 - x\u00b2)| + C",
+        "arctan(x/2) + C"
+       ]
+      },
+      {
+       "id": "5cadddde-4727-414f-af98-3f55045caccb",
+       "question_index": 9,
+       "question": "Evaluate \u222b (3x + 5) / ((x + 1)(x + 3)) dx using partial fractions.",
+       "choices": [
+        "ln|x + 1| + 2 ln|x + 3| + C",
+        "2 ln|x + 1| + ln|x + 3| + C",
+        "ln|x + 1| + ln|x + 3| + C",
+        "ln|(x + 1)(x + 3)\u00b2| + C"
+       ]
+      },
+      {
+       "id": "25c35932-10ea-400e-9979-d2a34665fd4e",
+       "question_index": 10,
+       "question": "For \u222b (2x + 1) / (x(x\u00b2 + 1)) dx, what is the correct partial fraction decomposition?",
+       "choices": [
+        "A/x + (Bx + C)/(x\u00b2 + 1)",
+        "A/x + B/(x\u00b2 + 1)",
+        "A/(x + 1) + B/(x\u00b2 + 1)",
+        "A/x + B/x\u00b2 + C/(x + 1)"
+       ]
+      },
+      {
+       "id": "6546fccc-7632-4ae7-9739-2d7e31ca1ae1",
+       "question_index": 11,
+       "question": "Using u = tan x, evaluate \u222b tan x sec\u00b2 x dx.",
+       "choices": [
+        "tan\u00b2 x/2 + C",
+        "tan x + C",
+        "sec x + C",
+        "ln|sec x + tan x| + C"
+       ]
+      },
+      {
+       "id": "a4b0f316-08f5-44d0-87e7-bc240a1d87a7",
+       "question_index": 12,
+       "question": "Evaluate \u222b ln x dx.",
+       "choices": [
+        "x ln x - x + C",
+        "ln x - x + C",
+        "x ln x + C",
+        "(ln x)\u00b2/2 + C"
+       ]
+      },
+      {
+       "id": "15c2f650-6178-4bbf-a00b-e42764f341d5",
+       "question_index": 13,
+       "question": "For \u222b (3x + 1) / ((x - 1)\u00b2(x + 2)) dx, what is the correct partial fraction form?",
+       "choices": [
+        "A/(x - 1) + B/(x - 1)\u00b2 + C/(x + 2)",
+        "A/(x - 1) + B/(x + 2)",
+        "A/(x - 1)\u00b2 + B/(x + 2)",
+        "A/(x - 1) + B/(x + 2) + C/(x + 2)\u00b2"
+       ]
+      },
+      {
+       "id": "9e05cf95-359d-465e-a466-aa07070f820c",
+       "question_index": 14,
+       "question": "Which substitution is appropriate for \u222b \u221a(x\u00b2 - 4) dx using trigonometric substitution?",
+       "choices": [
+        "x = 2 sec \u03b8",
+        "x = 2 sin \u03b8",
+        "x = 2 tan \u03b8",
+        "u = x\u00b2 - 4"
+       ]
+      }
+     ]
+    }
+   },
+   "calendar_events": [],
+   "documents": [
+    {
+     "id": "2835f943-8248-4def-89dc-9b060d5041ec",
+     "filename": "MATH1220_Midterm2_Study_Packet.docx",
+     "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+     "created_at": "2026-09-27T00:08:48.223465+00:00",
+     "has_bibliography": false
+    },
+    {
+     "id": "426f73fd-a812-4278-b147-fddca3670652",
+     "filename": "topic-empty.txt",
+     "mime_type": "text/plain",
+     "created_at": "2026-09-24T15:50:38.440259+00:00",
+     "has_bibliography": false
+    },
+    {
+     "id": "ad1cded8-f789-4bdc-9249-3e5a6f4eabf2",
+     "filename": "topic-notes.txt",
+     "mime_type": "text/plain",
+     "created_at": "2026-09-24T15:50:38.245021+00:00",
+     "has_bibliography": false
+    }
+   ]
+  }
+ },
+ "reviews": [
+  {
+   "before": {
+    "id": "eb6272ec-6855-40c7-9540-1f56f1b70ace",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "When should you use u-substitution?",
+    "back": "When the integrand contains a function and a constant multiple of its derivative; let u be the inner function.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 3,
+   "after": {
+    "id": "eb6272ec-6855-40c7-9540-1f56f1b70ace",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "When should you use u-substitution?",
+    "back": "When the integrand contains a function and a constant multiple of its derivative; let u be the inner function.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:20:34.803836+00:00",
+    "state": "learning",
+    "last_review": "2026-09-27T00:10:34.803836+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  },
+  {
+   "before": {
+    "id": "b41c9e0a-0a5e-4b4d-8aac-562bee1ab06d",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "State the integration by parts formula.",
+    "back": "\u222b u dv = uv \u2212 \u222b v du.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 3,
+   "after": {
+    "id": "b41c9e0a-0a5e-4b4d-8aac-562bee1ab06d",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "State the integration by parts formula.",
+    "back": "\u222b u dv = uv \u2212 \u222b v du.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:20:34.813732+00:00",
+    "state": "learning",
+    "last_review": "2026-09-27T00:10:34.813732+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  },
+  {
+   "before": {
+    "id": "cf72b83b-8575-4c73-907f-bba9e72c853c",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "What does LIATE stand for in choosing u for integration by parts?",
+    "back": "Logarithmic, Inverse trigonometric, Algebraic, Trigonometric, Exponential.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 4,
+   "after": {
+    "id": "cf72b83b-8575-4c73-907f-bba9e72c853c",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "What does LIATE stand for in choosing u for integration by parts?",
+    "back": "Logarithmic, Inverse trigonometric, Algebraic, Trigonometric, Exponential.",
+    "direction": "recognition",
+    "due": "2026-10-05T00:10:34.825285+00:00",
+    "state": "review",
+    "last_review": "2026-09-27T00:10:34.825285+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  },
+  {
+   "before": {
+    "id": "376c0ea6-061d-4ee2-b6a8-6812953ab94b",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "Evaluate \u222b ln x dx.",
+    "back": "x ln x \u2212 x + C.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 3,
+   "after": {
+    "id": "376c0ea6-061d-4ee2-b6a8-6812953ab94b",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "Evaluate \u222b ln x dx.",
+    "back": "x ln x \u2212 x + C.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:20:34.835469+00:00",
+    "state": "learning",
+    "last_review": "2026-09-27T00:10:34.835469+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  },
+  {
+   "before": {
+    "id": "e454bbb1-bcda-43ae-af75-37fb179747b4",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "Evaluate \u222b x e^x dx.",
+    "back": "e^x (x \u2212 1) + C.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 1,
+   "after": {
+    "id": "e454bbb1-bcda-43ae-af75-37fb179747b4",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "Evaluate \u222b x e^x dx.",
+    "back": "e^x (x \u2212 1) + C.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:11:34.845530+00:00",
+    "state": "learning",
+    "last_review": "2026-09-27T00:10:34.845530+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  },
+  {
+   "before": {
+    "id": "374d8144-2aca-4ee3-917c-3713209f0410",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "For \u222b sin^m x cos^n x dx, what do you do if either power is odd?",
+    "back": "Save one factor from the odd power, convert the remaining powers using sin\u00b2x + cos\u00b2x = 1, and substitute.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 3,
+   "after": {
+    "id": "374d8144-2aca-4ee3-917c-3713209f0410",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "For \u222b sin^m x cos^n x dx, what do you do if either power is odd?",
+    "back": "Save one factor from the odd power, convert the remaining powers using sin\u00b2x + cos\u00b2x = 1, and substitute.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:20:34.855429+00:00",
+    "state": "learning",
+    "last_review": "2026-09-27T00:10:34.855429+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  },
+  {
+   "before": {
+    "id": "b60f0347-feef-439f-af4d-e3c723d92890",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "For \u222b sin^m x cos^n x dx, what do you do if both powers are even?",
+    "back": "Use the half-angle identities sin\u00b2x = (1 \u2212 cos 2x)/2 and cos\u00b2x = (1 + cos 2x)/2.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 2,
+   "after": {
+    "id": "b60f0347-feef-439f-af4d-e3c723d92890",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "For \u222b sin^m x cos^n x dx, what do you do if both powers are even?",
+    "back": "Use the half-angle identities sin\u00b2x = (1 \u2212 cos 2x)/2 and cos\u00b2x = (1 + cos 2x)/2.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:16:04.865947+00:00",
+    "state": "learning",
+    "last_review": "2026-09-27T00:10:34.865947+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  },
+  {
+   "before": {
+    "id": "88bd0b8f-c8a1-4404-8f00-30634b950059",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "Evaluate \u222b sin\u00b2 x dx.",
+    "back": "x/2 \u2212 sin(2x)/4 + C.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:09:15.640344+00:00",
+    "state": "learning",
+    "last_review": null,
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   },
+   "rating": 3,
+   "after": {
+    "id": "88bd0b8f-c8a1-4404-8f00-30634b950059",
+    "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+    "front": "Evaluate \u222b sin\u00b2 x dx.",
+    "back": "x/2 \u2212 sin(2x)/4 + C.",
+    "direction": "recognition",
+    "due": "2026-09-27T00:20:34.876737+00:00",
+    "state": "learning",
+    "last_review": "2026-09-27T00:10:34.876737+00:00",
+    "created_at": "2026-09-27T00:09:15.640344+00:00"
+   }
+  }
+ ],
+ "exam_taken": {
+  "exam_id": "27c292e2-bb53-4de9-920f-06939c6a5e17",
+  "answers": {
+   "cfe45527-a270-474d-99df-c5b83cb00e11": 0,
+   "baada3a2-9b3b-4055-b106-48f9730a9016": 0,
+   "89133a68-82fb-4e87-a46c-0404cf219cba": 1,
+   "35debb9a-8b75-43dc-af43-1c285b45a588": 0,
+   "e42667e5-5f2d-45a6-8d86-419cbc68a767": 0,
+   "42b189da-1de1-4c8a-bdc8-f0e5143cd67d": 0,
+   "6285b971-a744-436b-a683-a0c7a411fa0f": 1,
+   "4f6889ca-e434-4c83-a8b0-3621700756f5": 0,
+   "4145e185-41cb-451e-9044-ffaff5e931dd": 0,
+   "5cadddde-4727-414f-af98-3f55045caccb": 0,
+   "25c35932-10ea-400e-9979-d2a34665fd4e": 1,
+   "6546fccc-7632-4ae7-9739-2d7e31ca1ae1": 0,
+   "a4b0f316-08f5-44d0-87e7-bc240a1d87a7": 0,
+   "15c2f650-6178-4bbf-a00b-e42764f341d5": 1,
+   "9e05cf95-359d-465e-a466-aa07070f820c": 0
+  },
+  "graded": {
+   "id": "27c292e2-bb53-4de9-920f-06939c6a5e17",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "title": "MATH1220_Midterm2_Study_Packet.docx",
+   "difficulty": "medium",
+   "score": 0.7333333333333333,
+   "created_at": "2026-09-27T00:09:15.691641+00:00",
+   "completed_at": "2026-09-27T00:10:41.446678+00:00",
+   "questions": [
+    {
+     "id": "cfe45527-a270-474d-99df-c5b83cb00e11",
+     "question_index": 0,
+     "question": "Evaluate \u222b x / (x\u00b2 + 1) dx.",
+     "choices": [
+      "(1/2) ln(x\u00b2 + 1) + C",
+      "ln(x\u00b2 + 1) + C",
+      "arctan(x) + C",
+      "(1/2) arctan(x\u00b2) + C"
+     ],
+     "correct_index": 0,
+     "explanation": "Let u = x\u00b2 + 1, so du = 2x dx. The integral becomes (1/2)\u222b du/u = (1/2) ln|u| + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "baada3a2-9b3b-4055-b106-48f9730a9016",
+     "question_index": 1,
+     "question": "Evaluate \u222b x e^x dx using integration by parts.",
+     "choices": [
+      "e^x(x - 1) + C",
+      "e^x(x + 1) + C",
+      "x e^x + C",
+      "e^x + C"
+     ],
+     "correct_index": 0,
+     "explanation": "With u = x and dv = e^x dx, integration by parts gives x e^x - \u222b e^x dx = x e^x - e^x + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "89133a68-82fb-4e87-a46c-0404cf219cba",
+     "question_index": 2,
+     "question": "Using LIATE, what is the correct choice of u and dv for \u222b x\u00b2 ln x dx?",
+     "choices": [
+      "u = ln x, dv = x\u00b2 dx",
+      "u = x\u00b2, dv = ln x dx",
+      "u = x\u00b2 ln x, dv = dx",
+      "u = 1, dv = x\u00b2 ln x dx"
+     ],
+     "correct_index": 0,
+     "explanation": "LIATE places logarithmic functions before algebraic ones, so u = ln x and the remaining x\u00b2 dx is dv.",
+     "student_answer_index": 1,
+     "is_correct": false
+    },
+    {
+     "id": "35debb9a-8b75-43dc-af43-1c285b45a588",
+     "question_index": 3,
+     "question": "Evaluate \u222b sin\u00b2 x dx.",
+     "choices": [
+      "x/2 - sin(2x)/4 + C",
+      "x/2 + sin(2x)/4 + C",
+      "-cos x + C",
+      "x - sin(2x)/2 + C"
+     ],
+     "correct_index": 0,
+     "explanation": "Using sin\u00b2 x = (1 - cos 2x)/2, the integral is (1/2)\u222b(1 - cos 2x) dx = x/2 - sin(2x)/4 + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "e42667e5-5f2d-45a6-8d86-419cbc68a767",
+     "question_index": 4,
+     "question": "Evaluate \u222b sin\u00b3 x dx.",
+     "choices": [
+      "-cos x + cos\u00b3 x/3 + C",
+      "cos x - cos\u00b3 x/3 + C",
+      "sin\u2074 x/4 + C",
+      "-cos x - cos\u00b3 x/3 + C"
+     ],
+     "correct_index": 0,
+     "explanation": "Write sin\u00b3 x = (1 - cos\u00b2 x) sin x and let u = cos x, giving -\u222b(1 - u\u00b2) du = -cos x + cos\u00b3 x/3 + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "42b189da-1de1-4c8a-bdc8-f0e5143cd67d",
+     "question_index": 5,
+     "question": "Evaluate \u222b sin\u00b2 x cos\u00b3 x dx.",
+     "choices": [
+      "sin\u00b3 x/3 - sin\u2075 x/5 + C",
+      "-cos\u00b3 x/3 + cos\u2075 x/5 + C",
+      "sin\u00b3 x/3 + sin\u2075 x/5 + C",
+      "sin x - sin\u00b3 x/3 + C"
+     ],
+     "correct_index": 0,
+     "explanation": "Since the cosine power is odd, use u = sin x. Then cos\u00b3 x dx = (1 - sin\u00b2 x) cos x dx, so the integral is \u222b(u\u00b2 - u\u2074) du.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "6285b971-a744-436b-a683-a0c7a411fa0f",
+     "question_index": 6,
+     "question": "According to the right-triangle method, which substitution is appropriate for \u222b \u221a(9 - x\u00b2) dx?",
+     "choices": [
+      "x = 3 sin \u03b8",
+      "x = 3 tan \u03b8",
+      "x = 3 sec \u03b8",
+      "u = 9 - x\u00b2"
+     ],
+     "correct_index": 0,
+     "explanation": "For \u221a(a\u00b2 - x\u00b2), use x = a sin \u03b8. Here a = 3, so x = 3 sin \u03b8.",
+     "student_answer_index": 1,
+     "is_correct": false
+    },
+    {
+     "id": "4f6889ca-e434-4c83-a8b0-3621700756f5",
+     "question_index": 7,
+     "question": "If x = 2 tan \u03b8, which expression equals sin \u03b8?",
+     "choices": [
+      "x / \u221a(x\u00b2 + 4)",
+      "2 / \u221a(x\u00b2 + 4)",
+      "\u221a(x\u00b2 + 4) / x",
+      "x / 2"
+     ],
+     "correct_index": 0,
+     "explanation": "From x = 2 tan \u03b8, tan \u03b8 = x/2, so the right triangle has opposite x, adjacent 2, and hypotenuse \u221a(x\u00b2 + 4). Thus sin \u03b8 = x/\u221a(x\u00b2 + 4).",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "4145e185-41cb-451e-9044-ffaff5e931dd",
+     "question_index": 8,
+     "question": "Evaluate \u222b dx / \u221a(4 - x\u00b2).",
+     "choices": [
+      "arcsin(x/2) + C",
+      "arcsin(2x) + C",
+      "ln|x + \u221a(4 - x\u00b2)| + C",
+      "arctan(x/2) + C"
+     ],
+     "correct_index": 0,
+     "explanation": "Substitute x = 2 sin \u03b8; the integral becomes \u222b d\u03b8 = \u03b8 + C = arcsin(x/2) + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "5cadddde-4727-414f-af98-3f55045caccb",
+     "question_index": 9,
+     "question": "Evaluate \u222b (3x + 5) / ((x + 1)(x + 3)) dx using partial fractions.",
+     "choices": [
+      "ln|x + 1| + 2 ln|x + 3| + C",
+      "2 ln|x + 1| + ln|x + 3| + C",
+      "ln|x + 1| + ln|x + 3| + C",
+      "ln|(x + 1)(x + 3)\u00b2| + C"
+     ],
+     "correct_index": 0,
+     "explanation": "The decomposition gives A = 1 and B = 2, so the integral is ln|x + 1| + 2 ln|x + 3| + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "25c35932-10ea-400e-9979-d2a34665fd4e",
+     "question_index": 10,
+     "question": "For \u222b (2x + 1) / (x(x\u00b2 + 1)) dx, what is the correct partial fraction decomposition?",
+     "choices": [
+      "A/x + (Bx + C)/(x\u00b2 + 1)",
+      "A/x + B/(x\u00b2 + 1)",
+      "A/(x + 1) + B/(x\u00b2 + 1)",
+      "A/x + B/x\u00b2 + C/(x + 1)"
+     ],
+     "correct_index": 0,
+     "explanation": "The denominator has a linear factor x and an irreducible quadratic x\u00b2 + 1, so the quadratic factor requires a numerator of the form Bx + C.",
+     "student_answer_index": 1,
+     "is_correct": false
+    },
+    {
+     "id": "6546fccc-7632-4ae7-9739-2d7e31ca1ae1",
+     "question_index": 11,
+     "question": "Using u = tan x, evaluate \u222b tan x sec\u00b2 x dx.",
+     "choices": [
+      "tan\u00b2 x/2 + C",
+      "tan x + C",
+      "sec x + C",
+      "ln|sec x + tan x| + C"
+     ],
+     "correct_index": 0,
+     "explanation": "Let u = tan x, so du = sec\u00b2 x dx. The integral becomes \u222b u du = u\u00b2/2 + C = tan\u00b2 x/2 + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "a4b0f316-08f5-44d0-87e7-bc240a1d87a7",
+     "question_index": 12,
+     "question": "Evaluate \u222b ln x dx.",
+     "choices": [
+      "x ln x - x + C",
+      "ln x - x + C",
+      "x ln x + C",
+      "(ln x)\u00b2/2 + C"
+     ],
+     "correct_index": 0,
+     "explanation": "Use integration by parts with u = ln x and dv = dx, giving x ln x - \u222b dx = x ln x - x + C.",
+     "student_answer_index": 0,
+     "is_correct": true
+    },
+    {
+     "id": "15c2f650-6178-4bbf-a00b-e42764f341d5",
+     "question_index": 13,
+     "question": "For \u222b (3x + 1) / ((x - 1)\u00b2(x + 2)) dx, what is the correct partial fraction form?",
+     "choices": [
+      "A/(x - 1) + B/(x - 1)\u00b2 + C/(x + 2)",
+      "A/(x - 1) + B/(x + 2)",
+      "A/(x - 1)\u00b2 + B/(x + 2)",
+      "A/(x - 1) + B/(x + 2) + C/(x + 2)\u00b2"
+     ],
+     "correct_index": 0,
+     "explanation": "A repeated linear factor requires terms for each power up to its multiplicity, so (x - 1) contributes both A/(x - 1) and B/(x - 1)\u00b2.",
+     "student_answer_index": 1,
+     "is_correct": false
+    },
+    {
+     "id": "9e05cf95-359d-465e-a466-aa07070f820c",
+     "question_index": 14,
+     "question": "Which substitution is appropriate for \u222b \u221a(x\u00b2 - 4) dx using trigonometric substitution?",
+     "choices": [
+      "x = 2 sec \u03b8",
+      "x = 2 sin \u03b8",
+      "x = 2 tan \u03b8",
+      "u = x\u00b2 - 4"
+     ],
+     "correct_index": 0,
+     "explanation": "For \u221a(x\u00b2 - a\u00b2), use x = a sec \u03b8. Here a = 2, so x = 2 sec \u03b8.",
+     "student_answer_index": 0,
+     "is_correct": true
+    }
+   ]
+  }
+ },
+ "weak_areas": [
+  {
+   "label": "MATH1220_Midterm2_Study_Packet.docx",
+   "weak_flashcards": [
+    "Evaluate \u222b x e^x dx.",
+    "For \u222b sin^m x cos^n x dx, what do you do if both powers are even?"
+   ],
+   "missed_questions": [
+    "For \u222b (3x + 1) / ((x - 1)\u00b2(x + 2)) dx, what is the correct partial fraction form?",
+    "For \u222b (2x + 1) / (x(x\u00b2 + 1)) dx, what is the correct partial fraction decomposition?",
+    "According to the right-triangle method, which substitution is appropriate for \u222b \u221a(9 - x\u00b2) dx?",
+    "Using LIATE, what is the correct choice of u and dv for \u222b x\u00b2 ln x dx?"
+   ],
+   "weak_flashcard_ids": [
+    "e454bbb1-bcda-43ae-af75-37fb179747b4",
+    "b60f0347-feef-439f-af4d-e3c723d92890"
+   ],
+   "missed_question_ids": [
+    "15c2f650-6178-4bbf-a00b-e42764f341d5",
+    "25c35932-10ea-400e-9979-d2a34665fd4e",
+    "6285b971-a744-436b-a683-a0c7a411fa0f",
+    "89133a68-82fb-4e87-a46c-0404cf219cba"
+   ],
+   "missed_question_exam_ids": [
+    "27c292e2-bb53-4de9-920f-06939c6a5e17",
+    "27c292e2-bb53-4de9-920f-06939c6a5e17",
+    "27c292e2-bb53-4de9-920f-06939c6a5e17",
+    "27c292e2-bb53-4de9-920f-06939c6a5e17"
+   ],
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "weak_count": 6
+  }
+ ],
+ "stats": {
+  "streak_days": 1,
+  "xp": 170,
+  "level": 2,
+  "xp_to_next_level": 30,
+  "messages_sent": 5,
+  "flashcards_reviewed": 8,
+  "flashcards_created": 15,
+  "study_plan_items": 7
+ },
+ "billing": {
+  "plan": "pro",
+  "subscription_status": null,
+  "current_period_end": null,
+  "credits_used_cents": 427,
+  "credits_limit_cents": 600,
+  "credits_reset_at": null,
+  "preferred_pro_model": "meta/muse-spark-1.3-contributor",
+  "free_generation_target": 5,
+  "pro_generation_target": 15,
+  "focus_mode_enabled": false,
+  "topup_credits_cents": -1,
+  "topup_tiers_cents": [
+   500,
+   1000,
+   2500
+  ],
+  "learn_mode_enabled": false
+ },
+ "flashcards_after": [
+  {
+   "id": "8be383f2-ff9d-49dd-a035-f2db78de6bd5",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Which trig substitution is used for \u221a(a\u00b2 + x\u00b2)?",
+   "back": "x = a tan \u03b8.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "f3fea001-1ccb-4e12-82a7-28e02bcb2de2",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "How do you solve for the constants in a partial fractions decomposition?",
+   "back": "Plug in the roots of the denominator (or compare coefficients) and solve for the constants.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "cd0b2d44-d05a-44f1-b4e7-a0c5cec3d192",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "What is the first step of partial fraction decomposition?",
+   "back": "Factor the denominator and split the rational function into simpler fractions with unknown constants.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "c39898a3-34ea-4874-9e25-6b3d9a9c2d98",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Evaluate \u222b dx / \u221a(4 \u2212 x\u00b2).",
+   "back": "arcsin(x/2) + C.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "438ddf97-4c21-44b3-9fef-2d463460c14b",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Evaluate \u222b sin\u00b3 x dx.",
+   "back": "\u2212cos x + (cos\u00b3 x)/3 + C.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "8995f59b-461e-4d1a-8ebf-fc0ef0d5ba73",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Which trig substitution is used for \u221a(a\u00b2 \u2212 x\u00b2)?",
+   "back": "x = a sin \u03b8.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "5bb20af0-42e6-4173-b411-5a5f4324ac45",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Which trig substitution is used for \u221a(x\u00b2 \u2212 a\u00b2)?",
+   "back": "x = a sec \u03b8.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "e454bbb1-bcda-43ae-af75-37fb179747b4",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Evaluate \u222b x e^x dx.",
+   "back": "e^x (x \u2212 1) + C.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:11:34.845530+00:00",
+   "state": "learning",
+   "last_review": "2026-09-27T00:10:34.845530+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "b60f0347-feef-439f-af4d-e3c723d92890",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "For \u222b sin^m x cos^n x dx, what do you do if both powers are even?",
+   "back": "Use the half-angle identities sin\u00b2x = (1 \u2212 cos 2x)/2 and cos\u00b2x = (1 + cos 2x)/2.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:16:04.865947+00:00",
+   "state": "learning",
+   "last_review": "2026-09-27T00:10:34.865947+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "eb6272ec-6855-40c7-9540-1f56f1b70ace",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "When should you use u-substitution?",
+   "back": "When the integrand contains a function and a constant multiple of its derivative; let u be the inner function.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:20:34.803836+00:00",
+   "state": "learning",
+   "last_review": "2026-09-27T00:10:34.803836+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "b41c9e0a-0a5e-4b4d-8aac-562bee1ab06d",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "State the integration by parts formula.",
+   "back": "\u222b u dv = uv \u2212 \u222b v du.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:20:34.813732+00:00",
+   "state": "learning",
+   "last_review": "2026-09-27T00:10:34.813732+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "376c0ea6-061d-4ee2-b6a8-6812953ab94b",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Evaluate \u222b ln x dx.",
+   "back": "x ln x \u2212 x + C.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:20:34.835469+00:00",
+   "state": "learning",
+   "last_review": "2026-09-27T00:10:34.835469+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "374d8144-2aca-4ee3-917c-3713209f0410",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "For \u222b sin^m x cos^n x dx, what do you do if either power is odd?",
+   "back": "Save one factor from the odd power, convert the remaining powers using sin\u00b2x + cos\u00b2x = 1, and substitute.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:20:34.855429+00:00",
+   "state": "learning",
+   "last_review": "2026-09-27T00:10:34.855429+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "88bd0b8f-c8a1-4404-8f00-30634b950059",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Evaluate \u222b sin\u00b2 x dx.",
+   "back": "x/2 \u2212 sin(2x)/4 + C.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:20:34.876737+00:00",
+   "state": "learning",
+   "last_review": "2026-09-27T00:10:34.876737+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "cf72b83b-8575-4c73-907f-bba9e72c853c",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "What does LIATE stand for in choosing u for integration by parts?",
+   "back": "Logarithmic, Inverse trigonometric, Algebraic, Trigonometric, Exponential.",
+   "direction": "recognition",
+   "due": "2026-10-05T00:10:34.825285+00:00",
+   "state": "review",
+   "last_review": "2026-09-27T00:10:34.825285+00:00",
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  }
+ ],
+ "flashcards_due_after": [
+  {
+   "id": "438ddf97-4c21-44b3-9fef-2d463460c14b",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Evaluate \u222b sin\u00b3 x dx.",
+   "back": "\u2212cos x + (cos\u00b3 x)/3 + C.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "8995f59b-461e-4d1a-8ebf-fc0ef0d5ba73",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Which trig substitution is used for \u221a(a\u00b2 \u2212 x\u00b2)?",
+   "back": "x = a sin \u03b8.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "8be383f2-ff9d-49dd-a035-f2db78de6bd5",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Which trig substitution is used for \u221a(a\u00b2 + x\u00b2)?",
+   "back": "x = a tan \u03b8.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "5bb20af0-42e6-4173-b411-5a5f4324ac45",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Which trig substitution is used for \u221a(x\u00b2 \u2212 a\u00b2)?",
+   "back": "x = a sec \u03b8.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "c39898a3-34ea-4874-9e25-6b3d9a9c2d98",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "Evaluate \u222b dx / \u221a(4 \u2212 x\u00b2).",
+   "back": "arcsin(x/2) + C.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "cd0b2d44-d05a-44f1-b4e7-a0c5cec3d192",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "What is the first step of partial fraction decomposition?",
+   "back": "Factor the denominator and split the rational function into simpler fractions with unknown constants.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  },
+  {
+   "id": "f3fea001-1ccb-4e12-82a7-28e02bcb2de2",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "front": "How do you solve for the constants in a partial fractions decomposition?",
+   "back": "Plug in the roots of the denominator (or compare coefficients) and solve for the constants.",
+   "direction": "recognition",
+   "due": "2026-09-27T00:09:15.640344+00:00",
+   "state": "learning",
+   "last_review": null,
+   "created_at": "2026-09-27T00:09:15.640344+00:00"
+  }
+ ],
+ "exams_after": [
+  {
+   "id": "27c292e2-bb53-4de9-920f-06939c6a5e17",
+   "document_id": "2835f943-8248-4def-89dc-9b060d5041ec",
+   "title": "MATH1220_Midterm2_Study_Packet.docx",
+   "difficulty": "medium",
+   "score": 0.7333333333333333,
+   "created_at": "2026-09-27T00:09:15.691641+00:00",
+   "completed_at": "2026-09-27T00:10:41.446678+00:00"
+  }
+ ]
+}

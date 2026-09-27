@@ -29,6 +29,7 @@ import type {
   UploadedDocument,
 } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
+import { parseDueDate } from "./lib/dueDate";
 import type { SelectionActivity } from "./lib/selectionActivity";
 import AgeGateScreen from "./components/AgeGateScreen";
 import LoginScreen from "./components/LoginScreen";
@@ -487,7 +488,7 @@ function App() {
         const dueSoonCutoff = Date.now() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000;
         const dueSoonItems = studyPlan.filter((item) => {
           if (!item.due_date) return false;
-          const dueTime = new Date(item.due_date).getTime();
+          const dueTime = parseDueDate(item.due_date).getTime();
           return !Number.isNaN(dueTime) && dueTime <= dueSoonCutoff;
         });
         await notifyStudyReminders(dueFlashcards.length, dueSoonItems.length);

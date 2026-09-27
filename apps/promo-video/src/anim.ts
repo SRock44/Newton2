@@ -1,4 +1,8 @@
-export const FPS = 30;
+// The films render at 60 fps: their many easing moves (camera zoom, window-in, panel slide, cursor,
+// typing, scroll) read as stutter at 30. Every time in the films is in seconds, so this is the only
+// number that changes; frame-derived values (e.g. --promo-spin) must be time-based.
+export const FPS = 60;
+export const SHOW_FPS = FPS;
 
 export const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);

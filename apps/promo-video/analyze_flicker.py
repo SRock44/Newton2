@@ -3,8 +3,9 @@
 Decodes a downscaled grayscale copy, then flags (a) single-frame outliers -- a frame that
 differs from BOTH neighbours while the neighbours match each other (the signature of a
 flash/flicker) -- and (b) reports the worst consecutive-frame change inside a window.
-Usage: python analyze_flicker.py out/newton-promo.mp4 [start_sec end_sec]
+Usage: [FPS=60] python analyze_flicker.py out/newton-promo.mp4 [start_sec end_sec]   (FPS defaults to 30)
 """
+import os
 import subprocess
 import sys
 
@@ -15,7 +16,7 @@ FFMPEG = (
     "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-9.0.2-full_build/bin/ffmpeg.exe"
 )
 path = sys.argv[1]
-W, H, FPS = 384, 216, 30
+W, H, FPS = 384, 216, int(os.environ.get("FPS", "30"))
 raw = subprocess.run(
     [FFMPEG, "-loglevel", "error", "-i", path, "-vf", f"scale={W}:{H},format=gray", "-f", "rawvideo", "-"],
     capture_output=True,

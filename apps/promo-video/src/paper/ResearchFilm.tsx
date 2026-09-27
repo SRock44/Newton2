@@ -21,6 +21,7 @@ import { clamp01, easeInOut, easeOut, FPS, lerp, measure, prog, typed } from "..
 import { cameraTransform, cursorAt, findTarget, installFrozenTime, WALLPAPER, type Pt } from "../engine";
 import { Caption, CursorArrow, ScriptedComposer } from "../ui";
 import { activeFilm } from "../filmId";
+import { FOLLOW_WINDOW, FollowProbes, followLagPx, followSampleTimes } from "../followProbes";
 import "./api";
 import { filmState, type FilmDoc } from "./api";
 import {
@@ -273,6 +274,10 @@ function MainWindow({ t }: { t: number }) {
   if (sending && t >= T.pickerClick + 0.05) attachments.push(SYNOPSIS.doc.filename);
   if (sending && t >= T.picker2Click + 0.05) attachments.push(NOTES.doc.filename);
   const typingNow = M.some((m) => m.kind === "composer" && t >= m.clickField! && t < m.sendClick);
+  // While a reply streams (and just after), hidden copies of it as it stood a moment ago let the chat
+  // glide up with it instead of jumping a line at a time -- see followProbes.tsx.
+  const followMark = M.find((mk) => t >= mk.revealStart && t < mk.revealEnd + FOLLOW_WINDOW);
+  const followContents = followMark ? followSampleTimes(t).map((ts) => assistantContent(followMark.k, ts, followMark)) : [];
   // "Request Changes" was just clicked on turn 0's plan (only the revise turn, M[1], has
   // a preClick) -- shows the real banner from that click until the revised text is sent,
   // same window the real product keeps it up for.
@@ -355,6 +360,7 @@ function MainWindow({ t }: { t: number }) {
                   onSend={() => {}}
                   openDocumentId={docOpen ? PAPER_PDF.doc.id : null}
                 />
+                <FollowProbes contents={followContents} />
                 <div className="math-keyboard-dock" />
                 <ScriptedComposer
                   text={composerText}
@@ -608,7 +614,9 @@ export const ResearchFilm: React.FC = () => {
           const f = easeInOut(clamp01((t - m.planPan!.from) / (m.planPan!.to - m.planPan!.from)));
           top = lerp(Math.min(cardTop, maxTop), maxTop, f);
         }
-        list.style.transform = `translateY(${-Math.round(top)}px)`;
+        // Not rounded: at 2x supersampling a fractional offset is what makes the follow glide.
+        if (!m || !cards.length) top = Math.max(0, top - followLagPx(root));
+        list.style.transform = `translateY(${-top}px)`;
       });
 
       // The highlighted sentence in the real, pdf.js-rendered PDF, and the toolbar over it —
@@ -695,7 +703,7 @@ export const ResearchFilm: React.FC = () => {
           height: 1080,
           position: "relative",
           overflow: "hidden",
-          "--promo-spin": `${(frame * 24) % 360}deg`,
+          "--promo-spin": `${(t * 720) % 360}deg`, // 720 deg/s, whatever the frame rate
         } as React.CSSProperties
       }
     >

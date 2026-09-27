@@ -17,7 +17,7 @@ import DocumentsPanel from "../../../desktop/src/components/DocumentsPanel";
 import NoteEditor from "../../../desktop/src/components/NoteEditor";
 import NewtonMark from "../../../desktop/src/components/NewtonMark";
 import type { ChatMessage, ChatSession, MainView, ToolActivityEntry } from "../../../desktop/src/types";
-import { clamp01, easeInOut, easeOut, FPS, measure, prog, typed } from "../anim";
+import { clamp01, easeInOut, easeOut, measure, prog, SHOW_FPS, typed } from "../anim";
 import { cameraTransform, cursorAt, findTarget, installFrozenTime, WALLPAPER, type Pt } from "../engine";
 import { Caption, CursorArrow, ScriptedComposer } from "../ui";
 import { activeFilm } from "../filmId";
@@ -609,7 +609,7 @@ function useFieldTyping(t: number, frame: number, replace: () => void) {
 export const ShowFilm: React.FC = () => {
   activeFilm.id = "show";
   const frame = useCurrentFrame();
-  const t = frame / FPS;
+  const t = frame / SHOW_FPS;
   const rootRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
   const rippleRef = useRef<HTMLDivElement>(null);
@@ -745,7 +745,7 @@ export const ShowFilm: React.FC = () => {
           height: 1080,
           position: "relative",
           overflow: "hidden",
-          "--promo-spin": `${(frame * 24) % 360}deg`,
+          "--promo-spin": `${(t * 720) % 360}deg`, // 720 deg/s, whatever the frame rate
         } as React.CSSProperties
       }
     >

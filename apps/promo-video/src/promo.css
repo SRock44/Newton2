@@ -55,7 +55,21 @@ html, body { margin: 0; background: #0b1120; }
    refuses programmatic scrolling (ChatPane's own scrollTop = scrollHeight effect). */
 /* min-height: 0 because `clip`, unlike `auto`, is not a scroll container, so a flex item no longer
    shrinks below its content on its own. */
-.promo-paper .chat-pane { overflow-y: clip; min-height: 0; }
+.promo-paper .chat-pane, .promo-study .chat-pane { overflow-y: clip; min-height: 0; }
+
+/* The study-plan film's real modal panels (Study plan, Calendar, Flashcards, Practice exams) mount
+   inside the scaled window, so they must fit it (`vh` here is the whole stage), and their own
+   scrolling is driven by a transform on the content, so the panel is `clip`, with the header opaque
+   above the content sliding under it. */
+.promo-study .app-root { position: relative; }
+.promo-study .home-view { overflow-y: clip; }
+.promo-overlay { position: absolute; inset: 0; z-index: 30; }
+.promo-study .modal-panel { overflow-y: clip; max-height: 700px; width: 560px; }
+.promo-study .modal-panel > .modal-header {
+  position: relative; z-index: 3; background: var(--color-surface);
+  /* opaque all the way to the panel's edge, so scrolled content never peeks out above the title */
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-6)) 0; padding: var(--space-5) var(--space-6) var(--space-2);
+}
 
 .promo-caption {
   position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
