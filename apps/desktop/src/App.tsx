@@ -30,6 +30,7 @@ import type {
 } from "./types";
 import { sessionDisplayTitle } from "./lib/sessionTitle";
 import { parseDueDate } from "./lib/dueDate";
+import type { StudyItemRef } from "./lib/studyLinks";
 import type { SelectionActivity } from "./lib/selectionActivity";
 import AgeGateScreen from "./components/AgeGateScreen";
 import LoginScreen from "./components/LoginScreen";
@@ -1162,6 +1163,15 @@ function App() {
     setShowPracticeExams(true);
   }
 
+  // A study plan / flashcard set / practice exam card under Newton's reply (lib/studyLinks.ts) was
+  // clicked: open exactly what it names, through the same openers every other entry point uses. An
+  // exam card goes straight into THAT exam (its real id is in the marker).
+  function handleOpenStudyItem(item: StudyItemRef) {
+    if (item.kind === "plan") setShowStudyPlan(true);
+    else if (item.kind === "flashcards") handleOpenFlashcards();
+    else handleOpenPracticeExams(item.id ? { examId: item.id } : undefined);
+  }
+
   async function handleDeleteSession(sessionId: string) {
     try {
       const accessToken = await tokenManager.getValidAccessToken();
@@ -1336,6 +1346,7 @@ function App() {
                       openDocumentId={chatDocumentPanel?.id ?? null}
                       onSend={handleSend}
                       onFocusComposer={handleFocusComposer}
+                      onOpenStudyItem={handleOpenStudyItem}
                       firstRun={!onboardingSeen}
                       onDismissFirstRun={handleDismissOnboarding}
                       editingMessageId={editingMessage?.id ?? null}

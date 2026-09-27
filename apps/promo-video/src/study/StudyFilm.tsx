@@ -113,6 +113,11 @@ function customTarget(root: HTMLElement, name: string): Pt | null | undefined {
       const r = rect(root.querySelector(".doc-detail-body"));
       return r ? { x: r.left + r.width * 0.45, y: r.top + r.height * 0.35 } : null;
     }
+    // the study plan / flashcards / practice exam cards Newton's reply ends with (click to open)
+    case "card-plan":
+    case "card-flashcards":
+    case "card-exam":
+      return center(rect(root.querySelector(`.study-item-card--${name.slice(5) === "plan" ? "plan" : name.slice(5)}`)));
     case "nav-plan":
       return center(rect(sidebarBtn("Study plan")));
     case "nav-cal":
@@ -180,6 +185,10 @@ function elementFor(root: HTMLElement, name: string): Element | null {
   switch (name) {
     case "upload-btn":
       return root.querySelector(".documents-page-toolbar-actions .btn-primary");
+    case "card-plan":
+    case "card-flashcards":
+    case "card-exam":
+      return root.querySelector(`.study-item-card--${name.slice(5)}`);
     case "cal-new":
       return root.querySelector(".calendar-add-btn");
     case "cal-add":
@@ -197,6 +206,7 @@ function elementFor(root: HTMLElement, name: string): Element | null {
   return findTarget(root, name);
 }
 const PRESSABLE = new Set([
+  "card-plan", "card-flashcards", "card-exam",
   "send", "newchat", "nav-documents", "upload-btn", "menu-existing", "picker-deck", "plus",
   "cal-new", "cal-add", "exam-submit", "home-review", "modal-close",
 ]);
@@ -327,8 +337,6 @@ function alignPanels(root: HTMLElement) {
     if (box && box.querySelector(".flashcard-box-label")?.textContent === "Question") box.click();
   }
   if (align.examOpen) {
-    const title = root.querySelector<HTMLButtonElement>(".exam-list-title");
-    if (title) title.click();
     const questions = root.querySelectorAll<HTMLElement>(".exam-question");
     for (let i = 0; i < Math.min(align.examAnswered, questions.length); i++) {
       const id = EXAM_OPEN.questions[i]?.id;
@@ -369,7 +377,22 @@ function panelScroll(root: HTMLElement, t: number, id: Overlay) {
       const target = q ? Math.min(maxScroll, (q.getBoundingClientRect().top - tr.top) / s + (tr.top - pr.top) / s - 96) : 0;
       y = Math.max(0, target) * ease(T.exam.explainStart, T.exam.explainEnd);
     } else if (taking) {
-      y = maxScroll * ease(T.exam.scrollStart, T.exam.scrollEnd);
+      // Follow the answering: each question the student answers is scrolled up to the top of the
+      // panel just before its click, so the click always lands on screen (it used to answer
+      // questions that were below the fold). Then, once the rest fill in, on to Submit.
+      const qs = Array.from(root.querySelectorAll<HTMLElement>(".exam-question"));
+      const tr = taking.getBoundingClientRect();
+      const targetOf = (i: number) => Math.min(maxScroll, Math.max(0, ((qs[i]?.getBoundingClientRect().top ?? tr.top) - tr.top) / s - 6));
+      let from = 0;
+      y = 0;
+      for (let i = 1; i < ANSWER_SHOWN; i++) {
+        const to = targetOf(i);
+        const p = ease(T.exam.answer(i) - 0.6, T.exam.answer(i) - 0.15);
+        if (p > 0) y = from + (to - from) * p;
+        if (p >= 1) from = to;
+        else break;
+      }
+      if (t >= T.exam.scrollStart) y = from + (maxScroll - from) * ease(T.exam.scrollStart, T.exam.scrollEnd);
     }
   }
   kids.forEach((k) => (k.style.transform = `translateY(${-y}px)`));
@@ -385,10 +408,7 @@ function panelReady(root: HTMLElement, t: number): boolean {
   if (id === "plan") return count(".modal-panel .item-row") >= PLAN_ITEMS.length;
   if (id === "cal") return count(".calendar-day .item-row") >= PLAN_ITEMS.length + (t >= T.cal.added ? 1 : 0);
   if (id === "cards" || id === "weak") return count(".flashcard-box, .flashcards-tab--active, .empty-state-text") > 0 && !root.textContent?.includes("Loading…");
-  if (id === "exam") {
-    if (t < T.exam.opened) return count(".exam-list-title") > 0;
-    return count(".exam-question") >= EXAM_OPEN.questions.length;
-  }
+  if (id === "exam") return count(".exam-question") >= EXAM_OPEN.questions.length;
   if (t >= T.home.navClick + 0.2 && t < T.back.sessionClick) return count(".home-weak-area") > 0 && count(".home-widget--due-soon li") > 0;
   return true;
 }
@@ -472,7 +492,7 @@ function MainWindow({ t }: { t: number }) {
 
   const calKey = eventAdded ? "cal-added" : t >= T.cal.formOpen ? "cal-form" : "cal-agenda";
   const cardKey = inBrowse ? "browse" : `c${reviewed}${cardRevealed ? "r" : "q"}`;
-  const examKey = graded ? "graded" : t >= T.exam.opened ? `open-${examAnswered}` : "list";
+  const examKey = graded ? "graded" : `open-${examAnswered}`;
 
   const overlayIn = ov ? easeOut(prog(t, ov.open, 0.28)) : 0;
   const overlayOut = ov ? easeInOut(prog(t, ov.close, FADE_OUT)) : 0;
@@ -574,7 +594,7 @@ function MainWindow({ t }: { t: number }) {
           {ov.id === "plan" && <StudyPlanPanel key="plan" token="promo" onClose={() => {}} />}
           {ov.id === "cal" && <CalendarPanel key={calKey} token="promo" onClose={() => {}} />}
           {ov.id === "cards" && <FlashcardsPanel key={cardKey} getAccessToken={async () => "promo"} onClose={() => {}} />}
-          {ov.id === "exam" && <PracticeExamsPanel key={examKey} token="promo" onClose={() => {}} />}
+          {ov.id === "exam" && <PracticeExamsPanel key={examKey} token="promo" onClose={() => {}} initialExamId={EXAM_OPEN.id} />}
           {ov.id === "weak" && (
             <FlashcardsPanel
               key={`weak-${align.cardRevealed ? "r" : "q"}`}

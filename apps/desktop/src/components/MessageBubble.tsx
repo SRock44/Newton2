@@ -5,6 +5,9 @@ import type { ChatMessage } from "../types";
 import MessageContent from "./MessageContent";
 import AttachedImage from "./AttachedImage";
 import AttachedDocumentChip from "./AttachedDocumentChip";
+import StudyItemCard from "./StudyItemCard";
+import { extractStudyItems, STUDY_KIND_PANEL } from "../lib/studyLinks";
+import type { StudyItemRef } from "../lib/studyLinks";
 import NewtonMark from "./NewtonMark";
 import ThinkingIndicator from "./ThinkingIndicator";
 
@@ -26,6 +29,9 @@ interface MessageBubbleProps {
   onSend?: (text: string) => void;
   /** Focuses the composer — for "paper-plan"'s "Request Changes" action. */
   onFocusComposer?: (title: string) => void;
+  /** A study plan / flashcard set / practice exam card under a reply was clicked (see
+   * lib/studyLinks.ts) — App.tsx opens the matching panel. */
+  onOpenStudyItem?: (item: StudyItemRef) => void;
   /** The plain text of the chat message immediately following this one in the full
    * session history, if any — see OptionsPicker.tsx for what this is used for. */
   nextMessageContent?: string;
@@ -415,6 +421,7 @@ function MessageBubble({
   openDocumentId,
   onSend,
   onFocusComposer,
+  onOpenStudyItem,
   nextMessageContent,
   isLatestPaperPlanMessage,
   isBeingEdited,
@@ -425,9 +432,13 @@ function MessageBubble({
   const roleLabel = isUser ? "You" : message.role === "assistant" ? "Newton" : message.role;
   const time = formatTime(message.created_at);
   const { text: afterImages, imageIds } = extractAttachedImages(message.content);
-  const { text: displayContent, documents: attachedDocuments } = extractAttachedDocuments(afterImages);
+  const { text: afterDocuments, documents: attachedDocuments } = extractAttachedDocuments(afterImages);
+  const { text: displayContent, items: studyItems } = extractStudyItems(afterDocuments);
   // Only a stable identity once the message has a real created_at (i.e. it came back
   // from history, not a reply still streaming live) — see MessageContent's persistKey.
+  // A card that opens the same panel makes its "Open …" suggested-action button a repeat.
+  const coveredPanels = new Set(studyItems.map((item) => STUDY_KIND_PANEL[item.kind]));
+  const visibleSuggestedActions = (message.suggestedActions ?? []).filter((a) => !coveredPanels.has(a.panel));
   const persistKey = sessionId && message.created_at ? `${sessionId}|${message.created_at}` : undefined;
 
   const hasPlanNarration = Boolean(message.planNarration && message.planNarration.trim().length > 0);
@@ -546,9 +557,24 @@ function MessageBubble({
             ))}
           </div>
         )}
-        {message.suggestedActions && message.suggestedActions.length > 0 && (
+        {/* The study plan / flashcard set / practice exam Newton just generated, as cards you
+            click to open (see lib/studyLinks.ts) — same place and same look as a document. */}
+        {studyItems.length > 0 && (
+          <div className="attached-documents study-items">
+            {studyItems.map((item, i) => (
+              <StudyItemCard
+                key={`${item.kind}-${item.id ?? "none"}-${i}`}
+                kind={item.kind}
+                title={item.title}
+                detail={item.detail}
+                onOpen={() => onOpenStudyItem?.(item)}
+              />
+            ))}
+          </div>
+        )}
+        {visibleSuggestedActions.length > 0 && (
           <div className="suggested-actions">
-            {message.suggestedActions.map((action, i) => (
+            {visibleSuggestedActions.map((action, i) => (
               <button
                 key={`${action.panel}-${i}`}
                 type="button"

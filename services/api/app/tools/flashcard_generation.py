@@ -5,6 +5,7 @@ from app.db.base import SessionLocal
 from app.db.models import User
 from app.services import billing as billing_service
 from app.services.flashcards import generate_flashcards
+from app.services.study_links import study_link
 from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
 
@@ -89,6 +90,7 @@ class FlashcardGenerationTool(Tool):
                         "directly, no upload required."
                     )
             label = document.filename if document is not None else topic
+            document_id = document.id if document is not None else None
             user = await db.get(User, uid)
             target_count = billing_service.generation_target_count(user)
 
@@ -114,4 +116,5 @@ class FlashcardGenerationTool(Tool):
         return (
             f"Generated {len(cards)} flashcard(s) from '{label}' — check the "
             f"Flashcards panel to review them.{suffix}"
+            "\n\n" + study_link("flashcards", document_id, label, f"{len(cards)} cards")
         )

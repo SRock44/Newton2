@@ -2,6 +2,7 @@ import uuid
 from typing import Any
 
 from app.db.base import SessionLocal
+from app.services.study_links import study_link
 from app.services.study_planner import generate_study_plan
 from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
@@ -76,6 +77,7 @@ class StudyPlanGenerationTool(Tool):
                         "curriculum directly, no upload required."
                     )
             label = document.filename if document is not None else topic
+            document_id = document.id if document is not None else None
 
             try:
                 items = await generate_study_plan(
@@ -88,4 +90,5 @@ class StudyPlanGenerationTool(Tool):
         return (
             f"Added {len(items)} study plan item(s) from '{label}' — check the "
             "Study Plan panel to see them."
+            "\n\n" + study_link("plan", document_id, label, f"{len(items)} items")
         )

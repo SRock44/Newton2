@@ -98,6 +98,8 @@ async def test_generate_flashcards_creates_real_persisted_cards(free_user_with_d
 
     assert "1 flashcard(s)" in result
     assert "biology-notes.txt" in result
+    # the reply ends with the marker the app renders as a clickable card
+    assert result.rstrip().endswith(f"[Study item: flashcards|{document.id}|biology-notes.txt|1 cards]")
     cards = (await db_session.execute(select(Flashcard).where(Flashcard.document_id == document.id))).scalars().all()
     assert len(cards) == 1
     assert cards[0].front == "What is ATP?"
@@ -216,6 +218,8 @@ async def test_generate_practice_exam_creates_a_real_persisted_exam(
         await db_session.execute(select(PracticeExam).where(PracticeExam.document_id == document.id))
     ).scalars().all()
     assert len(exams) == 1
+    # the marker names the REAL exam row, so clicking the card opens exactly that exam
+    assert result.rstrip().endswith(f"[Study item: exam|{exams[0].id}|biology-notes.txt|1 questions]")
 
 
 async def test_generate_practice_exam_targets_the_free_tier_count_by_default(
@@ -289,6 +293,7 @@ async def test_generate_study_plan_creates_real_persisted_items(free_user_with_d
         await db_session.execute(select(StudyPlanItem).where(StudyPlanItem.document_id == document.id))
     ).scalars().all()
     assert len(items) == 1
+    assert result.rstrip().endswith(f"[Study item: plan|{document.id}|biology-notes.txt|1 items]")
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +401,8 @@ async def test_generate_flashcards_from_bare_topic_with_no_document(
     assert not result.startswith("Error:")
     assert "2 flashcard(s)" in result
     assert "linear algebra" in result
+    # a bare topic has no source document: the marker's id is "-"
+    assert result.rstrip().endswith("[Study item: flashcards|-|linear algebra|2 cards]")
     cards = (await db_session.execute(select(Flashcard).where(Flashcard.user_id == user.id))).scalars().all()
     assert len(cards) == 2
     assert all(c.document_id is None for c in cards)

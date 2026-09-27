@@ -23,7 +23,18 @@ const messagesBySession: Record<string, ChatMessage[]> = {
     { id: "m2", role: "assistant", content: "Here's the file.\n\n[Attached document: doc-1|syllabus.pdf]" },
   ],
   s2: [{ id: "m3", role: "assistant", content: "Reply in s2" }],
-  s3: [{ id: "m4", role: "assistant", content: "```paper-plan\n" + PAPER_PLAN_JSON + "\n```" }],
+  // (the study message comes BEFORE the plan: a message after a plan would mark it answered)
+  s3: [
+    {
+      id: "m5",
+      role: "assistant",
+      content:
+        "Your study session is ready.\n\n[Study item: plan|doc-9|Midterm packet.docx|7 items]\n" +
+        "[Study item: flashcards|doc-9|Midterm packet.docx|15 cards]\n" +
+        "[Study item: exam|exam-9|Midterm packet.docx|15 questions]",
+    },
+    { id: "m4", role: "assistant", content: "```paper-plan\n" + PAPER_PLAN_JSON + "\n```" },
+  ],
 };
 
 function makeFakeSocket() {
@@ -85,6 +96,20 @@ vi.mock("./api", () => ({
   listTools: vi.fn(async () => []),
   getGamificationStats: vi.fn(async () => ({ streak_days: 0, xp: 0, level: 1, xp_to_next_level: 100 })),
   listFlashcards: vi.fn(async () => []),
+  getClassroomStatus: vi.fn(async () => ({ connected: false })),
+  listPracticeExams: vi.fn(async () => [
+    { id: "exam-9", document_id: null, title: "Midterm packet.docx", difficulty: "medium", score: null, created_at: "2026-02-03T10:00:00Z", completed_at: null },
+  ]),
+  getPracticeExam: vi.fn(async () => ({
+    id: "exam-9",
+    document_id: null,
+    title: "Midterm packet.docx",
+    difficulty: "medium",
+    score: null,
+    created_at: "2026-02-03T10:00:00Z",
+    completed_at: null,
+    questions: [{ id: "q1", question_index: 0, question: "Evaluate the integral of x e^x.", choices: ["a", "b", "c", "d"] }],
+  })),
   listStudyPlan: vi.fn(async () => []),
   listDocuments: vi.fn(async () => []),
   listNotes: vi.fn(async () => []),
@@ -172,6 +197,7 @@ import {
   deleteSession,
   getAccountStatus,
   getDocumentContent,
+  getPracticeExam,
   getSelectionTopic,
   listDocuments,
   listFlashcards,
@@ -1235,6 +1261,49 @@ describe("App", () => {
       await openMessageContextMenu("Hello from s1");
       const editItem = await screen.findByRole("menuitem", { name: "Edit message" });
       expect(editItem).toBeDisabled();
+    });
+  });
+
+  // Generated study material is a real, clickable card under Newton's reply (lib/studyLinks.ts),
+  // like a document: click it and the matching panel opens.
+  describe("study cards in a reply", () => {
+    async function openStudySession(user: ReturnType<typeof userEvent.setup>) {
+      await waitFor(() => expect(document.querySelector('[data-session-id="s3"] .session-item-main')).not.toBeNull());
+      await user.click(document.querySelector('[data-session-id="s3"] .session-item-main') as HTMLElement);
+      await (await messageList()).findByText("Your study session is ready.");
+    }
+
+    it("renders the plan, flashcards and exam as cards under the reply, with the markers stripped", async () => {
+      const user = await signIn();
+      await openStudySession(user);
+      const list = await messageList();
+      expect(list.queryByText(/Study item:/)).not.toBeInTheDocument();
+      expect(list.getByRole("button", { name: /study plan/i })).toBeInTheDocument();
+      expect(list.getByRole("button", { name: /flashcards/i })).toBeInTheDocument();
+      expect(list.getByRole("button", { name: /practice exam/i })).toBeInTheDocument();
+    });
+
+    it("clicking the exam card opens the Practice exams panel straight into THAT exam", async () => {
+      const user = await signIn();
+      await openStudySession(user);
+      await user.click((await messageList()).getByRole("button", { name: /practice exam/i }));
+
+      await waitFor(() => expect(vi.mocked(getPracticeExam)).toHaveBeenCalledWith(expect.any(String), "exam-9"));
+      expect(await screen.findByText(/Evaluate the integral of x e\^x/)).toBeInTheDocument();
+    });
+
+    it("clicking the study plan card opens the Study plan panel", async () => {
+      const user = await signIn();
+      await openStudySession(user);
+      await user.click((await messageList()).getByRole("button", { name: /study plan/i }));
+      expect(await screen.findByRole("heading", { name: "Study plan" })).toBeInTheDocument();
+    });
+
+    it("clicking the flashcards card opens the Flashcards panel", async () => {
+      const user = await signIn();
+      await openStudySession(user);
+      await user.click((await messageList()).getByRole("button", { name: /flashcards/i }));
+      expect(await screen.findByRole("heading", { name: "Flashcards" })).toBeInTheDocument();
     });
   });
 

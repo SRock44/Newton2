@@ -33,7 +33,7 @@ click(M[0].sendClick, "send", { x: 1430, y: 890 });
 pt(M[0].userAppear + 1.3, 1330, 600);
 
 // ---- Study plan
-click(T.plan.navClick, "nav-plan", { x: 300, y: 780 });
+click(T.plan.navClick, "card-plan", { x: 830, y: 800 });
 at(T.plan.hoverFirst, "plan-first", { x: 960, y: 380 });
 at(T.plan.hoverMidterm, "plan-last", { x: 960, y: 700 });
 click(T.plan.closeClick, "modal-close", { x: 1230, y: 200 });
@@ -49,7 +49,7 @@ at(T.cal.added + 1.0, "cal-deadline", { x: 960, y: 500 });
 click(T.cal.closeClick, "modal-close", { x: 1230, y: 200 });
 
 // ---- Flashcards
-click(T.cards.navClick, "nav-cards", { x: 300, y: 845 });
+click(T.cards.navClick, "card-flashcards", { x: 1040, y: 800 });
 for (let i = 0; i < T.cards.ratings.length; i++) {
   at(T.cards.start(i) + 0.4, "card-box", { x: 960, y: 480 });
   click(T.cards.reveal(i), "card-box", { x: 960, y: 480 });
@@ -60,8 +60,7 @@ at(T.cards.browse + 1.8, "export-anki", { x: 1000, y: 300 });
 click(T.cards.closeClick, "modal-close", { x: 1230, y: 200 });
 
 // ---- Practice exam
-click(T.exam.navClick, "nav-exams", { x: 300, y: 875 });
-click(T.exam.examClick, "exam-title", { x: 900, y: 300 });
+click(T.exam.navClick, "card-exam", { x: 1250, y: 800 });
 for (let i = 0; i < 5; i++) click(T.exam.answer(i), `exam-choice-${i}`, { x: 900, y: 420 + i * 30 });
 pt(T.exam.scrollStart + 0.6, 1230, 470);
 click(T.exam.submitClick, "exam-submit", { x: 960, y: 760 });
@@ -117,12 +116,12 @@ export const CAPTIONS = [
   { from: T.plusClick - 0.1, to: M[0].asstAppear - 0.2, text: "Attach it and ask Newton to get you ready." },
   { from: M[0].asstAppear, to: M[0].revealStart, text: "One request. Newton builds a whole study session." },
   { from: M[0].revealStart, to: T.plan.navClick - 0.2, text: "A dated plan, flashcards and a practice exam, all from your own packet." },
-  { from: T.plan.navClick, to: T.plan.close, text: "Study plan: every deadline, with its real date." },
+  { from: T.plan.navClick, to: T.plan.close, text: "Click the plan Newton built: every deadline, with its real date." },
   { from: T.cal.navClick, to: T.cal.newEventClick - 0.2, text: "They land on your calendar too." },
   { from: T.cal.newEventClick, to: T.cal.close, text: "Add your own study blocks right beside them." },
-  { from: T.cards.navClick, to: T.cards.browseClick - 0.2, text: "Flashcards, scheduled by spaced repetition." },
+  { from: T.cards.navClick, to: T.cards.browseClick - 0.2, text: "The flashcard set opens right from the chat." },
   { from: T.cards.browseClick, to: T.cards.close, text: "Export to Anki or PowerPoint, or share a link." },
-  { from: T.exam.navClick, to: T.exam.submitClick - 0.2, text: "Take the practice exam." },
+  { from: T.exam.navClick, to: T.exam.submitClick - 0.2, text: "So does the practice exam. Take it right there." },
   { from: T.exam.submitClick, to: T.exam.close, text: "Graded, with an explanation for every miss." },
   { from: T.home.navClick, to: T.home.reviewClick - 0.2, text: "Home shows what to study next, from your real results." },
   { from: T.home.reviewClick, to: T.home.scopedClose, text: "One click reviews exactly the cards you struggled with." },

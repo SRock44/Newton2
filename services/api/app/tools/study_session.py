@@ -7,6 +7,7 @@ from app.db.models import Document, User
 from app.services import billing as billing_service
 from app.services.flashcards import generate_flashcards
 from app.services.practice_exams import generate_practice_exam, get_exam_questions
+from app.services.study_links import study_link
 from app.services.study_planner import generate_study_plan
 from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
@@ -38,7 +39,7 @@ async def _generate_flashcards_isolated(user_id: uuid.UUID, document_id: uuid.UU
         return len(cards)
 
 
-async def _generate_practice_exam_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> tuple[int, str]:
+async def _generate_practice_exam_isolated(user_id: uuid.UUID, document_id: uuid.UUID) -> tuple[int, str, uuid.UUID]:
     async with SessionLocal() as db:
         document = await db.get(Document, document_id)
         exam = await generate_practice_exam(
@@ -47,7 +48,7 @@ async def _generate_practice_exam_isolated(user_id: uuid.UUID, document_id: uuid
         await db.commit()
         # question count needs a fresh query -- `exam` doesn't eagerly load the relationship
         questions = await get_exam_questions(db, exam.id)
-        return len(questions), exam.difficulty
+        return len(questions), exam.difficulty, exam.id
 
 
 class StudySessionTool(Tool):
@@ -98,7 +99,7 @@ class StudySessionTool(Tool):
             document_id, filename = document.id, document.filename
 
         try:
-            plan_count, card_count, (exam_question_count, exam_difficulty) = await asyncio.gather(
+            plan_count, card_count, (exam_question_count, exam_difficulty, exam_id) = await asyncio.gather(
                 _generate_study_plan_isolated(uid, document_id),
                 _generate_flashcards_isolated(uid, document_id),
                 _generate_practice_exam_isolated(uid, document_id),
@@ -111,4 +112,10 @@ class StudySessionTool(Tool):
             f"{card_count} flashcard(s) generated, and a {exam_question_count}-question "
             f"practice exam built at {exam_difficulty} difficulty. Check Study Plan, "
             f"Flashcards, and Practice Exams to dig in."
+            "\n\n"
+            + study_link("plan", document_id, filename, f"{plan_count} items")
+            + "\n"
+            + study_link("flashcards", document_id, filename, f"{card_count} cards")
+            + "\n"
+            + study_link("exam", exam_id, filename, f"{exam_question_count} questions")
         )

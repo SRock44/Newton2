@@ -5,6 +5,7 @@ from app.db.base import SessionLocal
 from app.db.models import User
 from app.services import billing as billing_service
 from app.services.practice_exams import generate_practice_exam, get_exam_questions
+from app.services.study_links import study_link
 from app.tools.base import Tool
 from app.tools.document_resolution import resolve_document
 
@@ -93,4 +94,5 @@ class PracticeExamGenerationTool(Tool):
         return (
             f"Built a {len(questions)}-question practice exam ({exam.difficulty} difficulty) "
             f"from '{label}' — check the Practice Exams panel to take it."
+            "\n\n" + study_link("exam", exam.id, label, f"{len(questions)} questions")
         )

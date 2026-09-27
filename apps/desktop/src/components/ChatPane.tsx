@@ -5,6 +5,7 @@ import NewtonMark from "./NewtonMark";
 import OnboardingWelcome from "./OnboardingWelcome";
 import { latestPaperPlanMessageIndex } from "../lib/paperPlanIndex";
 import { isAnswerToInteractiveBlock } from "../lib/interactiveAnswers";
+import type { StudyItemRef } from "../lib/studyLinks";
 
 interface ChatPaneProps {
   messages: ChatMessage[];
@@ -23,6 +24,8 @@ interface ChatPaneProps {
   onSend?: (text: string) => void;
   /** Focuses the composer — for "paper-plan"'s "Request Changes" action. */
   onFocusComposer?: (title: string) => void;
+  /** A study plan / flashcard set / practice exam card in a reply was clicked. */
+  onOpenStudyItem?: (item: StudyItemRef) => void;
   /** True only for a brand-new account that hasn't dismissed (or acted on) the
    * first-run welcome card yet — see App.tsx/lib/onboarding.ts. Only takes effect on an
    * actually-empty chat (see the render below): a returning student who happens to open
@@ -47,6 +50,7 @@ function ChatPane({
   openDocumentId,
   onSend,
   onFocusComposer,
+  onOpenStudyItem,
   firstRun,
   onDismissFirstRun,
   editingMessageId,
@@ -111,6 +115,7 @@ function ChatPane({
               openDocumentId={openDocumentId}
               onSend={onSend}
               onFocusComposer={onFocusComposer}
+              onOpenStudyItem={onOpenStudyItem}
               nextMessageContent={messages[index + 1]?.content}
               isLatestPaperPlanMessage={index === latestPaperPlanIndex}
               isBeingEdited={Boolean(editingMessageId) && message.id === editingMessageId}

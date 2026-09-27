@@ -154,6 +154,16 @@ async def test_run_generates_all_three_artifacts_concurrently(two_documents, db_
     assert "1 flashcard(s)" in result
     assert "1-question practice exam" in result
 
+    # three clickable cards close the reply: the plan, the deck, and the exact exam built
+    exam_row = (
+        await db_session.execute(select(PracticeExam).where(PracticeExam.document_id == newer.id))
+    ).scalars().one()
+    assert result.rstrip().splitlines()[-3:] == [
+        f"[Study item: plan|{newer.id}|biology-notes.txt|1 items]",
+        f"[Study item: flashcards|{newer.id}|biology-notes.txt|1 cards]",
+        f"[Study item: exam|{exam_row.id}|biology-notes.txt|1 questions]",
+    ]
+
     plan_items = (
         await db_session.execute(select(StudyPlanItem).where(StudyPlanItem.document_id == newer.id))
     ).scalars().all()
