@@ -119,7 +119,7 @@ docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=newton \
   -e POSTGRES_PASSWORD=newton-ci-secret -e POSTGRES_DB=newton pgvector/pgvector:pg16
 docker run -d --name redis -p 6379:6379 redis:7-alpine
 docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=newton \
-  -e MINIO_ROOT_PASSWORD=newton-ci-secret quay.io/minio/minio:latest server /data
+  -e MINIO_ROOT_PASSWORD=newton-ci-secret bitnamilegacy/minio:latest
 
 export DATABASE_URL=postgresql+asyncpg://newton:newton-ci-secret@localhost:5432/newton
 export REDIS_URL=redis://localhost:6379/0
