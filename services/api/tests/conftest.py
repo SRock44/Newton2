@@ -84,6 +84,61 @@ async def db_session():
 
 
 @pytest_asyncio.fixture
+async def protect_real_documents(keycloak_token, db_session):
+    """A real data-loss tripwire, not a style preference -- any `live_smoke` test that
+    uploads a real document under the real test account must declare this fixture.
+
+    `live_smoke` tests authenticate as student1, the one real, persistent dev account --
+    the SAME account the product owner personally uses day to day, since there is no
+    disposable-account mechanism for a real WebSocket+Keycloak login (Keycloak's
+    password grant here only ever has this one seeded user to authenticate as). That
+    means a test which uploads a real document and cleans it up incorrectly isn't a
+    test-hygiene bug, it's a real data-loss bug against a real person's real data: a
+    confirmed instance of exactly this (test_chat_websocket.py's suggested-action test,
+    cleaning up via a raw `delete(Document)` that skips removing the stored file) left
+    351 orphaned files behind in real storage and was traced back to real missing
+    documents from the account's owner.
+
+    This snapshots that account's real document count before the test body and fails
+    loudly after it if the count ever dropped -- every test using this fixture is a net
+    creator of data for this account, never a net destroyer, by construction. Hermetic
+    mode is a no-op (that run has its own disposable database with nothing real to
+    protect and no live Keycloak account to resolve against)."""
+    if HERMETIC_TESTS:
+        yield
+        return
+
+    from jose import jwt as jose_jwt
+    from sqlalchemy import func, select
+
+    from app.db.models import Document, User
+
+    sub = jose_jwt.get_unverified_claims(keycloak_token).get("sub")
+    user = (await db_session.execute(select(User).where(User.keycloak_sub == sub))).scalar_one_or_none()
+    if user is None:
+        yield
+        return
+
+    async def _count() -> int:
+        return (
+            await db_session.execute(
+                select(func.count()).select_from(Document).where(Document.user_id == user.id)
+            )
+        ).scalar_one()
+
+    before = await _count()
+    yield
+    await db_session.commit()  # see whatever the test's own teardown just committed
+    after = await _count()
+    assert after >= before, (
+        f"real document count for the real test account dropped from {before} to {after} "
+        "during this test -- its cleanup deleted real, persistent data instead of only "
+        "what it created itself. See this fixture's own docstring before 'fixing' this "
+        "by removing the fixture."
+    )
+
+
+@pytest_asyncio.fixture
 async def created_session_ids(db_session):
     """Tracks session ids created during a test so we can wipe them (and any messages —
     redundant with migration 0004's ON DELETE CASCADE, but harmless to also do here)

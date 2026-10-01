@@ -6,8 +6,9 @@ import pytest
 import websockets
 from sqlalchemy import delete
 
-from app.db.models import ChatMessage, ChatSession, Document, DocumentChunk, Flashcard
+from app.db.models import ChatMessage, ChatSession, Document, Flashcard
 from app.routers import chat as chat_module
+from app.services.documents import delete_document
 
 WS_BASE_URL = "ws://localhost:8000"
 
@@ -435,7 +436,7 @@ async def test_websocket_ping_mid_generation_is_a_harmless_noop(
 
 @pytest.mark.live_smoke
 async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishes(
-    http_client, auth_headers, keycloak_token, db_session
+    http_client, auth_headers, keycloak_token, db_session, protect_real_documents
 ):
     """The desktop app renders a real, clickable "Open Flashcards"-style button from
     this frame -- deterministic (keyed off which tool actually ran), not dependent on
@@ -487,8 +488,19 @@ async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishe
         await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
         await db_session.execute(delete(ChatSession).where(ChatSession.id == session_uuid))
         await db_session.execute(delete(Flashcard).where(Flashcard.document_id == document_id))
-        await db_session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
-        await db_session.execute(delete(Document).where(Document.id == document_id))
+        # delete_document (not a raw `delete(Document)`) is load-bearing here, not a
+        # style choice: this test authenticates as the real student1 account (there is
+        # no throwaway-user mechanism for a real WebSocket+Keycloak login), uploads a
+        # real file, and cleaned it up with a raw SQL delete that only removed the
+        # database row -- the actual uploaded file in MinIO was never touched by that,
+        # because only the real service function (used here) knows to also delete the
+        # stored object. Confirmed as a real, live bug: 351 orphaned copies of this
+        # exact file were found still sitting in the real student1 account's storage
+        # from repeated runs of this test. Any test that uploads a real file under a
+        # real (not-provably-disposable) account must clean up through this function.
+        document = await db_session.get(Document, document_id)
+        if document is not None:
+            await delete_document(db_session, document)
         await db_session.commit()
 
 
