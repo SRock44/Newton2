@@ -34,7 +34,7 @@
     "marked": "^17.0.6",
     "mathlive": "^0.110.0",
     "pdfjs-dist": "^6.3.289",
-    "plotly.js-basic-dist-min": "^4.1.0",
+    "plotly.js-basic-dist-min": "^4.1.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
