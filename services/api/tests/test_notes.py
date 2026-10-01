@@ -24,7 +24,7 @@ async def test_create_note_defaults_title_to_todays_date(http_client, auth_heade
     document = await db_session.get(Document, uuid.UUID(body["id"]))
     assert document is not None
     assert document.kind == "note"
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_create_note_with_explicit_title(http_client, auth_headers, db_session):
@@ -34,7 +34,7 @@ async def test_create_note_with_explicit_title(http_client, auth_headers, db_ses
     assert body["title"] == "Chemistry — Sept 15"
 
     document = await db_session.get(Document, uuid.UUID(body["id"]))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_new_note_does_not_appear_in_documents_list(http_client, auth_headers, db_session):
@@ -51,7 +51,7 @@ async def test_new_note_does_not_appear_in_documents_list(http_client, auth_head
     assert any(n["id"] == note_id for n in notes_resp.json())
 
     document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_get_note_returns_empty_content_for_a_fresh_note(http_client, auth_headers, db_session):
@@ -63,7 +63,7 @@ async def test_get_note_returns_empty_content_for_a_fresh_note(http_client, auth
     assert get_resp.json()["content"] == ""
 
     document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_patch_note_saves_content_and_title_and_rechunks_for_rag(http_client, auth_headers, db_session):
@@ -103,7 +103,7 @@ async def test_patch_note_saves_content_and_title_and_rechunks_for_rag(http_clie
         assert len(row.embedding) == 384
 
     document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_delete_note_cleans_up_chunks_same_as_document_deletion(http_client, auth_headers, db_session):
@@ -135,7 +135,7 @@ async def test_new_note_has_no_tags_by_default(http_client, auth_headers, db_ses
     assert body["tags"] == []
 
     document = await db_session.get(Document, uuid.UUID(body["id"]))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_patch_tags_sets_trims_dedupes_and_persists(http_client, auth_headers, db_session):
@@ -159,7 +159,7 @@ async def test_patch_tags_sets_trims_dedupes_and_persists(http_client, auth_head
     assert listed["tags"] == ["Bio 101", "Midterm"]
 
     document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_patch_tags_does_not_touch_content_or_updated_at_debounce_path(
@@ -181,7 +181,7 @@ async def test_patch_tags_does_not_touch_content_or_updated_at_debounce_path(
     assert get_resp.json()["tags"] == ["Lecture"]
 
     document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_patch_tags_404s_for_another_users_note(http_client, auth_headers, db_session):
@@ -213,7 +213,7 @@ async def test_notes_list_sorted_by_most_recently_updated(http_client, auth_head
     for note_id in (first_id, second_id):
         document = await db_session.get(Document, uuid.UUID(note_id))
         if document is not None:
-            await documents_service.delete_document(db_session, document)
+            await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ async def test_notes_endpoints_404_for_a_plain_uploaded_document(http_client, au
     assert (await http_client.delete(f"/notes/{document_id}", headers=auth_headers)).status_code == 404
 
     document = await db_session.get(Document, uuid.UUID(document_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +300,7 @@ async def test_note_content_is_retrieved_into_rag_like_any_uploaded_document(db_
     assert results, "expected the note's own chunk back — same retrieval path as an uploaded document"
     assert any(unique_marker in r.content for r in results)
 
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
     await db_session.execute(delete(User).where(User.id == user.id))
     await db_session.commit()
 
@@ -359,7 +359,7 @@ async def test_annotate_endpoint_returns_a_reasonably_scoped_response_over_http(
     assert isinstance(resp.json()["text"], str) and resp.json()["text"].strip()
 
     document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_annotate_rejects_invalid_action(http_client, auth_headers, db_session):
@@ -374,7 +374,7 @@ async def test_annotate_rejects_invalid_action(http_client, auth_headers, db_ses
     assert resp.status_code == 422
 
     document = await db_session.get(Document, uuid.UUID(note_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_annotate_selection_never_records_frontier_usage(monkeypatch):

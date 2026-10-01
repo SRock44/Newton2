@@ -573,7 +573,7 @@ async def test_deleting_a_document_does_not_destroy_its_flashcards(throwaway_doc
     db_session.add(card)
     await db_session.commit()
 
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
     await db_session.refresh(card)
     assert card.document_id is None
@@ -608,7 +608,7 @@ async def uploaded_document(http_client, auth_headers, db_session):
     await db_session.execute(delete(Flashcard).where(Flashcard.document_id == document_id))
     document = await db_session.get(Document, document_id)
     if document is not None:
-        await documents_service.delete_document(db_session, document)
+        await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_generate_requires_auth(http_client):

@@ -2,7 +2,7 @@ import uuid
 from datetime import date as date_, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -247,6 +247,29 @@ class Document(Base):
     # nothing also stores NULL (write_research_paper only passes a non-empty list),
     # which is correct: there is no bibliography to offer for it either.
     paper_sources: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+
+class DocumentDeletion(Base):
+    """Read-only from the app's side -- every row here is inserted by migration 0022's
+    database trigger, not by any Python code, so that no way of deleting a `documents`
+    row (delete_document(), the account-deletion CASCADE, or a raw SQL delete run by
+    hand) can go unrecorded. `reason` NULL means whatever deleted it didn't go through
+    delete_document()/delete_own_account(), which is itself useful signal -- see that
+    migration's docstring. Query this directly (there's no endpoint for it yet) to see
+    every document ever deleted and why: `SELECT * FROM document_deletions ORDER BY
+    deleted_at DESC`."""
+
+    __tablename__ = "document_deletions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    document_id: Mapped[uuid.UUID] = mapped_column()
+    user_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    kind: Mapped[str | None] = mapped_column(String, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    minio_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class DocumentChunk(Base):

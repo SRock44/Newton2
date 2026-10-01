@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -31,6 +31,12 @@ async def delete_own_account(db: AsyncSession, user: User) -> None:
     part of the Postgres transaction and a stray already-gone/unreachable object should
     never block account deletion.
 
+    This CASCADE deletes documents without ever calling delete_document(), so it sets
+    the same `app.delete_reason` session var that function sets, by hand, right before
+    the user row goes -- see migration 0022's trigger on `documents`, which is what
+    actually turns that into a permanent, queryable document_deletions row for every
+    document this takes down, and the log line just above it for anyone tailing logs.
+
     Keycloak identity note: this deletes the app's own data only. There is currently no
     Keycloak admin-API integration anywhere in this codebase (checked app/core/auth.py
     and app/services/ -- crypto.py's Fernet encryption is for Classroom OAuth tokens,
@@ -42,12 +48,24 @@ async def delete_own_account(db: AsyncSession, user: User) -> None:
     """
     settings = get_settings()
 
-    minio_keys = (
-        (await db.execute(select(Document.minio_key).where(Document.user_id == user.id)))
-        .scalars()
-        .all()
+    documents = (
+        (await db.execute(select(Document).where(Document.user_id == user.id))).scalars().all()
     )
+    minio_keys = [d.minio_key for d in documents]
 
+    if documents:
+        logger.warning(
+            "account deletion: removing %d document(s) for user_id=%s: %s",
+            len(documents),
+            user.id,
+            [(d.id, d.filename, d.kind) for d in documents],
+        )
+    # Read by migration 0022's trigger on `documents`, same mechanism
+    # app/services/documents.py's delete_document uses -- this CASCADE never calls that
+    # function (see this docstring's note on why), so without this, every document row
+    # it takes down would show up in document_deletions with reason=NULL instead of
+    # correctly attributing it to account deletion.
+    await db.execute(text("SELECT set_config('app.delete_reason', 'account deletion', true)"))
     await db.delete(user)
     await db.commit()
 

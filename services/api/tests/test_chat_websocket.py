@@ -500,7 +500,7 @@ async def test_websocket_sends_a_suggested_action_when_a_generation_tool_finishe
         # real (not-provably-disposable) account must clean up through this function.
         document = await db_session.get(Document, document_id)
         if document is not None:
-            await delete_document(db_session, document)
+            await delete_document(db_session, document, reason="test cleanup")
         await db_session.commit()
 
 

@@ -108,7 +108,7 @@ async def delete(
 ) -> dict:
     user = await get_or_create_user(db, claims)
     document = await _get_owned_document(db, document_id, user.id)
-    await delete_document(db, document)
+    await delete_document(db, document, reason="user requested deletion via DELETE /documents/{id}")
     return {"status": "deleted"}
 
 

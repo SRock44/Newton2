@@ -81,7 +81,7 @@ async def uploaded_document(http_client, auth_headers, db_session):
 
     document = await db_session.get(Document, document_id)
     if document is not None:
-        await documents_service.delete_document(db_session, document)
+        await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_upload_stores_chunks_with_embeddings(uploaded_document, db_session):
@@ -257,7 +257,7 @@ async def test_uploaded_document_content_is_retrieved_into_chat_bundle(
     finally:
         document = await db_session.get(Document, document_id)
         if document is not None:
-            await documents_service.delete_document(db_session, document)
+            await documents_service.delete_document(db_session, document, reason="test cleanup")
 
         session_uuid = uuid.UUID(session_id)
         await db_session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_uuid))
@@ -355,7 +355,7 @@ async def uploaded_pdf(http_client, auth_headers, db_session):
 
     document = await db_session.get(Document, document_id)
     if document is not None:
-        await documents_service.delete_document(db_session, document)
+        await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_pdf_content_is_view_only(uploaded_pdf, http_client, auth_headers):
@@ -475,7 +475,7 @@ async def test_annotate_document_router_calls_the_real_notes_annotate_selection_
             assert len(fake.calls_seen) == 1
             assert [t.role for t in fake.calls_seen[0]["messages"]] == ["system", "user"]
     finally:
-        await documents_service.delete_document(db_session, document)
+        await documents_service.delete_document(db_session, document, reason="test cleanup")
         await db_session.execute(delete(User).where(User.id == user.id))
         await db_session.commit()
 
@@ -509,7 +509,7 @@ async def test_annotate_document_endpoint_returns_a_reasonably_scoped_response_o
     assert isinstance(resp.json()["text"], str) and resp.json()["text"].strip()
 
     document = await db_session.get(Document, uuid.UUID(document_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_annotate_document_never_mutates_the_documents_stored_content(
@@ -538,7 +538,7 @@ async def test_annotate_document_never_mutates_the_documents_stored_content(
     assert content_resp.json()["content"] == original_content
 
     document = await db_session.get(Document, uuid.UUID(document_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_annotate_document_rejects_invalid_action(http_client, auth_headers, db_session):
@@ -557,7 +557,7 @@ async def test_annotate_document_rejects_invalid_action(http_client, auth_header
     assert resp.status_code == 422
 
     document = await db_session.get(Document, uuid.UUID(document_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_annotate_document_404s_for_another_users_document(someone_elses_document, http_client, auth_headers):
