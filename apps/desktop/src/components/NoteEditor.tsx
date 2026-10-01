@@ -4,10 +4,48 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
+import { Marked } from "marked";
 import Placeholder from "@tiptap/extension-placeholder";
 import { BlockMath, InlineMath } from "@tiptap/extension-mathematics";
 import NewtonNote from "../lib/newtonNoteExtension";
 import type { NewtonNoteAction } from "../lib/newtonNoteExtension";
+
+// Module-scope, runs once: a dedicated `Marked` instance for @tiptap/markdown to parse/
+// serialize with, instead of the package's own default (the shared `marked` singleton
+// export). That default was tried first and genuinely doesn't work for this: calling the
+// singleton's own `marked.use(...)` to override a tokenizer rule, then letting
+// @tiptap/markdown call the singleton's own `.lexer()`/`.parse()`, silently never applies
+// the override (confirmed directly against the `marked` package in isolation, nothing to
+// do with Tiptap) -- apparently a quirk of that convenience export, not of `.use()`
+// itself. A real, explicitly-constructed `new Marked()` instance configured and used the
+// same way works correctly. The `as never` below is because @tiptap/markdown's own type
+// for this option is the singleton's own (narrower, callable-function-shaped) type, which
+// a plain `Marked` instance doesn't structurally match even though it implements every
+// method actually called on it (`.use`, `.lexer`, `.parse`, ...) -- a real mismatch
+// between that package's types and the fix its own singleton's behavior requires, not
+// something to paper over by going back to the broken singleton.
+//
+// The bug this closes: a note typed as plain paragraphs with leading spaces for visual
+// indentation (pseudocode, an outline) looked fine while editing, but came back as a
+// monospace code block with literal `\[`/`&lt;` in it after a save + reopen. Root cause
+// was CommonMark's own "indented code block" shorthand: 4+ leading spaces on a line is,
+// by default, code-block syntax, not a styling hint. So `ed.getMarkdown()` serialized
+// the indented paragraph text as plain markdown (correctly escaping `[`/`<` etc. for
+// *paragraph* context), but re-parsing that same markdown on reopen saw the leading
+// spaces and reinterpreted the whole block as a CODE block instead of a paragraph --
+// and markdown escape sequences are never processed inside code blocks, so the
+// characters that were escaped for safe paragraph serialization came back out literal
+// instead of decoding. Disabling just this one tokenizer rule stops the reinterpretation
+// at the root; real fenced ```code``` blocks (an explicit, deliberate action, not
+// something a student's indentation habit can trigger by accident) are untouched.
+const noteMarkdownParser = new Marked();
+noteMarkdownParser.use({
+  tokenizer: {
+    code() {
+      return undefined;
+    },
+  },
+});
 
 /**
  * The Notepad's single, live editor: what you type IS what you see. There is no Write/Preview
@@ -115,7 +153,7 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
-      Markdown,
+      Markdown.configure({ marked: noteMarkdownParser as never }),
       Placeholder.configure({
         placeholder: ({ editor: ed }) => (ed.isEmpty ? "Start writing…" : "Keep writing…"),
         showOnlyWhenEditable: false,
