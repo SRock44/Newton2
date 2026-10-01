@@ -4990,6 +4990,7 @@ body.is-resizing-panel * {
 
 .notepad-window__body {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding: var(--space-4);
 }
@@ -5277,8 +5278,26 @@ body.is-resizing-panel * {
 .note-editor__prose {
   outline: none;
   min-height: 160px;
+  min-width: 0;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+/* A fenced ```code``` block renders here as Tiptap's own bare <pre><code> -- unlike
+   chat's CodeBlock.tsx, there's no wrapper markup to hang chat's .code-block/.code-block
+   __header styling off of. The browser's own default `pre { white-space: pre }` wins
+   over the ancestor's `pre-wrap` above (an explicit UA rule on the element itself beats
+   an inherited value, regardless of specificity), which is correct for code -- a long
+   line genuinely shouldn't rewrap and silently change what's copyable. What was missing
+   was containment: with nothing bounding it, a long unwrapped line pushed past the
+   Notepad window's own edge instead of scrolling in place, and the narrower the window
+   (this one is user-resizable), the more ordinary code lines hit it. `overflow-x: auto`
+   gives the code block its own horizontal scrollbar, the same real fix chat's
+   `.code-block pre` already has -- the rest of the note, and the window itself, are
+   never affected by how long a line inside a code block is. */
+.note-editor__prose pre {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .note-editor__prose:focus-visible {
