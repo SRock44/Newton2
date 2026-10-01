@@ -129,14 +129,21 @@ services:
       retries: 5
 
   minio:
-    image: quay.io/minio/minio:latest
+    # quay.io/minio/minio and docker.io/minio/minio now both 401 on anonymous pulls (a
+    # registry policy change, confirmed independent of this repo) -- bitnamilegacy/minio
+    # is a currently-public mirror, confirmed pullable. Unlike the official image it
+    # ships its own entrypoint (runs as uid 1001, data dir baked in at
+    # /bitnami/minio/data) and must NOT be given a `server /data ...` command override --
+    # doing so bypasses that entrypoint and fails with "file access denied" (verified).
+    # The existing newton_miniodata volume's files were chown'd to 1001:1001 as part of
+    # this switch (see the migration commit) so the real data carries over unchanged.
+    image: bitnamilegacy/minio:latest
     restart: unless-stopped
-    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-newton}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-newton-dev-secret}
     volumes:
-      - newton_miniodata:/data
+      - newton_miniodata:/bitnami/minio/data
     ports:
       - "127.0.0.1:59000:9000"
       - "127.0.0.1:59001:9001"
