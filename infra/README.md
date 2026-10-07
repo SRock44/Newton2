@@ -77,11 +77,45 @@ since it's cheap enough that the tiering isn't worth the complexity right now. A
 BYOK Anthropic key (if they supply one) still always takes precedence over this — see
 `registry.py`.
 
+## Production box
+
+A dedicated box (`ubuntu@40.160.53.217`, key `~/.ssh/newton`, Ubuntu 26.04 LTS, 8 vCPU /
+31 GB RAM / 3.6 TB disk, nothing else on it) is the real, permanent home for Newton's
+backend — not shared with unrelated projects the way the box in "Remote dev box" below is.
+Unlike that box, this one is a genuine `git clone` at `~/newton2` (not a tar-sync target
+with no `.git`), because developers work directly on it, not just deploy to it.
+
+Same isolation model as the dev box below (every port `127.0.0.1`-only, same port numbers,
+same `docker-compose.yml`) — real production data (Postgres, MinIO, Keycloak) was migrated
+over from the dev box, and the same `.env` secrets carried over unchanged (in particular
+`SECRET_ENCRYPTION_KEY` has to stay byte-identical, or anything already encrypted at rest —
+Classroom OAuth tokens — becomes undecryptable).
+
+- **Deploying a merged ref**: `infra/deploy/deploy_prod.sh <git-ref>` — `deploy.sh`'s
+  sibling for a real clone: `git fetch`/`checkout` instead of the dev box's archive/rsync,
+  `docker compose up -d --build` (every service whose image changed, not just `api`/
+  `worker`), same migration-direction check and real health-check gate as `deploy.sh` (see
+  "Deploy and rollback" below — they share `common.sh`'s logic for both).
+- **Local development against it** (e.g. running the Tauri app on Windows): same
+  port-forward pattern as the dev box, pointed at this box's key/address instead:
+  ```
+  ssh -N -L 58001:127.0.0.1:58001 -L 58080:127.0.0.1:58080 -L 58180:127.0.0.1:58180 -i ~/.ssh/newton ubuntu@40.160.53.217
+  ```
+- **Adding a developer**: `infra/deploy/add_developer.sh <username> <path-to-their-pub-key>`.
+  Have them generate their own `ssh-keygen -t ed25519` locally first and send you only the
+  `.pub` file's contents — never generate a keypair for someone else and hand them the
+  private half. The script gives them their own Linux user (key-only login, no password),
+  adds them to the `docker` group (not `sudo` — that's a separate, deliberate step if
+  someone genuinely needs it), and clones the repo fresh into their own home directory for
+  them to branch/build/test in. The live stack itself stays at `~newton2` under the admin
+  account; a merged PR gets promoted to it with `deploy_prod.sh`, same as any other deploy.
+
 ## Remote dev box
 
-Docker isn't available on the primary Windows dev machine, so this stack runs on a shared
-Ubuntu box instead (`sr@192.168.1.101`, key `~/.ssh/id_claude`) that also hosts unrelated
-projects. To stay isolated from those:
+Docker isn't available on the primary Windows dev machine, so this stack *also* runs on a
+shared Ubuntu box (`sr@192.168.1.101`, key `~/.ssh/id_claude`) that hosts unrelated
+projects too — this is now a dev/test-only environment, not where the real backend lives
+(see "Production box" above). To stay isolated from those other projects:
 - Code lives under `~/dev/newton2` on that box (separate from everything else in `~`), synced
   from this repo (e.g. `tar -czf - infra services/api | ssh sr@192.168.1.101 'tar -xzf - -C ~/dev/newton2'`).
 - Every port this stack publishes is `127.0.0.1`-only and picked to avoid every port already
@@ -298,23 +332,30 @@ scratch MinIO bucket.
 
 ## Deploy and rollback
 
-ROADMAP.md's Phase 7 named the actual gap: the shared dev box above is the only
-environment that exists, and until this, a bad deploy had no path back except manually
-re-syncing an older commit over SSH by hand. `infra/deploy/` is a tested rollback (and
-forward-deploy) mechanism for that one box, built the same way `infra/backup/` was: small,
+ROADMAP.md's Phase 7 named the actual gap: before this, a bad deploy had no path back
+except manually re-syncing an older commit over SSH by hand. `infra/deploy/` is a tested
+rollback (and forward-deploy) mechanism, built the same way `infra/backup/` was: small,
 focused, heavily-commented shell scripts, not a new platform.
 
-- `infra/deploy/deploy.sh <git-ref>` — sync that exact commit/tag's `infra/` and
-  `services/api/` trees to the box, rebuild + restart `api` and `worker`, run whatever DB
-  migration that implies, and gate success on a real health check.
+- `infra/deploy/deploy.sh <git-ref>` — targets the **dev box** (no `.git` there, code
+  arrives via sync): sync that exact commit/tag's `infra/` and `services/api/` trees,
+  rebuild + restart `api` and `worker`, run whatever DB migration that implies, and gate
+  success on a real health check.
+- `infra/deploy/deploy_prod.sh <git-ref>` — the same operation for the **production box**
+  (see "Production box" above), adapted for its real `git clone`: `git fetch`/`checkout`
+  instead of archive/rsync, `docker compose up -d --build` (every service, not just `api`/
+  `worker`). Same migration-direction check, same health-check gate, same `common.sh`.
 - `infra/deploy/rollback.sh <git-ref>` — a thin wrapper around `deploy.sh` (same script,
   `--rollback` just changes banner wording). **Deploy and rollback are the same operation
   pointed at a different ref**, deliberately: two scripts that each reimplemented
   "sync, build, migrate, health-check" would drift out of sync with each other the same way
-  the app they manage would.
-- `infra/deploy/common.sh` — shared config/helpers both scripts source (ref resolution,
-  the sync/build/health-check functions, the migration-direction check). Not meant to be
-  run directly.
+  the app they manage would. (`deploy_prod.sh` doesn't have a separate rollback wrapper —
+  pass it an earlier ref directly, same as `deploy.sh --rollback` does under the hood.)
+- `infra/deploy/add_developer.sh <username> <pubkey-path>` — provisions a new developer's
+  own Linux user + SSH key + repo clone on the production box (see "Production box" above).
+- `infra/deploy/common.sh` — shared config/helpers the scripts above source (ref
+  resolution, the migration-direction check, the health-check gate). Not meant to be run
+  directly.
 
 ```bash
 infra/deploy/deploy.sh main                    # deploy the tip of main

@@ -15,6 +15,16 @@ REPO_ROOT="$(cd "$INFRA_DIR/.." && pwd)"
 # Tailscale address (reachable from anywhere Tailscale is up, unlike the LAN address the
 # README also mentions) -- override either piece if you're running this from somewhere
 # that only reaches the LAN IP.
+#
+# NOTE: as of infra/README.md's "Production box" section, the real deploy target is the
+# dedicated production box -- a real `git clone` at ~/newton2, not a tar-sync target with
+# no .git, which is what THIS script's sync_ref() (git archive | rsync --delete, no git
+# metadata touched on the remote) assumes. Pointing deploy.sh/rollback.sh at a real clone
+# via REMOTE_HOST/REMOTE_USER/etc. would leave that clone's .git HEAD out of sync with the
+# files rsync actually wrote -- confusing at best. Use infra/deploy/deploy_prod.sh for the
+# production box instead (same migration-direction check and health-check gate, real `git
+# fetch`/`checkout` instead of archive/rsync). This script's defaults stay pointed at the
+# dev box, which still has no .git and still matches what sync_ref() does.
 REMOTE_HOST="${REMOTE_HOST:-100.117.101.98}"
 REMOTE_USER="${REMOTE_USER:-sr}"
 REMOTE="${REMOTE_USER}@${REMOTE_HOST}"
