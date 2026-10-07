@@ -1,5 +1,6 @@
 import asyncio
 import io
+import logging
 import uuid
 from typing import Any
 
@@ -7,7 +8,7 @@ import docx
 import pptx
 from fastapi import HTTPException, UploadFile, status
 from pypdf import PdfReader
-from sqlalchemy import delete, func
+from sqlalchemy import delete, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -19,6 +20,8 @@ from app.core.object_storage import (
 )
 from app.db.models import Document, DocumentChunk
 from app.memory.rag import store_document_chunks
+
+logger = logging.getLogger("newton.documents")
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB
 
@@ -312,9 +315,30 @@ async def update_document_content(
     return document
 
 
-async def delete_document(db: AsyncSession, document: Document) -> None:
-    """Removes a document's chunks and DB row, then its raw object in MinIO."""
+async def delete_document(db: AsyncSession, document: Document, *, reason: str) -> None:
+    """Removes a document's chunks and DB row, then its raw object in MinIO.
+
+    `reason` is mandatory, not a style preference: a document going missing with no
+    record of why is exactly how this app lost track of real student data once already
+    (see ROADMAP.md / the student1 incident) -- a raw `delete(Document)` in a test's
+    cleanup quietly orphaned a MinIO object with nothing in any log explaining it. Every
+    caller now has to say in plain language why THIS document is being removed (e.g.
+    "user requested deletion via DELETE /documents/{id}", "account deletion"), which goes
+    two places: a log line right here, and -- via a Postgres session-local setting the
+    migration 0022 trigger reads -- a permanent row in document_deletions, which is also
+    the catch-all for any *other* way a documents row disappears. A raw SQL delete or a
+    CASCADE from a deleted user still fires that trigger; it just logs reason=NULL,
+    which is itself the signal that something bypassed this function and needs a look."""
     settings = get_settings()
+    logger.warning(
+        "document deleted: id=%s user_id=%s filename=%r kind=%s reason=%r",
+        document.id,
+        document.user_id,
+        document.filename,
+        document.kind,
+        reason,
+    )
+    await db.execute(text("SELECT set_config('app.delete_reason', :reason, true)"), {"reason": reason})
     await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
     await db.delete(document)
     await db.commit()

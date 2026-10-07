@@ -160,7 +160,7 @@ async def test_deleting_a_document_does_not_destroy_its_study_plan_items(
     db_session.add(item)
     await db_session.commit()
 
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
     # The ON DELETE SET NULL fired as a database-level FK action, not through an UPDATE
     # this SQLAlchemy session issued itself -- with expire_on_commit=False (see
@@ -199,7 +199,7 @@ async def uploaded_document(http_client, auth_headers, db_session):
     await db_session.execute(delete(StudyPlanItem).where(StudyPlanItem.document_id == document_id))
     document = await db_session.get(Document, document_id)
     if document is not None:
-        await documents_service.delete_document(db_session, document)
+        await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_generate_requires_auth(http_client):

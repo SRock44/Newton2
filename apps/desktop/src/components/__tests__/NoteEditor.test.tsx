@@ -143,4 +143,52 @@ describe("NoteEditor", () => {
     fireEvent.mouseUp(container.querySelector(".ProseMirror")!);
     await waitFor(() => expect(onSelection).toHaveBeenCalledWith(expect.objectContaining({ text: "LIATE" })));
   });
+
+  // Regression for a real bug: pseudocode typed as plain paragraphs, indented with
+  // leading spaces (never a fenced ```block```), looked right while editing but came
+  // back as a monospace code block full of literal `\[`/`&lt;` after a save + reopen.
+  // CommonMark treats 4+ leading spaces as code-block syntax by default; re-parsing a
+  // just-saved note hit that rule even though nothing about the student's intent was
+  // "this is code." See NoteEditor.tsx's `marked.use(...)` call for the actual fix.
+  it("indented pseudocode paragraphs survive a save-and-reopen round trip as plain text, not a code block", async () => {
+    const onChange = vi.fn();
+    const pseudocode =
+      "procedure selectionSort(A)\n\n" +
+      "    for j <- i + 1 to n - 1 do\n\n" +
+      "        if A[j] < A[minIndex] then\n\n" +
+      "            minIndex <- j";
+    const { container, rerender } = render(<NoteEditor value={pseudocode} onChange={onChange} />);
+
+    // Sanity: it's real plain text on first load, not a code block.
+    expect(container.querySelector("pre, code")).toBeNull();
+    expect(container.textContent).toContain("A[j] < A[minIndex]");
+
+    // Simulate closing and reopening the note: feed the editor's own saved markdown
+    // back in as a fresh external `value`, exactly like NotepadWindow does after a
+    // real save/load round trip against the backend. The serializer is free to escape
+    // `[`/`<` for safe plain-markdown round-tripping (it does: `\[`/`&lt;`) -- that's
+    // fine and expected, the bug was never in the escaping itself, only in the
+    // *reparse* misreading the indentation and never getting to unescape it at all.
+    act(() => {
+      editorOf(container).commands.insertContent(" "); // force a real onUpdate to fire
+    });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const saved = last(onChange);
+    expect(saved).toContain("selectionSort");
+
+    rerender(<NoteEditor value={saved} onChange={onChange} />);
+
+    await waitFor(() => expect(container.textContent).toContain("A[j] < A[minIndex]"));
+    expect(container.querySelector("pre, code")).toBeNull();
+    expect(container.textContent).not.toContain("\\[");
+    expect(container.textContent).not.toContain("&lt;");
+  });
+
+  it("a real fenced code block still renders as code (only the 4-space-indent shorthand is disabled)", async () => {
+    const { container } = render(
+      <NoteEditor value={"```\nconst x = 1;\n```"} onChange={() => {}} />,
+    );
+    await waitFor(() => expect(container.querySelector("pre code")).not.toBeNull());
+    expect(container.querySelector("pre code")?.textContent).toBe("const x = 1;");
+  });
 });

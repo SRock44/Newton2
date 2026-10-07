@@ -92,7 +92,7 @@ async def paper_user(db_session):
 
     docs = (await db_session.execute(select(Document).where(Document.user_id == user.id))).scalars().all()
     for doc in docs:
-        await documents_service.delete_document(db_session, doc)
+        await documents_service.delete_document(db_session, doc, reason="test cleanup")
     await db_session.execute(delete(User).where(User.id == user.id))
     await db_session.commit()
 

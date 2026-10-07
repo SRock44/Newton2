@@ -104,14 +104,19 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Start MinIO
-        # No `command:` override available for GitHub Actions `services:` containers,
-        # and the official minio image needs one (`server /data ...`) -- so it's run as
-        # a plain background container instead, same image/credentials shape as
-        # infra/docker-compose.yml's `minio` service.
+        # quay.io/minio/minio and docker.io/minio/minio both now return 401 (unauthorized)
+        # on every tag for anonymous pulls -- a registry policy change on MinIO's/Quay's
+        # side, confirmed independently of this repo, not something pinning a tag fixes.
+        # docker.io/bitnamilegacy/minio is a real, currently-public mirror. Unlike the
+        # official image, it ships its own entrypoint (runs as uid 1001, data dir baked
+        # in at /bitnami/minio/data) and must NOT be given a `server /data ...` command
+        # override -- doing so bypasses that entrypoint and the container fails with
+        # "Unable to initialize backend: file access denied" (verified locally). Root
+        # credentials are still MINIO_ROOT_USER/MINIO_ROOT_PASSWORD, same as before.
         run: |
           docker run -d --name minio -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER=newton -e MINIO_ROOT_PASSWORD=newton-ci-secret \
-            quay.io/minio/minio:latest server /data --console-address ":9001"
+            bitnamilegacy/minio:latest
           for i in $(seq 1 30); do
             curl -sf http://localhost:9000/minio/health/live && break
             echo "waiting for minio ($i)..."; sleep 1

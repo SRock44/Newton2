@@ -165,7 +165,7 @@ async def delete_note(
     chunk cleanup an uploaded file's deletion already does, no separate cleanup path."""
     user = await get_or_create_user(db, claims)
     document = await _get_owned_note(db, note_id, user.id)
-    await delete_document(db, document)
+    await delete_document(db, document, reason="user requested deletion via DELETE /notes/{id}")
     return {"status": "deleted"}
 
 
