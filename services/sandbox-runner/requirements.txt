@@ -1,6 +1,6 @@
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
-pydantic==2.13.5
+pydantic==2.14.1
 # Runtime dependency, not a dev/test one: POST /run-code executes a student's submission
 # under pytest inside the sandbox to produce real per-test pass/fail results. Pinned to
 # the same version services/api uses so a failure mode seen in one is reproducible in the
