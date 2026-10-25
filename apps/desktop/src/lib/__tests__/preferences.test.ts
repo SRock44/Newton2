@@ -11,6 +11,10 @@ import {
   applyStoredAppearance,
   clampPanelWidth,
   getAccentPreset,
+  getLastStudyReminder,
+  getTrayHideHintShown,
+  setLastStudyReminder,
+  setTrayHideHintShown,
   getContextPanelWidth,
   getSidebarWidth,
   getThemePreference,
@@ -144,6 +148,26 @@ describe("appearance preferences", () => {
 
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(document.documentElement.getAttribute("data-accent")).toBe("forest");
+  });
+
+  it("last study-reminder summary round-trips and rejects corrupt storage", () => {
+    expect(getLastStudyReminder()).toBeNull();
+    setLastStudyReminder({ date: "2026-10-24", dueFlashcards: 2, dueSoonItems: 1 });
+    expect(getLastStudyReminder()).toEqual({
+      date: "2026-10-24",
+      dueFlashcards: 2,
+      dueSoonItems: 1,
+    });
+    window.localStorage.setItem("newton:prefs:lastStudyReminder", "{not-json");
+    expect(getLastStudyReminder()).toBeNull();
+  });
+
+  it("tray hide hint defaults off and round-trips once shown", () => {
+    expect(getTrayHideHintShown()).toBe(false);
+    setTrayHideHintShown(true);
+    expect(getTrayHideHintShown()).toBe(true);
+    setTrayHideHintShown(false);
+    expect(getTrayHideHintShown()).toBe(false);
   });
 
   it("offers five presets, keeps cobalt first as the default, and every id is unique", () => {

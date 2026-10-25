@@ -17,8 +17,15 @@ import {
 } from "./api";
 import { TokenManager, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
-import { notifyStudyReminders } from "./notifications";
-import { getStudyRemindersEnabled } from "./lib/preferences";
+import { listenStudyReminderActions, notifyStudyReminders, notifyTrayHideHint } from "./notifications";
+import {
+  getLastStudyReminder,
+  getStudyRemindersEnabled,
+  getTrayHideHintShown,
+  setLastStudyReminder,
+  setTrayHideHintShown,
+} from "./lib/preferences";
+import { REMINDER_INTERVAL_MS, shouldOpenFlashcardsOnFocus, startStudyReminderLoop } from "./lib/studyReminders";
 import { hasSeenOnboarding, markOnboardingSeen } from "./lib/onboarding";
 import type {
   AccountConsentStatus,
@@ -256,7 +263,7 @@ function App() {
   // puts the cursor in the composer so the student can type their own tweaks, without
   // anything being sent on their behalf.
   const composerRef = useRef<ComposerHandle>(null);
-  const remindersCheckedRef = useRef(false);
+  const pendingReminderClickRef = useRef<number | null>(null);
   // A session id we just created client-side (see createNewSession) — its history is
   // known to be empty, so the message-history effect below should skip fetching it
   // rather than race a pending optimistic send (e.g. handleChatAboutDocument's opener):
@@ -332,7 +339,7 @@ function App() {
     setSnipDataUrl(null);
     setSnipError(null);
     setPendingComposerDocument(null);
-    remindersCheckedRef.current = false;
+    pendingReminderClickRef.current = null;
   }
 
   // The crop modal hands back a File the same way Composer's own file-attach input does
@@ -362,6 +369,33 @@ function App() {
     let cancelled = false;
     tauriEventModule()
       .then(({ listen }) => listen("tray-open-flashcards", () => setShowFlashcards(true)))
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // No Tauri context — nothing to listen to.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // First close-to-tray: one toast so the student knows Newton didn't quit. The
+  // flag is written before the send so a double-fire (or a failed send) never
+  // loops the hint. Same dynamic-import/defensive-catch as the tray listener above.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    tauriEventModule()
+      .then(({ listen }) =>
+        listen("window-hidden-to-tray", () => {
+          if (getTrayHideHintShown()) return;
+          setTrayHideHintShown(true);
+          void notifyTrayHideHint();
+        }),
+      )
       .then((fn) => {
         if (cancelled) fn();
         else unlisten = fn;
@@ -463,35 +497,73 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Once per sign-in (not a repeating poll — that would just nag), nudge the user if
-  // they have flashcards due or study plan deadlines coming up soon. Only fires while
-  // the app is actually open; see notifications.ts.
+  // Periodic due-review check while signed in (including while hidden in the tray).
+  // Repeat-suppression and the 3-hour interval live in startStudyReminderLoop.
   useEffect(() => {
-    if (!token || remindersCheckedRef.current) return;
-    remindersCheckedRef.current = true;
-    if (!getStudyRemindersEnabled()) return;
-    const DUE_SOON_DAYS = 3;
-
-    (async () => {
-      try {
+    if (!token) return;
+    return startStudyReminderLoop({
+      intervalMs: REMINDER_INTERVAL_MS,
+      isEnabled: getStudyRemindersEnabled,
+      listDue: async () => {
         const accessToken = await tokenManager.getValidAccessToken();
-        const [dueFlashcards, studyPlan] = await Promise.all([
+        const [flashcards, studyPlan] = await Promise.all([
           listFlashcards(accessToken, true),
           listStudyPlan(accessToken),
         ]);
-        const dueSoonCutoff = Date.now() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000;
-        const dueSoonItems = studyPlan.filter((item) => {
-          if (!item.due_date) return false;
-          const dueTime = new Date(item.due_date).getTime();
-          return !Number.isNaN(dueTime) && dueTime <= dueSoonCutoff;
-        });
-        await notifyStudyReminders(dueFlashcards.length, dueSoonItems.length);
-      } catch {
-        // A missed reminder shouldn't disrupt sign-in or show an error banner.
-      }
-    })();
+        return { flashcards, studyPlan };
+      },
+      notify: (summary) => notifyStudyReminders(summary.dueFlashcards, summary.dueSoonItems),
+      getLast: getLastStudyReminder,
+      setLast: setLastStudyReminder,
+      setTrayCount: (count) => {
+        import("@tauri-apps/api/core")
+          .then(({ invoke }) => invoke("set_tray_due_count", { count }))
+          .catch(() => {
+            // No Tauri context (tests / browser) — the tray label just stays as-is.
+          });
+      },
+      onNotified: (at) => {
+        pendingReminderClickRef.current = at;
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Notification click: try the plugin's onAction first. Desktop often never
+  // delivers that, so also open flashcards if the main window is focused within
+  // 10 minutes of a reminder (Windows restoring the app from a toast click).
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listenStudyReminderActions(() => {
+      setShowFlashcards(true);
+      import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke("focus_main_window"))
+        .catch(() => {
+          // No Tauri context — the panel open is still enough under jsdom.
+        });
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // Plugin unavailable.
+      });
+
+    const handleFocus = () => {
+      if (shouldOpenFlashcardsOnFocus(pendingReminderClickRef.current, Date.now())) {
+        pendingReminderClickRef.current = null;
+        setShowFlashcards(true);
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
 
   // Load the user's sessions once signed in; start a first chat if they have none.
   useEffect(() => {

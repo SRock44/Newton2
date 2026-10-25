@@ -64,6 +64,15 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: (url: string) => openUrl(url),
 }));
 
+const isAutostartEnabled = vi.fn(async () => false);
+const enableAutostart = vi.fn(async () => undefined);
+const disableAutostart = vi.fn(async () => undefined);
+vi.mock("@tauri-apps/plugin-autostart", () => ({
+  isEnabled: () => isAutostartEnabled(),
+  enable: () => enableAutostart(),
+  disable: () => disableAutostart(),
+}));
+
 import {
   ApiError,
   createCheckoutSession,
@@ -110,6 +119,9 @@ describe("SettingsPanel", () => {
         webcal_url: "webcal://127.0.0.1:58001/calendar/feed/user-1/secret-bbb.ics",
       });
     openUrl.mockClear();
+    isAutostartEnabled.mockReset().mockResolvedValue(false);
+    enableAutostart.mockReset().mockResolvedValue(undefined);
+    disableAutostart.mockReset().mockResolvedValue(undefined);
     window.localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-accent");
@@ -712,5 +724,32 @@ describe("SettingsPanel", () => {
 
       expect(within(screen.getByRole("alertdialog")).getByText("sean@rockwitz.com")).toBeInTheDocument();
     });
+  });
+
+  it("reflects the OS autostart setting and enable/disable go to the plugin, not localStorage", async () => {
+    isAutostartEnabled.mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = await screen.findByRole("checkbox", { name: /launch newton at startup/i });
+    await waitFor(() => expect(toggle).toBeChecked());
+
+    await user.click(toggle);
+    await waitFor(() => expect(disableAutostart).toHaveBeenCalledTimes(1));
+    expect(enableAutostart).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem("newton:prefs:autostart")).toBeNull();
+  });
+
+  it("reverts the launch-at-startup toggle and shows an error when the plugin fails", async () => {
+    enableAutostart.mockRejectedValue(new Error("denied"));
+    const user = userEvent.setup();
+    render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+    const toggle = await screen.findByRole("checkbox", { name: /launch newton at startup/i });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+    expect(await screen.findByText("Couldn't update the launch-at-startup setting.")).toBeInTheDocument();
+    expect(toggle).not.toBeChecked();
   });
 });

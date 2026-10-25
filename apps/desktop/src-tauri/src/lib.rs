@@ -1,11 +1,30 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+struct TrayMenuItems {
+    flashcards: MenuItem<tauri::Wry>,
+}
+
+/// Renames the tray's "Review flashcards" item to include a live due count
+/// (`Review flashcards (N due)`), or restores the plain label when nothing is due.
+/// The frontend calls this after each study-reminder check.
+#[tauri::command]
+fn set_tray_due_count(count: u32, state: State<Mutex<TrayMenuItems>>) -> Result<(), String> {
+    let items = state.lock().map_err(|e| e.to_string())?;
+    let label = if count == 0 {
+        "Review flashcards".to_string()
+    } else {
+        format!("Review flashcards ({count} due)")
+    };
+    items.flashcards.set_text(label).map_err(|e| e.to_string())
+}
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, ShortcutState};
 
@@ -254,6 +273,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -269,7 +292,8 @@ pub fn run() {
             greet,
             wait_for_oauth_callback,
             focus_main_window,
-            open_notepad_window
+            open_notepad_window,
+            set_tray_due_count
         ])
         .setup(|app| {
             // Windows/Linux only associate the `newton://` scheme with the app at
@@ -319,6 +343,10 @@ pub fn run() {
                 &[&show_i, &flashcards_i, &snip_i, &notepad_i, &quit_i],
             )?;
 
+            app.manage(Mutex::new(TrayMenuItems {
+                flashcards: flashcards_i.clone(),
+            }));
+
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
@@ -337,16 +365,31 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Autostart launches us with --minimized (see the autostart plugin args
+            // above) so the student lands in the tray instead of a full window popping
+            // over whatever they were doing at login. A normal click-to-open launch
+            // has no such arg and is unchanged.
+            if std::env::args().any(|arg| arg == "--minimized") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+
             Ok(())
         })
-        // The window closing hides it rather than quitting the whole app -- the tray
-        // icon (and whatever's in progress, e.g. a chat) stays alive, matching the point
-        // of having tray quick actions at all. "Quit" in the tray menu (or the OS's own
-        // quit-the-process shortcuts) is the actual way out.
+        // Closing the MAIN window hides it rather than quitting the whole app -- the
+        // tray icon (and whatever's in progress, e.g. a chat) stays alive, matching
+        // the point of having tray quick actions at all. "Quit" in the tray menu (or
+        // the OS's own quit-the-process shortcuts) is the actual way out.
+        // Other windows (the always-on-top Notepad) close for real: hiding those
+        // would leave a leftover always-on-top webview the student thinks they quit.
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+                if window.label() == "main" {
+                    let _ = window.hide();
+                    api.prevent_close();
+                    let _ = window.app_handle().emit("window-hidden-to-tray", ());
+                }
             }
         })
         .run(tauri::generate_context!())

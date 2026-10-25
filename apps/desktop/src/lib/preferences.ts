@@ -1,8 +1,11 @@
-const STUDY_REMINDERS_KEY = "newton:prefs:studyReminders";
+import type { LastStudyReminder } from "./studyReminders";
 
-/** Whether to nag the student (a native OS notification, once per sign-in — see
- * notifications.ts and App.tsx) about flashcards or study plan items due soon.
- * Defaults on; persisted locally only, there's no backend concept of this yet. */
+const STUDY_REMINDERS_KEY = "newton:prefs:studyReminders";
+const LAST_STUDY_REMINDER_KEY = "newton:prefs:lastStudyReminder";
+
+/** Whether to nag the student (a native OS notification, on a 3-hour interval
+ * while the app process is alive — see lib/studyReminders.ts) about flashcards
+ * or study plan items due soon. Defaults on; persisted locally only. */
 export function getStudyRemindersEnabled(): boolean {
   try {
     const raw = window.localStorage.getItem(STUDY_REMINDERS_KEY);
@@ -17,6 +20,57 @@ export function setStudyRemindersEnabled(enabled: boolean): void {
     window.localStorage.setItem(STUDY_REMINDERS_KEY, String(enabled));
   } catch {
     // Best-effort only — worst case the preference doesn't stick across launches.
+  }
+}
+
+export function getLastStudyReminder(): LastStudyReminder | null {
+  try {
+    const raw = window.localStorage.getItem(LAST_STUDY_REMINDER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LastStudyReminder>;
+    if (
+      typeof parsed.date !== "string" ||
+      typeof parsed.dueFlashcards !== "number" ||
+      typeof parsed.dueSoonItems !== "number"
+    ) {
+      return null;
+    }
+    return {
+      date: parsed.date,
+      dueFlashcards: parsed.dueFlashcards,
+      dueSoonItems: parsed.dueSoonItems,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function setLastStudyReminder(value: LastStudyReminder): void {
+  try {
+    window.localStorage.setItem(LAST_STUDY_REMINDER_KEY, JSON.stringify(value));
+  } catch {
+    // Best-effort only — worst case the next check may re-notify.
+  }
+}
+
+const TRAY_HIDE_HINT_KEY = "newton:prefs:trayHideHintShown";
+
+/** Whether we've already shown the one-time "Newton is still running in the tray"
+ * toast. Defaults false so the first close-to-tray can explain itself; after that
+ * the hint would just nag. Local only — this is window-chrome, not account data. */
+export function getTrayHideHintShown(): boolean {
+  try {
+    return window.localStorage.getItem(TRAY_HIDE_HINT_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function setTrayHideHintShown(shown: boolean): void {
+  try {
+    window.localStorage.setItem(TRAY_HIDE_HINT_KEY, String(shown));
+  } catch {
+    // Best-effort only — worst case the hint may fire again next launch.
   }
 }
 
