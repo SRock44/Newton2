@@ -131,8 +131,16 @@ vi.mock("./api", () => ({
   synthesizeSpeech: vi.fn(async () => new Blob([], { type: "audio/wav" })),
 }));
 
+const studyReminderAction = { current: null as (() => void) | null };
 vi.mock("./notifications", () => ({
   notifyStudyReminders: vi.fn(async () => undefined),
+  notifyTrayHideHint: vi.fn(async () => undefined),
+  listenStudyReminderActions: vi.fn(async (onOpen: () => void) => {
+    studyReminderAction.current = onOpen;
+    return () => {
+      studyReminderAction.current = null;
+    };
+  }),
 }));
 
 const trayEventListeners: Record<string, Array<() => void>> = {};
@@ -175,7 +183,7 @@ import {
   openChatSocket,
   submitAgeConsent,
 } from "./api";
-import { notifyStudyReminders } from "./notifications";
+import { notifyStudyReminders, notifyTrayHideHint } from "./notifications";
 import { signInWithBrowser } from "./auth";
 import { emit } from "@tauri-apps/api/event";
 
@@ -219,6 +227,8 @@ describe("App", () => {
     vi.mocked(listDocuments).mockClear();
     vi.mocked(getDocumentContent).mockClear();
     vi.mocked(notifyStudyReminders).mockClear();
+    vi.mocked(notifyTrayHideHint).mockClear();
+    studyReminderAction.current = null;
     vi.mocked(getAccountStatus).mockClear();
     vi.mocked(submitAgeConsent).mockClear();
     vi.mocked(emit).mockClear();
@@ -670,7 +680,7 @@ describe("App", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("checks for due flashcards and upcoming deadlines once per sign-in and notifies about them", async () => {
+  it("checks for due flashcards and upcoming deadlines on sign-in and notifies about them", async () => {
     // Queued twice (not a single ...Once): Home's own "Due soon" widget (see
     // HomeView.tsx) also calls listFlashcards/listStudyPlan as soon as the app signs
     // in, so there are two consumers of this fixture data now, not one — queuing it
@@ -709,12 +719,65 @@ describe("App", () => {
     await waitFor(() => expect(vi.mocked(notifyStudyReminders)).toHaveBeenCalledWith(1, 1));
   });
 
-  it("still reports zero counts when nothing is due — notifyStudyReminders itself no-ops on that", async () => {
+  it("does not send a study-reminder toast when nothing is due", async () => {
     await signIn();
     await (await messageList()).findByText("Hello from s1");
 
-    await waitFor(() => expect(vi.mocked(listStudyPlan)).toHaveBeenCalled());
-    await waitFor(() => expect(vi.mocked(notifyStudyReminders)).toHaveBeenCalledWith(0, 0));
+    await waitFor(() => expect(vi.mocked(listFlashcards)).toHaveBeenCalledWith(expect.any(String), true));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(vi.mocked(notifyStudyReminders)).not.toHaveBeenCalled();
+  });
+
+  it("opens flashcards when a study-reminder notification action fires", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(studyReminderAction.current).not.toBeNull());
+    expect(screen.queryByRole("heading", { name: "Flashcards" })).not.toBeInTheDocument();
+    act(() => {
+      studyReminderAction.current?.();
+    });
+    expect(await screen.findByRole("heading", { name: "Flashcards" })).toBeInTheDocument();
+  });
+
+  it("opens flashcards if the window is focused shortly after a reminder", async () => {
+    const dueSoonItems = [
+      {
+        id: "i1",
+        document_id: null,
+        title: "Problem set",
+        due_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        due_date_text: null,
+        notes: null,
+        source: "syllabus_upload",
+        created_at: "2020-01-01T00:00:00Z",
+      },
+    ];
+    vi.mocked(listStudyPlan).mockResolvedValue(dueSoonItems);
+    vi.mocked(listFlashcards).mockResolvedValue([
+      {
+        id: "c1",
+        document_id: null,
+        front: "Q",
+        back: "A",
+        due: new Date().toISOString(),
+        state: "Review",
+        last_review: null,
+        created_at: "2020-01-01T00:00:00Z",
+      },
+    ]);
+
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+    await waitFor(() => expect(vi.mocked(notifyStudyReminders)).toHaveBeenCalled());
+
+    expect(screen.queryByRole("heading", { name: "Flashcards" })).not.toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await screen.findByRole("heading", { name: "Flashcards" })).toBeInTheDocument();
   });
 
   // Regression test for the "tacky and redundant" triple connection dot: Sidebar,
@@ -755,6 +818,22 @@ describe("App", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Flashcards" })).toBeInTheDocument();
+  });
+
+  it("shows the tray-hide hint only the first time the window is hidden to the tray", async () => {
+    await signIn();
+    await (await messageList()).findByText("Hello from s1");
+
+    await waitFor(() => expect(trayEventListeners["window-hidden-to-tray"]?.length).toBeGreaterThan(0));
+    act(() => {
+      fireTrayEvent("window-hidden-to-tray");
+    });
+    await waitFor(() => expect(vi.mocked(notifyTrayHideHint)).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      fireTrayEvent("window-hidden-to-tray");
+    });
+    expect(vi.mocked(notifyTrayHideHint)).toHaveBeenCalledTimes(1);
   });
 
   // Item 1: Documents is a real page that replaces chat in the main pane, not a modal

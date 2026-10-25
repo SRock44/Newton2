@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { disable as disableAutostart, enable as enableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ApiError,
@@ -92,6 +93,8 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
   const [showFreeModelNotice, setShowFreeModelNotice] = useState(false);
 
   const [remindersEnabled, setRemindersEnabled] = useState(getStudyRemindersEnabled);
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [autostartError, setAutostartError] = useState<string | null>(null);
 
   // Appearance. Purely local (see lib/preferences.ts) — this is window chrome, not
   // account data, so there's nothing to save to the backend and nothing that can fail.
@@ -179,6 +182,23 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
         window.clearInterval(topupPollRef.current.interval);
         window.clearTimeout(topupPollRef.current.timeout);
       }
+    };
+  }, []);
+
+  // OS autostart is the source of truth — no localStorage copy. Unavailable
+  // (jsdom / no Tauri) leaves the toggle off and a later click will surface
+  // autostartError rather than pretending the setting stuck.
+  useEffect(() => {
+    let cancelled = false;
+    isAutostartEnabled()
+      .then((enabled) => {
+        if (!cancelled) setAutostartEnabled(enabled);
+      })
+      .catch(() => {
+        // No Tauri context — leave the toggle off.
+      });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -303,6 +323,19 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
   function handleToggleReminders(enabled: boolean) {
     setRemindersEnabled(enabled);
     setStudyRemindersEnabled(enabled);
+  }
+
+  async function handleToggleAutostart(enabled: boolean) {
+    const previous = autostartEnabled;
+    setAutostartEnabled(enabled);
+    setAutostartError(null);
+    try {
+      if (enabled) await enableAutostart();
+      else await disableAutostart();
+    } catch {
+      setAutostartEnabled(previous);
+      setAutostartError("Couldn't update the launch-at-startup setting.");
+    }
   }
 
   /** Both appearance controls apply immediately AND persist — there's no Save button,
@@ -686,6 +719,21 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
               </span>
             </span>
           </label>
+
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={autostartEnabled}
+              onChange={(e) => void handleToggleAutostart(e.target.checked)}
+            />
+            <span>
+              <span className="settings-toggle-label">Launch Newton at startup</span>
+              <span className="settings-toggle-desc">
+                Start hidden in the tray when you sign in to this computer.
+              </span>
+            </span>
+          </label>
+          {autostartError ? <div className="banner banner--error">{autostartError}</div> : null}
 
           {/* Self-service Focus Mode -- a student opting THEMSELVES into a stricter
               standard, never a teacher/guardian-administered control (this app has no
