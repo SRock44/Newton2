@@ -59,10 +59,19 @@ printf 'Type yes to continue: '
 read -r reply
 [ "$reply" = "yes" ] || die "confirmation not given -- aborting."
 
-ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo bash -s" -- "$NAME" "$PUBKEY" <<'REMOTE_SCRIPT'
+# ssh's multi-argument form (`ssh host cmd arg1 arg2`) does NOT preserve argument
+# boundaries the way exec() would -- it joins everything into one string that the remote
+# shell re-splits on whitespace. $PUBKEY contains spaces (the key blob and the comment are
+# separate words), so passing it as a plain positional arg silently truncated it to just
+# "ssh-ed25519" on the box (confirmed: that's exactly what landed in authorized_keys the
+# first time this ran). base64-encoding it first gives a single whitespace-free token that
+# survives the round trip intact; the remote side decodes it back before using it.
+PUBKEY_B64="$(printf '%s' "$PUBKEY" | base64 -w0)"
+
+ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo bash -s" -- "$NAME" "$PUBKEY_B64" <<'REMOTE_SCRIPT'
 set -euo pipefail
 name="$1"
-pubkey="$2"
+pubkey="$(printf '%s' "$2" | base64 -d)"
 
 if id "$name" &>/dev/null; then
   echo "User '$name' already exists -- adding/refreshing their key and group membership only."
