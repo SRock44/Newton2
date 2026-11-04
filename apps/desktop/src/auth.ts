@@ -17,12 +17,16 @@ const OAUTH_CALLBACK_PORT = 58500;
 const DESKTOP_REDIRECT_URI = `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/callback`;
 
 // apps/web's equivalent of the above: there's no loopback listener in a browser, so the
-// redirect URI is just this same page, at a dedicated route that reads `?code&state` off
-// the URL once Keycloak redirects back to it (see beginWebSignIn/completeWebSignIn below).
-// Must ALSO be registered as a redirect URI on the "newton-api" Keycloak client, same as
-// the desktop one above — see infra/keycloak/realm-newton.json.
+// redirect URI is just this same page, which reads `?code&state` off the URL once
+// Keycloak redirects back to it (see beginWebSignIn/completeWebSignIn below). "/chat" is
+// apps/web's one fixed mount path (its vite.config.ts's `base`, and the path
+// apps/website's Next.js proxies/serves it at — see apps/website/next.config.ts and
+// WEBSITE-ROADMAP.md — so the whole product lives on ONE origin, not a separate port/
+// subdomain for "the app" vs the marketing site). Must ALSO be registered as a redirect
+// URI on the "newton-api" Keycloak client, same as the desktop one above — see
+// infra/keycloak/realm-newton.json.
 function webRedirectUri(): string {
-  return `${window.location.origin}/callback`;
+  return `${window.location.origin}/chat`;
 }
 
 // Refresh this long before actual expiry so a slow network call never loses the race
@@ -220,11 +224,11 @@ export async function beginWebSignIn(mode: SignInMode = "login"): Promise<void> 
   window.location.href = buildAuthUrl(webRedirectUri(), challenge, state, mode);
 }
 
-/** Call once, on load of the `/callback` route: reads `?code&state&error` off the current
- * URL, validates it against what beginWebSignIn stashed, and exchanges the code for
- * tokens. Returns null (not an error) when the page was loaded with no `code` at all —
- * i.e. this wasn't actually hit as an OAuth redirect — so a direct visit to `/callback`
- * degrades to "not signed in" rather than throwing. */
+/** Called from App.tsx's bootstrap effect on every load: reads `?code&state&error` off
+ * the current URL, validates it against what beginWebSignIn stashed, and exchanges the
+ * code for tokens. Returns null (not an error) when the page was loaded with no `code`
+ * at all — i.e. this wasn't actually hit as an OAuth redirect — so an ordinary visit to
+ * `/chat` degrades to "not signed in" rather than throwing. */
 export async function completeWebSignIn(): Promise<TokenSet | null> {
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");

@@ -193,12 +193,13 @@ describe("TitleBar (web — no Tauri bridge)", () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, writable: true, configurable: true });
   });
 
-  it("renders only the brand/title strip — no minimize/maximize/close controls", () => {
-    render(<TitleBar title="Newton" />);
-    expect(screen.getByText("Newton")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /minimize/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /maximize|restore/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /close/i })).not.toBeInTheDocument();
+  it("renders nothing at all — no redundant brand/title strip, no window controls", () => {
+    // Real feedback on a first attempt here (a plain brand/title strip): "looks like the
+    // desktop app in a web browser." Nothing to draw a title bar for on the web, and the
+    // sidebar (App.tsx) already carries the real brand a few pixels below where a strip
+    // would sit — so this renders null, not a smaller version of the same chrome.
+    const { container } = render(<TitleBar title="Newton" />);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("never calls the Tauri window API — there's no real window to query or control", () => {

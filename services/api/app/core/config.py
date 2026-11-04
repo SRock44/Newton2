@@ -51,16 +51,19 @@ class Settings(BaseSettings):
 
     # Origins the Tauri webview runs under (Vite dev server, and the custom-protocol
     # origins WebView2/WKWebView use for a packaged app in production), plus
-    # apps/web's own Vite dev server (pinned to this exact port in apps/web/vite.config.ts
-    # specifically so this list can name one fixed origin). A real public web deployment
-    # adds its own real https:// origin(s) via the CORS_ALLOW_ORIGINS env var (pydantic-
-    # settings parses it as a JSON array automatically, same as any other list-typed
-    # setting here) rather than editing this hardcoded dev-convenience default.
+    # apps/website's own Next.js dev origin — apps/web (the real signed-in app) is proxied
+    # under http://localhost:3000/chat by that Next.js (see apps/website/next.config.ts),
+    # so a real browser's Origin header on every fetch/WebSocket from apps/web is this
+    # port, 3000, NOT apps/web's own underlying Vite dev port (5173) a browser never talks
+    # to directly. A real public web deployment adds its own real https:// origin(s) via
+    # the CORS_ALLOW_ORIGINS env var (pydantic-settings parses it as a JSON array
+    # automatically, same as any other list-typed setting here) rather than editing this
+    # hardcoded dev-convenience default.
     cors_allow_origins: list[str] = [
         "http://localhost:1420",
         "tauri://localhost",
         "https://tauri.localhost",
-        "http://localhost:5173",
+        "http://localhost:3000",
     ]
 
     # Provider adapter: our own cost-conscious defaults (Groq/OpenRouter), tried in this

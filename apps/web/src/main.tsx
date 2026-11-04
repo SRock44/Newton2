@@ -5,3 +5,7 @@
 // physically inside apps/desktop/src) and vite.config.ts's comment for the one thing that
 // actually needs aliasing here (react/react-dom, so there's only ever one copy loaded).
 import "../../desktop/src/bootstrap";
+// apps/web's own visual pass, cascading on top of App.css's tokens — see its own header
+// comment for what this does and deliberately doesn't touch. Imported after (not before)
+// the bootstrap, which is what pulls App.css in, so these overrides actually win.
+import "./web-theme.css";

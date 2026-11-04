@@ -36,8 +36,8 @@ describe("Home", () => {
       expect(signUps.length).toBeGreaterThan(0);
       // ?auth= is what LoginScreen.tsx (apps/desktop/src/components/LoginScreen.tsx,
       // reused by apps/web) reads on load to start the right flow immediately.
-      signIns.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:5173/?auth=login"));
-      signUps.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:5173/?auth=register"));
+      signIns.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:3000/chat?auth=login"));
+      signUps.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:3000/chat?auth=register"));
     });
 
     it("has a working mobile menu that reveals Features/Pro/FAQ/Sign In", () => {
@@ -78,7 +78,7 @@ describe("Home", () => {
       // Same real apps/web sign-in link the header's Sign In uses — see env.ts's
       // appAuthUrl. Chat Now doesn't presume the visitor is new, so it's "login" mode
       // (Keycloak's hosted page covers both a new and returning student from there).
-      chatLinks.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:5173/?auth=login"));
+      chatLinks.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:3000/chat?auth=login"));
     });
 
     it("Download is a real, secondary CTA — not the primary ask anymore now that chatting needs no download", () => {

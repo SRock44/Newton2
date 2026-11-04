@@ -14,6 +14,14 @@ const desktopRoot = path.resolve(__dirname, "../desktop");
 
 // https://vite.dev/config/
 export default defineConfig({
+  // The product lives on ONE origin, not a separate port/subdomain for "the app" vs the
+  // marketing site (apps/website) — product owner, verbatim: "it should not be on TWO
+  // SEPARATE PORTS... NEWTON.BEST/CHAT." This is that one fixed mount path: Next.js
+  // (apps/website/next.config.ts) proxies /chat/* to this dev server in development, and
+  // serves this app's own production build as static files under the same path in
+  // production (see WEBSITE-ROADMAP.md) — either way, a browser only ever sees one
+  // origin. auth.ts's webRedirectUri() is hardcoded to match this exact path.
+  base: "/chat/",
   plugins: [react()],
   resolve: {
     alias: {
@@ -27,10 +35,17 @@ export default defineConfig({
   },
   server: {
     // Vite's own conventional default — pinned explicitly (rather than left to "whatever
-    // port happens to be free") so the backend's CORS allowlist
-    // (services/api/app/core/config.py's cors_allow_origins) can name one fixed local
-    // dev origin instead of needing CORS_ALLOW_ORIGINS set by hand for every dev machine.
+    // port happens to be free") so apps/website's next.config.ts rewrite can proxy to one
+    // fixed destination.
     port: 5173,
+    // Explicit IPv4 loopback, not left to Vite's own "localhost" default resolution —
+    // the exact same ambiguity apps/desktop/src's own vite.config.ts already documents
+    // and works around: on this machine that resolution landed on IPv6-only (`::1`), so
+    // Next.js's rewrite destination (next.config.ts, a literal `127.0.0.1:5173`) got a
+    // real, 100%-reproducible ECONNREFUSED/500 — confirmed via `netstat` (listening on
+    // `[::1]:5173`, zero IPv4 listener) before adding this. Pinning it removes the
+    // ambiguity outright, same fix, same reason.
+    host: "127.0.0.1",
     // Vite refuses to serve files outside the project root by default (a real security
     // boundary for anything serving someone else's files) — apps/web's entire premise is
     // serving apps/desktop/src's own files, so that root has to be explicitly allowed.

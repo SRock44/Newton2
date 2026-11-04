@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   ACCENT_PRESETS,
   CONTEXT_PANEL_DEFAULT_WIDTH,
@@ -11,14 +11,51 @@ import {
   applyStoredAppearance,
   clampPanelWidth,
   getAccentPreset,
+  getContextPanelCollapsed,
   getContextPanelWidth,
   getSidebarWidth,
   getThemePreference,
   setAccentPreset,
+  setContextPanelCollapsed,
   setContextPanelWidth,
   setSidebarWidth,
   setThemePreference,
 } from "../preferences";
+
+// Real bug this guards against (last session's web-redesign feedback, verbatim: "just
+// looks like the desktop app in a web browser"): the right "Newton context" rail
+// defaulted to expanded everywhere, which is right for a real OS window a student
+// resizes themselves but reads as a cramped three-column dashboard the moment the exact
+// same pixels show up in a narrower browser tab.
+describe("getContextPanelCollapsed (platform-aware default)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, writable: true, configurable: true });
+  });
+
+  it("defaults to expanded on desktop (Tauri) when nothing has been persisted", () => {
+    expect(getContextPanelCollapsed()).toBe(false);
+  });
+
+  it("defaults to COLLAPSED on the web when nothing has been persisted", () => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    expect(getContextPanelCollapsed()).toBe(true);
+  });
+
+  it("an explicit stored preference always wins, on either platform", () => {
+    setContextPanelCollapsed(true);
+    expect(getContextPanelCollapsed()).toBe(true);
+
+    setContextPanelCollapsed(false);
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    // A student who explicitly expanded it on the web stays expanded — the platform
+    // default only applies when nothing has ever been chosen.
+    expect(getContextPanelCollapsed()).toBe(false);
+  });
+});
 
 describe("panel width preferences", () => {
   beforeEach(() => {

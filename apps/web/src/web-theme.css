@@ -1,0 +1,51 @@
+/* The web build's own visual pass — overrides a handful of apps/desktop/src/App.css's
+ * own design tokens (CSS custom properties), nothing else. Every actual layout/
+ * component/behavior stays exactly the shared desktop source (the whole point of
+ * reusing it — see apps/desktop/src/bootstrap.tsx) — this file only exists because
+ * real feedback on the unmodified result was direct: "looks like the desktop app in a
+ * web browser... just looks like shit." The desktop app's own tight, information-dense
+ * token values (a 13px base font, a 4px space-1, a 6px small radius) are RIGHT for a
+ * native desktop window a student keeps open all day next to other dense apps — they
+ * read as cramped the moment the exact same pixels show up in a browser tab next to
+ * ChatGPT/Claude.ai's own much more generous type scale and whitespace.
+ *
+ * Deliberately conservative about WHICH tokens this touches: font sizes, radius, and
+ * border color are pure "how it reads" changes with near-zero layout-breaking risk.
+ * The --space-* scale (actual padding/gaps throughout a large, already-built component
+ * tree) is NOT touched here — redefining it site-wide risks real overlap/clipping bugs
+ * across dozens of panels this file can't practically re-verify pixel-by-pixel in one
+ * pass; loosening specific high-traffic containers' own spacing is follow-up work, not
+ * a token-level change.
+ *
+ * Imported in main.tsx AFTER the shared bootstrap, so it cascades on top of App.css's
+ * own :root block — and only apps/web ever loads this file at all; apps/desktop's own
+ * Tauri build is completely untouched by it. */
+
+:root {
+  /* A real web type scale, not a dense-desktop-window one. */
+  --font-size-2xs: 11.5px;
+  --font-size-xs: 12.5px;
+  --font-size-sm: 14px;
+  --font-size-base: 15px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 23px;
+  --font-size-2xl: 32px;
+
+  /* Softer corners read as "web app," not "utility window." */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  /* Lighter borders — real web chat products lean on whitespace and subtle shadow to
+     separate panes, not a visible line around every single container. */
+  --color-border: #e8dcc0;
+  --color-border-2: #efe5cd;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-border: #332a1e;
+    --color-border-2: #281f16;
+  }
+}

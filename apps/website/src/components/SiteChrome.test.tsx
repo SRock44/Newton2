@@ -23,11 +23,11 @@ describe("SiteHeader", () => {
     render(<SiteHeader />);
     expect(screen.getByRole("link", { name: "Sign In" })).toHaveAttribute(
       "href",
-      "http://localhost:5173/?auth=login"
+      "http://localhost:3000/chat?auth=login"
     );
     expect(screen.getByRole("link", { name: "Sign Up" })).toHaveAttribute(
       "href",
-      "http://localhost:5173/?auth=register"
+      "http://localhost:3000/chat?auth=register"
     );
   });
 });

@@ -94,22 +94,18 @@ function TitleBar({ title, variant = "main" }: TitleBarProps) {
     }
   }
 
-  // No real OS window to draw chrome for in a browser tab — the browser's own chrome
-  // already provides minimize/maximize/close, and there's nothing for a drag region to
-  // do. Keep just the brand/title strip (dropping `data-tauri-drag-region`, which is
-  // inert outside Tauri anyway, for clarity) so the app still reads as "Newton" at a
-  // glance, the same way the Tauri build's bar does.
+  // No real OS window to draw chrome for in a browser tab, and — unlike the first
+  // attempt at this, a plain brand/title strip — nothing to show here that isn't
+  // already shown better elsewhere: the browser's own tab/chrome already does minimize/
+  // maximize/close, and the sidebar (App.tsx) already carries the real "Newton" brand
+  // mark a few pixels below where this would sit. Real feedback on that first attempt,
+  // product owner verbatim: "looks like the desktop app in a web browser." A redundant
+  // strip repeating the brand (and the current page's title, which a browser tab/
+  // breadcrumb already covers better) was exactly the kind of leftover desktop-window
+  // chrome that gave it away — a real web app doesn't draw its own title bar. Rendering
+  // nothing at all, not a smaller version of the same thing, is the actual fix.
   if (!isTauri()) {
-    return (
-      <div className="titlebar titlebar--web">
-        <div className="titlebar-brand">
-          <span className="titlebar-mark">
-            <NewtonMark size={13} />
-          </span>
-          <span className="titlebar-title">{title}</span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // macOS convention puts window controls as three colored "traffic light" dots in the

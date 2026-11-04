@@ -1,3 +1,5 @@
+import { isTauri } from "./platform";
+
 const STUDY_REMINDERS_KEY = "newton:prefs:studyReminders";
 
 /** Whether to nag the student (a native OS notification, once per sign-in — see
@@ -46,10 +48,18 @@ const CONTEXT_PANEL_COLLAPSED_KEY = "newton:prefs:contextPanelCollapsed";
 
 /** Whether ContextPanel.tsx (the right "Newton context" rail) is collapsed to a slim
  * rail — window chrome, same rationale/pattern as getSidebarCollapsed above, just for
- * the opposite edge of the window. Defaults to expanded. */
+ * the opposite edge of the window. Defaults to expanded on desktop — a real OS window a
+ * student resizes/maximizes themselves has room for a persistent third column. Defaults
+ * to COLLAPSED on the web (nothing stored yet): a browser tab is narrower by default and
+ * a three-column dense dashboard was exactly the specific thing real feedback on apps/web
+ * called out ("just looks like the desktop app in a web browser") — this is still the
+ * exact same panel with the exact same content, one click away via its own expand
+ * control, not removed. */
 export function getContextPanelCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(CONTEXT_PANEL_COLLAPSED_KEY) === "true";
+    const stored = window.localStorage.getItem(CONTEXT_PANEL_COLLAPSED_KEY);
+    if (stored !== null) return stored === "true";
+    return !isTauri();
   } catch {
     return false;
   }

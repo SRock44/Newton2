@@ -100,7 +100,7 @@ describe("TokenManager background refresh", () => {
 });
 
 /** apps/web's redirect-based sign-in — the browser equivalent of signInWithBrowser's
- * loopback-listener flow above, used by the new `/callback` route. A plain object stands
+ * loopback-listener flow above, used by apps/web, mounted at its one fixed `/chat` path. A plain object stands
  * in for `window.location` throughout (not the real jsdom Location): jsdom doesn't
  * implement real navigation, and assigning `.href`/`.search` on the real one logs a noisy
  * "not implemented" error even though the assignment itself still "works" — a stand-in
@@ -136,7 +136,7 @@ describe("beginWebSignIn / completeWebSignIn (apps/web's redirect-based OAuth fl
     expect(url.pathname).toBe("/realms/newton/protocol/openid-connect/auth");
     expect(url.searchParams.get("client_id")).toBe("newton-api");
     expect(url.searchParams.get("response_type")).toBe("code");
-    expect(url.searchParams.get("redirect_uri")).toBe("https://app.newton.best/callback");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://app.newton.best/chat");
     expect(url.searchParams.get("scope")).toBe("openid offline_access");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("state")).toBe(state);
@@ -148,7 +148,7 @@ describe("beginWebSignIn / completeWebSignIn (apps/web's redirect-based OAuth fl
     const url = new URL(window.location.href);
     expect(url.pathname).toBe("/realms/newton/protocol/openid-connect/registrations");
     expect(url.searchParams.get("client_id")).toBe("newton-api");
-    expect(url.searchParams.get("redirect_uri")).toBe("https://app.newton.best/callback");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://app.newton.best/chat");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 
@@ -167,7 +167,7 @@ describe("beginWebSignIn / completeWebSignIn (apps/web's redirect-based OAuth fl
     const body = fetchMock.mock.calls[0]![1]!.body as URLSearchParams;
     expect(body.get("code")).toBe("abc123");
     expect(body.get("code_verifier")).toBe(verifierBefore);
-    expect(body.get("redirect_uri")).toBe("https://app.newton.best/callback");
+    expect(body.get("redirect_uri")).toBe("https://app.newton.best/chat");
     expect(window.sessionStorage.getItem("newton:auth:pkce_verifier")).toBeNull();
     expect(window.sessionStorage.getItem("newton:auth:pkce_state")).toBeNull();
   });
