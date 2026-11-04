@@ -25,6 +25,41 @@ KEYCLOAK_CLIENT_ID = "newton-api"
 HERMETIC_TESTS = os.environ.get("HERMETIC_TESTS", "").lower() in ("1", "true", "yes")
 
 
+def pytest_configure(config) -> None:  # noqa: ARG001 -- pytest's own hook signature
+    """Hard, fail-closed gate: refuses to even START this test session unless
+    Settings.env == "dev". Runs once, before any fixture or test, via pytest's own
+    startup hook (not a fixture -- this has to fire before db_session/keycloak_token
+    get a chance to open a single connection).
+
+    Real incident this guards against: a fixture bug (test_voice_router.py's
+    pro_student, now fixed) silently reset the shared dev account's permanent Pro
+    plan to free on every full-suite run, surfacing as "Settings shows Free plan" on
+    a real sign-in. That bug's blast radius was the DEV box only -- production
+    (infra/README.md's "Production box" section) is a structurally separate host with
+    its own independently-migrated Postgres, never reachable from here -- but the
+    product owner's own instruction after that incident was unambiguous: no test
+    should be able to mutate real, relied-upon account state at all, on any box this
+    could ever plausibly be pointed at. This is that boundary, enforced in code
+    instead of left as a convention every new fixture has to remember on its own.
+
+    This relies on one assumption this file cannot itself verify: that a non-dev
+    deployment's own .env actually sets ENV to something other than "dev" --
+    documented as a requirement in app/core/config.py's check_no_default_secrets
+    (a real deployment "must set ENV... or it refuses to start"), but only actually
+    true if that requirement was followed when the box was set up. If this test suite
+    is ever pointed at a target where that wasn't done, this guard can't see it --
+    confirm it directly on that box rather than trusting this check alone.
+    """
+    settings = get_settings()
+    if settings.env != "dev":
+        raise RuntimeError(
+            f"Refusing to run this test suite: Settings.env is {settings.env!r}, not 'dev'. "
+            "This suite's fixtures mutate real User rows (plan, focus/learn mode, consent, "
+            "stripe_customer_id, calendar_feed_token, edu verification...) on whatever account "
+            "it authenticates as -- never run it anywhere ENV isn't explicitly 'dev'."
+        )
+
+
 @pytest_asyncio.fixture
 async def keycloak_token() -> str:
     """The bearer token every other auth fixture (auth_headers, and anything deriving
