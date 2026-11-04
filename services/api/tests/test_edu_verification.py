@@ -11,6 +11,7 @@ monkeypatch can't reach into. The plain status-check endpoint (no email involved
 the live http_client fixture like every other simple router test.
 """
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -294,7 +295,7 @@ async def test_full_start_then_confirm_round_trip_through_the_real_router(
 
     # Pull the real code back out of the email body sent — the test has no other way to
     # know it (it's randomly generated), same as a real student reading their inbox.
-    code = next(word for word in sent[0].split() if word.isdigit() and len(word) == 6)
+    code = re.search(r"\b(\d{6})\b", sent[0]).group(1)
 
     wrong_resp = await inprocess_client.post(
         "/account/edu-verification/confirm", json={"code": "000000"}, headers=auth_headers
