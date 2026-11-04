@@ -1,0 +1,207 @@
+.demo {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  text-align: left;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border-2);
+  background-color: var(--color-surface-2);
+}
+
+.tab {
+  flex: 1;
+  padding: 14px 10px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--color-text);
+  background-color: var(--color-surface);
+}
+
+.tabActive {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  background-color: var(--color-surface);
+}
+
+.panel {
+  padding: 24px 24px 28px;
+  min-height: 260px;
+}
+
+.kicker {
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+  margin: 0 0 16px;
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: demo-fade-in 0.25s ease both;
+}
+
+@keyframes demo-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bubbleUser {
+  align-self: flex-end;
+  max-width: 85%;
+  background-color: var(--color-surface-2);
+  color: var(--color-text);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.bubbleNewton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+}
+
+.bubbleNewton p {
+  margin: 0;
+}
+
+.bubbleNewton code {
+  font-family: var(--font-mono, monospace);
+  background-color: var(--color-surface-2);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.fine {
+  color: var(--color-text-faint);
+  font-size: 12px;
+}
+
+.verifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-success-tint);
+  color: var(--color-success);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.verifiedIcon {
+  width: 13px;
+  height: 13px;
+}
+
+.yourTurn {
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-accent-tint-strong);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.yourTurn p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.yourTurnLabel {
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin-bottom: 6px !important;
+}
+
+.flashcard {
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 20px 18px;
+  text-align: center;
+}
+
+.flashcardLabel {
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent-2-ink);
+  margin: 0 0 10px;
+}
+
+.flashcardFront {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+  margin: 0 0 10px;
+}
+
+.flashcardHint {
+  font-size: 12px;
+  color: var(--color-text-faint);
+  margin: 0;
+}
+
+.weakArea {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  padding: 10px 2px 0;
+}
+
+.weakDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-accent-3);
+}
+
+@media (max-width: 640px) {
+  .tab {
+    font-size: 12px;
+    padding: 12px 6px;
+  }
+
+  .panel {
+    padding: 20px 18px 24px;
+  }
+}

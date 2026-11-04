@@ -71,90 +71,98 @@ describe("Home", () => {
       expect(screen.getByText(/instead of an llm guessing/i)).toBeInTheDocument();
     });
 
-    it("renders a visible primary download CTA", () => {
+    it("renders a visible primary 'Chat Now' CTA — chatting needs no download anymore", () => {
       render(<Home />);
-      expect(screen.getAllByRole("link", { name: /download newton/i }).length).toBeGreaterThan(
-        0
-      );
+      const chatLinks = screen.getAllByRole("link", { name: "Chat Now" });
+      expect(chatLinks.length).toBeGreaterThan(0);
+      // Same real apps/web sign-in link the header's Sign In uses — see env.ts's
+      // appAuthUrl. Chat Now doesn't presume the visitor is new, so it's "login" mode
+      // (Keycloak's hosted page covers both a new and returning student from there).
+      chatLinks.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:5173/?auth=login"));
     });
 
-    it("Download Newton leads to the real download page, not a stub anymore (Phase 4 is built)", () => {
+    it("Download is a real, secondary CTA — not the primary ask anymore now that chatting needs no download", () => {
       render(<Home />);
-      const downloadLinks = screen.getAllByRole("link", { name: /download newton/i });
-      for (const link of downloadLinks) {
-        expect(link).toHaveAttribute("href", "/download");
-      }
+      const downloadLinks = screen.getAllByRole("link", { name: "Download" });
+      expect(downloadLinks.length).toBeGreaterThan(0);
+      downloadLinks.forEach((link) => expect(link).toHaveAttribute("href", "/download"));
     });
 
-    it("mentions the free-to-start note", () => {
+    it("mentions the free-to-start note, and that no download is required to chat", () => {
       render(<Home />);
       expect(screen.getByText(/free to start/i)).toBeInTheDocument();
+      expect(screen.getByText(/no download required/i)).toBeInTheDocument();
     });
 
-    it("links the secondary CTA to the walkthrough, not the old removed anchor", () => {
+    it("pounds heavy on the Agentic Learning Environment positioning with a real badge above the eyebrow", () => {
       render(<Home />);
-      expect(screen.getByRole("link", { name: /see how it works/i })).toHaveAttribute(
-        "href",
-        "#demo"
+      // Appears twice by design (the hero badge, and MomentsShowcase's own eyebrow below
+      // it) — "pound heavy," not "mention once."
+      const mentions = screen.getAllByText("The first Agentic Learning Environment");
+      expect(mentions.length).toBeGreaterThanOrEqual(2);
+      const badge = mentions[0]!;
+      const eyebrow = screen.getByText("Verified, not vibes");
+      // The hero badge sits above the "Verified, not vibes" eyebrow, not replacing it.
+      // eslint-disable-next-line no-bitwise
+      expect(badge.compareDocumentPosition(eyebrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("renders the real, interactive demo widget directly under the hero copy, not a video", () => {
+      render(<Home />);
+      const tabs = screen.getAllByRole("tab");
+      expect(tabs.length).toBe(3);
+      expect(screen.getByRole("tab", { name: "Real computation" })).toHaveAttribute(
+        "aria-selected",
+        "true"
       );
     });
   });
 
-  describe("the app walkthrough (Phase 3.9: replaces the chat-transcript demo, the Verified/GradedPaper section, and the Notepad section)", () => {
-    it("renders immediately after the hero, before every other section", () => {
+  describe("Phase 3.24: the two autoplaying videos are gone, replaced by a real interactive demo + real screenshots", () => {
+    it("renders zero <video> elements anywhere on the page", () => {
+      render(<Home />);
+      expect(document.querySelectorAll("video")).toHaveLength(0);
+    });
+
+    it("MomentsShowcase renders real screenshots in real order, after the hero and its interactive demo", () => {
       render(<Home />);
       const headings = screen
         .getAllByRole("heading", { level: 1 })
         .concat(screen.getAllByRole("heading", { level: 2 }));
       const headingTexts = headings.map((h) => h.textContent ?? "");
       const heroIndex = headingTexts.findIndex((t) => /checks its work/i.test(t));
-      const demoIndex = headingTexts.findIndex((t) => /this is the app/i.test(t));
+      const momentsIndex = headingTexts.findIndex((t) => /not a pitch/i.test(t));
       const featuresIndex = headingTexts.findIndex((t) => /what it does/i.test(t));
       expect(heroIndex).toBeGreaterThanOrEqual(0);
-      expect(demoIndex).toBeGreaterThan(heroIndex);
-      expect(demoIndex).toBeLessThan(featuresIndex);
+      expect(momentsIndex).toBeGreaterThan(heroIndex);
+      expect(momentsIndex).toBeLessThan(featuresIndex);
     });
 
-    it("states the Agentic Learning Environment positioning once, plainly", () => {
+    it("every screenshot is real, captured product UI with a real file under /moments, not an invented mockup", () => {
       render(<Home />);
-      expect(
-        screen.getByText(/the first agentic learning environment/i)
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/built to teach you, not do it for you/i)
-      ).toBeInTheDocument();
+      const images = screen.getAllByRole("img").filter((img) => img.getAttribute("src")?.startsWith("/moments/"));
+      expect(images.length).toBe(4);
+      images.forEach((img) => expect(img.getAttribute("alt")?.length).toBeGreaterThan(20));
     });
 
-    it("is a single continuous film, not a set of slides", () => {
+    it("captions ground every screenshot in a real, specific mechanism, not generic marketing language", () => {
       render(<Home />);
-      const videos = document.querySelectorAll("#demo video");
-      expect(videos).toHaveLength(1);
-      expect(videos[0]).toHaveAttribute("src", "/demo/newton-showcase.mp4");
-      expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    });
-
-    it("has exactly two films: the product film, and a separate one for research-level work", () => {
-      render(<Home />);
-      expect(document.querySelectorAll("video")).toHaveLength(2);
-      expect(document.querySelector("#demo-engineering")).toBeNull();
-      expect(document.querySelector("#demo video")).toHaveAttribute(
-        "poster",
-        "/demo/newton-showcase-poster.jpg"
-      );
-      expect(document.querySelector("#demo-research video")).toHaveAttribute(
-        "src",
-        "/demo/newton-research.mp4"
-      );
+      expect(screen.getByText(/real computation, not a guess/i)).toBeInTheDocument();
+      expect(screen.getByText(/pushes back until it clicks/i)).toBeInTheDocument();
+      expect(screen.getByText(/a full study session, from your own material/i)).toBeInTheDocument();
+      expect(screen.getByText(/research-grade output/i)).toBeInTheDocument();
     });
   });
 
-  describe("capability list (Phase 3.8: replaces the old 13-card, 5-subgroup feature grid)", () => {
-    it("renders a tight single-line-per-item list, not a card grid", () => {
+  describe("capability cards (Phase 3.24: an icon-card grid, same real claims as the plain list it replaced)", () => {
+    it("renders six real capability cards, each with an icon, a title, and the same grounded claim as before", () => {
       render(<Home />);
       expect(screen.getByRole("heading", { name: /what it does/i })).toBeInTheDocument();
+      expect(screen.getByText("Exact computation")).toBeInTheDocument();
       expect(
         screen.getByText(/symbolic math, linear algebra, chemistry, and statistics/i)
       ).toBeInTheDocument();
+      expect(screen.getByText("Spaced repetition")).toBeInTheDocument();
       expect(
         screen.getByText(/fsrs-scheduled flashcards, practice exams, and a weak-areas engine/i)
       ).toBeInTheDocument();
@@ -162,7 +170,8 @@ describe("Home", () => {
 
     it("describes server-enforced Focus Mode, not just a prompt asking nicely", () => {
       render(<Home />);
-      expect(screen.getByText(/focus mode holds back the answer until you ask/i)).toBeInTheDocument();
+      expect(screen.getByText("Focus Mode")).toBeInTheDocument();
+      expect(screen.getByText(/holds back the answer until you ask/i)).toBeInTheDocument();
       expect(screen.getByText(/not politely requested of the model/i)).toBeInTheDocument();
     });
 

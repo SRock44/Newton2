@@ -354,6 +354,23 @@
   margin: 0 0 14px;
 }
 
+/* The category-claim badge, above the "Verified, not vibes" eyebrow — not replacing it,
+   stacked above it. Product owner, verbatim: "WE NEED TO POUND HEAVY INTO AGENTIC
+   LEARNING ENVIRONMENT." */
+.aleBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  margin: 0 0 20px;
+  border: 1px solid var(--color-accent-tint-strong);
+  border-radius: var(--radius-full);
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
 .title {
   font-size: 54px;
   line-height: 1.06;
@@ -401,7 +418,13 @@
   color: var(--color-text-faint);
 }
 
-/* ---------- The real app demo, immediately below the hero copy ---------- */
+/* ---------- The real, interactive app demo, immediately below the hero copy ---------- */
+
+.heroDemo {
+  position: relative;
+  width: 100%;
+  margin-top: 48px;
+}
 
 /* ---------------------------------------------------------------------
  * Generic section shell
@@ -439,30 +462,79 @@
 }
 
 /* ---------------------------------------------------------------------
- * Capability list — Phase 3.8 replaces the old 13-card, 5-subgroup feature
- * grid with a tight, single-line-per-item list. No icon, no separate
- * heading+blurb per group — the list itself is the content.
+ * Capability cards — an icon-card grid. See page.tsx's CAPABILITIES
+ * comment for why this replaced the plain text list a previous pass
+ * had cut the old 13-card/5-subgroup grid down to — reuses the same
+ * card/hover treatment the Pro section below already establishes.
  * ------------------------------------------------------------------- */
 
-.capabilityList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-width: 760px;
-  margin-left: auto;
-  margin-right: auto;
+.capabilityGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
-.capabilityItem {
-  padding: 18px 4px;
-  font-size: var(--font-size-md);
+.capabilityCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px 22px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.capabilityCard:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-accent-tint-strong);
+  transform: translateY(-3px);
+}
+
+.capabilityIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+}
+
+.capabilityIcon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.capabilityTitle {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text);
-  line-height: 1.5;
-  border-top: 1px solid var(--color-border-2);
+  margin: 0;
 }
 
-.capabilityList > .capabilityItem:first-child {
-  border-top: none;
+.capabilityBody {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  .capabilityGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .capabilityGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------------------------------------------------------------------

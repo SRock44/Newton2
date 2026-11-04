@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
-import AppWalkthrough from "@/components/AppWalkthrough";
-import ResearchFilmSection from "@/components/ResearchFilmSection";
+import InteractiveDemo from "@/components/InteractiveDemo";
+import MomentsShowcase from "@/components/MomentsShowcase";
 import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
 import { appAuthUrl } from "@/lib/env";
 
@@ -27,13 +27,27 @@ import { appAuthUrl } from "@/lib/env";
 // mobile-nav bug (no way to reach Features/Pro/FAQ below 720px), and rewrote the
 // worst instances of the repeated "[Claim]. Not/Never [alternative]." copy skeleton.
 //
-// Phase 3.9 (this pass): the chat-transcript hero demo, the separate "Verified, not
-// vibes"/GradedPaper section, and the separate Notepad section are replaced by one
-// Supademo/Arcade-style stepped walkthrough (src/components/AppWalkthrough.tsx) —
-// product owner, verbatim: "show off THE ACTUAL USEFUL FEATURES... WE ARE THE FIRST
-// EVER AGENTIC LEARNING ENVIRONMENT." Three sections become one; see
-// WEBSITE-ROADMAP.md's "Phase 3.9" entry for what changed and the real before/after
-// numbers.
+// Phase 3.9: the chat-transcript hero demo, the separate "Verified, not vibes"/
+// GradedPaper section, and the separate Notepad section were replaced by one
+// Supademo/Arcade-style stepped walkthrough (AppWalkthrough.tsx) — product owner,
+// verbatim: "show off THE ACTUAL USEFUL FEATURES... WE ARE THE FIRST EVER AGENTIC
+// LEARNING ENVIRONMENT." Three sections became one; see WEBSITE-ROADMAP.md's
+// "Phase 3.9" entry for the real before/after numbers at the time.
+//
+// Phase 3.24 (this pass): that walkthrough (and the later ResearchFilmSection, both
+// built on FilmPlayer — all three now deleted) didn't survive contact with the product
+// owner actually looking at the live page: "far too PLAIN... like a shitty ass
+// slideshow... remove the video stuff, use images or interactive user experiences...
+// make the app look like a WEB APP, not just a MIRROR OF THE DESKTOP APP." Two
+// autoplaying screen-recordings back to back, directly under a hero with no visual at
+// all, was the specific, literal thing reading as "a slideshow." Replaced by
+// InteractiveDemo.tsx (a real, clickable, web-native component, not a recording) right
+// under the hero copy, and MomentsShowcase.tsx (four real screenshots — still the real
+// product, just static images instead of video) where the two film sections were. The
+// plain-text capability list became an icon-card grid for the same "too plain" reason.
+// Also: "POUND HEAVY INTO AGENTIC LEARNING ENVIRONMENT" — a badge above the eyebrow,
+// not just a buried walkthrough-section kicker — and a "Chat Now" primary CTA (apps/web
+// now exists; chatting with Newton no longer requires a download at all).
 
 /** A hand-drawn-style wavy underline, dropped beneath a key phrase. Purely decorative. */
 function Squiggle() {
@@ -85,20 +99,106 @@ function MenuIcon() {
   );
 }
 
-// A tight, single-line capability list — Phase 3.8 replaces the old 13-card, 5-subgroup
-// feature grid (a separate heading + blurb + 2-column card grid per subgroup) with this,
-// per the density audit's finding that it was the worst instance of the repeated
-// icon-less "heading + paragraph" card pattern on the page. Each line still traces back
-// to a real, specific tool (see the removed FEATURE_GROUPS' history in git for exact
-// grounding, unchanged by this rewrite — only the presentation and the copy voice
-// changed, not the underlying claims).
-const CAPABILITIES = [
-  "Symbolic math, linear algebra, chemistry, and statistics, solved exactly.",
-  "Runs your code against test cases and checks proof structure step by step.",
-  "FSRS-scheduled flashcards, practice exams, and a weak-areas engine that closes the loop.",
-  "A semester-spanning document library with cross-document synthesis and inline annotation.",
-  "Focus Mode holds back the answer until you ask. Enforced server-side, not politely requested of the model.",
-  "Spoken conversation practice and production-mode flashcards for language courses.",
+/** Small, restrained line-icon glyphs — one per capability card below. Pure inline SVG,
+ * no image assets, matching this file's existing Squiggle/CornerArrow convention. */
+function IconExact() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 14l3 3 6-11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13 6h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M13 12h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M13 18h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconCode() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9 6L4 12l5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M15 6l5 6-5 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconCards() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="6" y="4" width="13" height="9" rx="1.6" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="4" y="9" width="13" height="11" rx="1.6" fill="var(--color-surface)" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function IconLibrary() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 4.5h8.5a1.5 1.5 0 011.5 1.5v14l-5.5-2.5L4 20V6a1.5 1.5 0 011-1.4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M15 7h4.5a1.5 1.5 0 011.5 1.5v12L17.5 18" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconFocus() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M2 12c2.5-4.2 6-6.3 10-6.3s7.5 2.1 10 6.3c-2.5 4.2-6 6.3-10 6.3S4.5 16.2 2 12z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function IconVoice() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M5 11a7 7 0 0014 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M12 18v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// An icon-card grid — Phase 3.8 replaced the old 13-card, 5-subgroup feature grid with a
+// tight text-only list on the theory that icons/cards were the worst instance of a
+// repeated pattern; the product owner's own later review ("far too plain... like a
+// slideshow") found the opposite problem — a six-line bulleted list with zero visual
+// structure was the single biggest contributor to the page reading as plain. This
+// restores a card per capability, but as ONE clean pattern (small line icon + short
+// title + the same real claim as body copy), not the old 13-card/5-subgroup repetition —
+// and reuses the exact card/hover treatment the Pro section below already establishes,
+// not a new visual language. Every claim is unchanged from the plain-list version; only
+// the presentation changed.
+const CAPABILITIES: { icon: ReactNode; title: string; body: string }[] = [
+  {
+    icon: <IconExact />,
+    title: "Exact computation",
+    body: "Symbolic math, linear algebra, chemistry, and statistics — solved exactly, not predicted.",
+  },
+  {
+    icon: <IconCode />,
+    title: "Checks your work",
+    body: "Runs your code against real test cases and checks proof structure step by step.",
+  },
+  {
+    icon: <IconCards />,
+    title: "Spaced repetition",
+    body: "FSRS-scheduled flashcards, practice exams, and a weak-areas engine that closes the loop.",
+  },
+  {
+    icon: <IconLibrary />,
+    title: "A real document library",
+    body: "A semester-spanning library with cross-document synthesis and inline annotation.",
+  },
+  {
+    icon: <IconFocus />,
+    title: "Focus Mode",
+    body: "Holds back the answer until you ask — enforced server-side, not politely requested of the model.",
+  },
+  {
+    icon: <IconVoice />,
+    title: "Voice practice",
+    body: "Spoken conversation practice and production-mode flashcards for language courses.",
+  },
 ];
 
 // Free tier, cut to the 3 items that matter most (Part 1's target: 3 max, down from 5).
@@ -214,12 +314,15 @@ export default function Home() {
       <main id="main">
         {/* ---------------------------------------------------------------- */}
         {/* Hero. Product owner, verbatim: "The demo should be on the        */}
-        {/* LANDING page once once you go to the website." AppWalkthrough    */}
-        {/* (the app-in-use walkthrough) is the very next section, no other  */}
-        {/* section between it and the hero.                                */}
+        {/* LANDING page once once you go to the website" — now an          */}
+        {/* InteractiveDemo widget directly beneath the hero copy, not a    */}
+        {/* video scrolled to. "WE NEED TO POUND HEAVY INTO AGENTIC         */}
+        {/* LEARNING ENVIRONMENT and... a 'CHAT NOW' button" — the badge    */}
+        {/* above the eyebrow and the primary CTA below, respectively.      */}
         {/* ---------------------------------------------------------------- */}
         <div className={styles.heroShell}>
           <section className={styles.hero}>
+            <p className={styles.aleBadge}>The first Agentic Learning Environment</p>
             <p className={styles.eyebrow}>Verified, not vibes</p>
             <h1 className={styles.title}>
               An AI tutor that{" "}
@@ -235,32 +338,34 @@ export default function Home() {
               whole semester.
             </p>
             <div className={styles.heroActions}>
-              <a href="/download" className={styles.btnPrimary}>
-                Download Newton
+              <a href={appAuthUrl("login")} className={styles.btnPrimary}>
+                Chat Now
               </a>
-              <a href="#demo" className={styles.btnSecondary}>
-                See how it works
+              <a href="/download" className={styles.btnSecondary}>
+                Download
               </a>
               <CornerArrow className={styles.cornerArrow} />
             </div>
-            <p className={styles.heroNote}>Windows and macOS. Free to start.</p>
+            <p className={styles.heroNote}>
+              No download required — chat right in your browser. Free to start.
+            </p>
+
+            <div className={styles.heroDemo}>
+              <InteractiveDemo />
+            </div>
           </section>
         </div>
 
         {/* ---------------------------------------------------------------- */}
-        {/* The app walkthrough — replaces the old chat-transcript demo, the */}
-        {/* "Verified, not vibes"/GradedPaper section, and the Notepad       */}
-        {/* section with one Supademo-style stepped tour. See               */}
-        {/* AppWalkthrough.tsx's own header comment.                        */}
+        {/* Real, static screenshots of the real product — replaces the two  */}
+        {/* autoplaying videos (AppWalkthrough/ResearchFilmSection) that     */}
+        {/* used to sit here. See MomentsShowcase.tsx's own header comment.  */}
         {/* ---------------------------------------------------------------- */}
-        <AppWalkthrough />
-
-        {/* A separate film for higher-level work: notes + synopsis -> an arXiv-style paper. */}
-        <ResearchFilmSection />
+        <MomentsShowcase />
 
         {/* ---------------------------------------------------------------- */}
-        {/* Capability list — a tight, single-line-per-item list replacing   */}
-        {/* the old 13-card / 5-subgroup feature grid.                      */}
+        {/* Capability cards — an icon-card grid, see CAPABILITIES' own comment for why  */}
+        {/* this replaced the plain text list a previous pass had cut it down to.        */}
         {/* ---------------------------------------------------------------- */}
         <section id="features" className={`${styles.section} ${styles.sectionWarm}`} aria-labelledby="features-heading">
           <Reveal className={styles.sectionHead}>
@@ -270,15 +375,15 @@ export default function Home() {
             </h2>
           </Reveal>
 
-          <Reveal>
-            <ul className={styles.capabilityList}>
-              {CAPABILITIES.map((item) => (
-                <li key={item} className={styles.capabilityItem}>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </Reveal>
+          <div className={styles.capabilityGrid}>
+            {CAPABILITIES.map((item, i) => (
+              <Reveal key={item.title} className={styles.capabilityCard} delayMs={i * 60}>
+                <span className={styles.capabilityIcon}>{item.icon}</span>
+                <h3 className={styles.capabilityTitle}>{item.title}</h3>
+                <p className={styles.capabilityBody}>{item.body}</p>
+              </Reveal>
+            ))}
+          </div>
         </section>
 
         {/* ---------------------------------------------------------------- */}
