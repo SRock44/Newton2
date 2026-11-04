@@ -174,3 +174,43 @@ describe("TitleBar (macOS)", () => {
     expect(container.querySelector(".titlebar-brand--center")).toBeInTheDocument();
   });
 });
+
+// apps/web's case: no Tauri bridge at all (test/setup.ts stubs one on by default for
+// this otherwise-desktop suite; removed here for just these tests) — there's no real OS
+// window to draw chrome for, so TitleBar should render just the brand/title strip and
+// never call the (mocked) Tauri window API.
+describe("TitleBar (web — no Tauri bridge)", () => {
+  beforeEach(() => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    minimize.mockClear();
+    toggleMaximize.mockClear();
+    close.mockClear();
+    isMaximized.mockClear();
+    onResized.mockClear();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, writable: true, configurable: true });
+  });
+
+  it("renders only the brand/title strip — no minimize/maximize/close controls", () => {
+    render(<TitleBar title="Newton" />);
+    expect(screen.getByText("Newton")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /minimize/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /maximize|restore/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /close/i })).not.toBeInTheDocument();
+  });
+
+  it("never calls the Tauri window API — there's no real window to query or control", () => {
+    render(<TitleBar title="Newton" />);
+    expect(isMaximized).not.toHaveBeenCalled();
+    expect(onResized).not.toHaveBeenCalled();
+  });
+
+  it("renders the same way regardless of OS (no traffic lights even on a Mac user agent)", () => {
+    const platformSpy = vi.spyOn(window.navigator, "platform", "get").mockReturnValue("MacIntel");
+    render(<TitleBar title="Newton" />);
+    expect(document.querySelector(".traffic-light")).not.toBeInTheDocument();
+    platformSpy.mockRestore();
+  });
+});

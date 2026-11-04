@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ApiError,
   connectClassroom,
@@ -9,6 +8,7 @@ import {
   listStudyPlan,
   syncClassroom,
 } from "../api";
+import { openExternal } from "../lib/platform";
 import type { ClassroomStatus, StudyPlanItem } from "../types";
 
 interface StudyPlanPanelProps {
@@ -97,7 +97,7 @@ function StudyPlanPanel({ token, onClose }: StudyPlanPanelProps) {
     setError(null);
     try {
       const url = await connectClassroom(token);
-      await openUrl(url);
+      await openExternal(url);
 
       const interval = window.setInterval(async () => {
         try {

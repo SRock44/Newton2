@@ -1,5 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ApiError, KEYCLOAK_URL } from "./api";
 
 export interface TokenSet {
@@ -16,7 +14,16 @@ export interface TokenSet {
 // friction this sidesteps entirely. Must match a redirect URI registered on the
 // "newton-api" Keycloak client.
 const OAUTH_CALLBACK_PORT = 58500;
-const REDIRECT_URI = `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/callback`;
+const DESKTOP_REDIRECT_URI = `http://127.0.0.1:${OAUTH_CALLBACK_PORT}/callback`;
+
+// apps/web's equivalent of the above: there's no loopback listener in a browser, so the
+// redirect URI is just this same page, at a dedicated route that reads `?code&state` off
+// the URL once Keycloak redirects back to it (see beginWebSignIn/completeWebSignIn below).
+// Must ALSO be registered as a redirect URI on the "newton-api" Keycloak client, same as
+// the desktop one above — see infra/keycloak/realm-newton.json.
+function webRedirectUri(): string {
+  return `${window.location.origin}/callback`;
+}
 
 // Refresh this long before actual expiry so a slow network call never loses the race
 // against the token dying mid-request.
@@ -84,7 +91,7 @@ async function tokensFromResponse(res: Response): Promise<TokenSet> {
   };
 }
 
-async function exchangeCodeForTokens(code: string, verifier: string): Promise<TokenSet> {
+async function exchangeCodeForTokens(code: string, verifier: string, redirectUri: string): Promise<TokenSet> {
   const res = await fetch(`${KEYCLOAK_URL}/realms/newton/protocol/openid-connect/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -92,7 +99,7 @@ async function exchangeCodeForTokens(code: string, verifier: string): Promise<To
       grant_type: "authorization_code",
       client_id: "newton-api",
       code,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
       code_verifier: verifier,
     }),
   });
@@ -120,26 +127,39 @@ interface OAuthCallbackResult {
   error?: string;
 }
 
-/** Opens the system browser to Keycloak's own hosted login page — which, now that
- * Google is registered as an Identity Provider on this realm, offers "Sign in with
- * Google" alongside the standard username/password fields, without this app needing
- * its own custom login form for either. Resolves once the browser redirects back to
- * the loopback listener with an authorization code, and exchanges it for tokens. */
-export async function signInWithBrowser(): Promise<TokenSet> {
-  const verifier = randomString(48);
-  const challenge = await pkceChallenge(verifier);
-  const state = randomString(16);
-
+/** Shared by both the desktop and web sign-in flows below — everything about the
+ * authorization request is identical between them; only how the browser gets opened and
+ * how the redirect comes back differs. */
+function buildAuthUrl(redirectUri: string, challenge: string, state: string): string {
   const authUrl = new URL(`${KEYCLOAK_URL}/realms/newton/protocol/openid-connect/auth`);
   authUrl.searchParams.set("client_id", "newton-api");
   authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+  authUrl.searchParams.set("redirect_uri", redirectUri);
   // offline_access is what makes "stay signed in" actually work — see the comment on
   // TOKENS_STORAGE_KEY above.
   authUrl.searchParams.set("scope", "openid offline_access");
   authUrl.searchParams.set("code_challenge", challenge);
   authUrl.searchParams.set("code_challenge_method", "S256");
   authUrl.searchParams.set("state", state);
+  return authUrl.toString();
+}
+
+/** Opens the system browser to Keycloak's own hosted login page — which, now that
+ * Google is registered as an Identity Provider on this realm, offers "Sign in with
+ * Google" alongside the standard username/password fields, without this app needing
+ * its own custom login form for either. Resolves once the browser redirects back to
+ * the loopback listener with an authorization code, and exchanges it for tokens.
+ *
+ * Desktop (Tauri) only — apps/web uses beginWebSignIn/completeWebSignIn instead, since
+ * there's no loopback listener to bind in a browser. */
+export async function signInWithBrowser(): Promise<TokenSet> {
+  const verifier = randomString(48);
+  const challenge = await pkceChallenge(verifier);
+  const state = randomString(16);
+  const authUrl = buildAuthUrl(DESKTOP_REDIRECT_URI, challenge, state);
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
 
   // Fire the listener first (invoke() starts the Rust command immediately — it does
   // not wait for this promise to be awaited) so the port is already bound well before
@@ -148,7 +168,7 @@ export async function signInWithBrowser(): Promise<TokenSet> {
     port: OAUTH_CALLBACK_PORT,
   });
 
-  await openUrl(authUrl.toString());
+  await openUrl(authUrl);
 
   const result = await waitForCallback;
   if (result.error) throw new ApiError(`Sign-in failed: ${result.error}`);
@@ -157,7 +177,60 @@ export async function signInWithBrowser(): Promise<TokenSet> {
     throw new ApiError("Sign-in failed a security check (state mismatch). Please try again.");
   }
 
-  return exchangeCodeForTokens(result.code, verifier);
+  return exchangeCodeForTokens(result.code, verifier, DESKTOP_REDIRECT_URI);
+}
+
+// sessionStorage (not localStorage — this only needs to survive one redirect round trip,
+// not a real session; see TOKENS_STORAGE_KEY above for where the actual signed-in session
+// lives) keys for the PKCE verifier/state across the full-page navigation to Keycloak and
+// back, since nothing in JS memory survives that navigation the way it does for the
+// desktop flow's single in-process await.
+const WEB_PKCE_VERIFIER_KEY = "newton:auth:pkce_verifier";
+const WEB_PKCE_STATE_KEY = "newton:auth:pkce_state";
+
+/** apps/web's equivalent of signInWithBrowser: navigates the WHOLE page to Keycloak's
+ * hosted login (there's no second "system browser" to open — the page itself is the
+ * browser), stashing the PKCE verifier/state first so completeWebSignIn can pick them
+ * back up after Keycloak redirects back to webRedirectUri(). Never resolves in the normal
+ * case — the navigation itself is the point — so callers should not `await` expecting
+ * code to run after it; it's async only because pkceChallenge is. */
+export async function beginWebSignIn(): Promise<void> {
+  const verifier = randomString(48);
+  const challenge = await pkceChallenge(verifier);
+  const state = randomString(16);
+
+  window.sessionStorage.setItem(WEB_PKCE_VERIFIER_KEY, verifier);
+  window.sessionStorage.setItem(WEB_PKCE_STATE_KEY, state);
+
+  window.location.href = buildAuthUrl(webRedirectUri(), challenge, state);
+}
+
+/** Call once, on load of the `/callback` route: reads `?code&state&error` off the current
+ * URL, validates it against what beginWebSignIn stashed, and exchanges the code for
+ * tokens. Returns null (not an error) when the page was loaded with no `code` at all —
+ * i.e. this wasn't actually hit as an OAuth redirect — so a direct visit to `/callback`
+ * degrades to "not signed in" rather than throwing. */
+export async function completeWebSignIn(): Promise<TokenSet | null> {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const state = params.get("state");
+  const error = params.get("error");
+
+  const verifier = window.sessionStorage.getItem(WEB_PKCE_VERIFIER_KEY);
+  const expectedState = window.sessionStorage.getItem(WEB_PKCE_STATE_KEY);
+  window.sessionStorage.removeItem(WEB_PKCE_VERIFIER_KEY);
+  window.sessionStorage.removeItem(WEB_PKCE_STATE_KEY);
+
+  if (error) throw new ApiError(`Sign-in failed: ${error}`);
+  if (!code) return null;
+  if (!verifier || !expectedState) {
+    throw new ApiError("Sign-in couldn't be completed — this browser tab lost track of the request. Please try again.");
+  }
+  if (state !== expectedState) {
+    throw new ApiError("Sign-in failed a security check (state mismatch). Please try again.");
+  }
+
+  return exchangeCodeForTokens(code, verifier, webRedirectUri());
 }
 
 /** Decodes a JWT's payload for *display purposes only* (e.g. showing the user's name

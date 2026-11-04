@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ApiError,
   createCheckoutSession,
@@ -26,6 +25,7 @@ import {
   setThemePreference,
 } from "../lib/preferences";
 import type { AccentPresetId, ThemePreference } from "../lib/preferences";
+import { openExternal } from "../lib/platform";
 import Toggle from "./Toggle";
 
 interface SettingsPanelProps {
@@ -206,7 +206,7 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
     setCheckoutError(null);
     try {
       const checkoutUrl = await createCheckoutSession(token);
-      await openUrl(checkoutUrl);
+      await openExternal(checkoutUrl);
       setWaitingForCheckout(true);
 
       const interval = window.setInterval(async () => {
@@ -234,7 +234,7 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
     setPortalError(null);
     try {
       const portalUrl = await createPortalSession(token);
-      await openUrl(portalUrl);
+      await openExternal(portalUrl);
     } catch (err) {
       setPortalError(err instanceof ApiError ? err.message : "Couldn't open the billing portal.");
     } finally {
@@ -255,7 +255,7 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
     setTopupError(null);
     try {
       const checkoutUrl = await createTopupCheckoutSession(token, amountCents);
-      await openUrl(checkoutUrl);
+      await openExternal(checkoutUrl);
       setWaitingForTopup(true);
 
       const interval = window.setInterval(async () => {

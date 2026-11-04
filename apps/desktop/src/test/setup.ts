@@ -42,3 +42,17 @@ for (const prop of ["localStorage", "sessionStorage"] as const) {
     configurable: true,
   });
 }
+
+// This is apps/desktop's own test suite — it exercises the Tauri build by default, the
+// same assumption every existing Tauri-plugin mock in these tests already makes (e.g.
+// SettingsPanel.test.tsx asserting its mocked `@tauri-apps/plugin-opener`'s `openUrl` was
+// called). lib/platform.ts's isTauri() checks for this exact property, so stub it here —
+// once, for the whole suite — rather than have every test file do it individually. A
+// handful of tests cover the OTHER branch (apps/web's plain-browser behavior) by
+// `delete`-ing this for just that one test and restoring it afterward — see e.g.
+// lib/__tests__/download.test.ts and notifications.test.ts.
+Object.defineProperty(window, "__TAURI_INTERNALS__", {
+  value: {},
+  writable: true,
+  configurable: true,
+});

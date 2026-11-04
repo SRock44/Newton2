@@ -1,5 +1,4 @@
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
+import { isTauri } from "./platform";
 
 /** The one way anything a student made in Newton actually leaves the app and lands on
  * their own disk: ask for a destination with the OS's real native save dialog
@@ -12,6 +11,10 @@ import { writeFile } from "@tauri-apps/plugin-fs";
  * LaTeX-compiled research papers, the whole reason this exists — must be written as the
  * exact bytes the server stored. Text callers encode once with TextEncoder rather than
  * this having a second, string-shaped path that could silently re-encode a binary file.
+ *
+ * Dynamically imports the two Tauri plugins only on the Tauri path (rather than a static
+ * top-level import) so `apps/web` — which loads this exact file — never ships them in its
+ * bundle at all; there's no real Tauri bridge for them to talk to there anyway.
  */
 
 export interface DownloadResult {
@@ -31,10 +34,37 @@ export async function saveBytesToDisk(
   bytes: Uint8Array,
   filters?: SaveFilter[],
 ): Promise<DownloadResult> {
+  if (!isTauri()) return saveBytesToDiskInBrowser(defaultFilename, bytes);
+
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const { writeFile } = await import("@tauri-apps/plugin-fs");
   const path = await save({ defaultPath: defaultFilename, filters });
   if (!path) return { path: null };
   await writeFile(path, bytes);
   return { path };
+}
+
+/** The browser's own download mechanism: a `Blob` URL behind a synthetic, immediately-
+ * clicked `<a download>` — the standard way a web page hands the user real bytes with no
+ * native save dialog available. Browsers don't expose where the file actually landed (the
+ * downloads folder, or a save-as prompt, depending on the user's own browser settings) —
+ * `path: null` is the same shape `saveBytesToDisk` already returns for a cancelled Tauri
+ * dialog, so callers need no new branch to handle it. `filters` has no web equivalent
+ * (there's no dialog to filter) and is intentionally unused here. */
+function saveBytesToDiskInBrowser(filename: string, bytes: Uint8Array): DownloadResult {
+  const blob = new Blob([new Uint8Array(bytes)]);
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  return { path: null };
 }
 
 /** Fetches an auth-gated backend URL and hands back its raw bytes — the same

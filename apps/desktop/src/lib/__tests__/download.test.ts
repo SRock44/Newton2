@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import {
@@ -92,5 +92,53 @@ describe("download helpers", () => {
       /404/,
     );
     fetchSpy.mockRestore();
+  });
+});
+
+/** apps/web's path: no `__TAURI_INTERNALS__` bridge (test/setup.ts stubs it on by
+ * default for this otherwise-desktop suite; removed here for just these tests), so
+ * saveBytesToDisk takes the browser-download branch instead of touching the Tauri save
+ * dialog / fs plugin at all. */
+describe("saveBytesToDisk (web / plain browser — no Tauri bridge)", () => {
+  beforeEach(() => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    saveMock.mockReset();
+    writeFileMock.mockReset();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, writable: true, configurable: true });
+  });
+
+  it("downloads via a Blob + synthetic <a download>, never touching the Tauri dialog/fs plugins", async () => {
+    const clickSpy = vi.fn();
+    const appendSpy = vi.spyOn(document.body, "appendChild");
+    const realCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockImplementation((tag: string, options?: ElementCreationOptions) => {
+        const el = realCreateElement(tag, options);
+        if (tag === "a") (el as HTMLAnchorElement).click = clickSpy;
+        return el;
+      });
+    const createObjectURL = vi.fn().mockReturnValue("blob:fake-url");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    const result = await saveBytesToDisk("paper.pdf", bytes, [{ name: "PDF file", extensions: ["pdf"] }]);
+
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(writeFileMock).not.toHaveBeenCalled();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:fake-url");
+    // Browsers never expose where a download actually landed — same "no path" shape a
+    // cancelled Tauri dialog already returns, so callers need no extra branch for it.
+    expect(result.path).toBeNull();
+
+    createElementSpy.mockRestore();
+    appendSpy.mockRestore();
+    vi.unstubAllGlobals();
   });
 });

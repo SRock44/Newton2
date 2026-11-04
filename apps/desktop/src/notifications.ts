@@ -1,12 +1,25 @@
-import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import { isTauri } from "./lib/platform";
 
 /** Native OS notifications only fire while this app process is actually running —
  * there's no background service, so this is a "nudge you while you have Newton open"
  * feature (checked once per sign-in, not a repeating poll that would just nag), not a
  * "reminds you even when the app is closed" one. That needs the system tray +
- * autostart, a separate roadmap item. */
+ * autostart, a desktop-only capability with no web equivalent at all (see
+ * `lib/platform.ts`'s `isTauri`).
+ *
+ * In a browser, the standard `Notification` API is near-identical in shape
+ * (permission-gated, one-shot) — a real, if slightly weaker, equivalent: it can't nudge
+ * once the tab is fully closed either, but does work across minimized/backgrounded
+ * tabs, same as the desktop version works while minimized. */
 async function ensurePermission(): Promise<boolean> {
   try {
+    if (!isTauri()) {
+      if (typeof Notification === "undefined") return false;
+      if (Notification.permission === "denied") return false;
+      if (Notification.permission === "granted") return true;
+      return (await Notification.requestPermission()) === "granted";
+    }
+    const { isPermissionGranted, requestPermission } = await import("@tauri-apps/plugin-notification");
     let granted = await isPermissionGranted();
     if (!granted) {
       granted = (await requestPermission()) === "granted";
@@ -32,7 +45,12 @@ export async function notifyStudyReminders(dueFlashcards: number, dueSoonItems: 
   }
 
   try {
-    sendNotification({ title: "Newton", body: parts.join(" · ") });
+    if (isTauri()) {
+      const { sendNotification } = await import("@tauri-apps/plugin-notification");
+      sendNotification({ title: "Newton", body: parts.join(" · ") });
+    } else if (typeof Notification !== "undefined") {
+      new Notification("Newton", { body: parts.join(" · ") });
+    }
   } catch {
     // Non-fatal — a missed nudge shouldn't disrupt anything else in the app.
   }

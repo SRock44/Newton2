@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import NewtonMark from "./NewtonMark";
-import { isMacPlatform } from "../lib/platform";
+import { isMacPlatform, isTauri } from "../lib/platform";
 
 type TitleBarVariant = "main" | "notepad";
 
@@ -30,7 +30,7 @@ function TitleBar({ title, variant = "main" }: TitleBarProps) {
   // optimistic-toggled on click, since the window can also be maximized/restored by the
   // OS (double-clicking the drag region, a Windows snap gesture, etc).
   useEffect(() => {
-    if (variant !== "main") return;
+    if (variant !== "main" || !isTauri()) return;
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
@@ -92,6 +92,24 @@ function TitleBar({ title, variant = "main" }: TitleBarProps) {
     } catch (err) {
       console.error("TitleBar: close failed", err);
     }
+  }
+
+  // No real OS window to draw chrome for in a browser tab — the browser's own chrome
+  // already provides minimize/maximize/close, and there's nothing for a drag region to
+  // do. Keep just the brand/title strip (dropping `data-tauri-drag-region`, which is
+  // inert outside Tauri anyway, for clarity) so the app still reads as "Newton" at a
+  // glance, the same way the Tauri build's bar does.
+  if (!isTauri()) {
+    return (
+      <div className="titlebar titlebar--web">
+        <div className="titlebar-brand">
+          <span className="titlebar-mark">
+            <NewtonMark size={13} />
+          </span>
+          <span className="titlebar-title">{title}</span>
+        </div>
+      </div>
+    );
   }
 
   // macOS convention puts window controls as three colored "traffic light" dots in the

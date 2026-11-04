@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TokenManager } from "../auth";
+import { TokenManager, beginWebSignIn, completeWebSignIn } from "../auth";
 import type { TokenSet } from "../auth";
 
 /** Real bug this file guards against: a student staying on the same chat session
@@ -96,5 +96,90 @@ describe("TokenManager background refresh", () => {
 
     await vi.advanceTimersByTimeAsync(3600 * 1000 + 60_000);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+/** apps/web's redirect-based sign-in — the browser equivalent of signInWithBrowser's
+ * loopback-listener flow above, used by the new `/callback` route. A plain object stands
+ * in for `window.location` throughout (not the real jsdom Location): jsdom doesn't
+ * implement real navigation, and assigning `.href`/`.search` on the real one logs a noisy
+ * "not implemented" error even though the assignment itself still "works" — a stand-in
+ * object sidesteps that entirely while still letting beginWebSignIn's `location.href =`
+ * and completeWebSignIn's `location.search` reads behave exactly like the real thing. */
+describe("beginWebSignIn / completeWebSignIn (apps/web's redirect-based OAuth flow)", () => {
+  const realLocation = window.location;
+
+  function stubLocation(origin: string) {
+    const loc = { origin, href: `${origin}/`, search: "" };
+    Object.defineProperty(window, "location", { value: loc, writable: true, configurable: true });
+    return loc;
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    stubLocation("https://app.newton.best");
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", { value: realLocation, writable: true, configurable: true });
+  });
+
+  it("stashes the PKCE verifier/state and redirects to Keycloak's hosted login", async () => {
+    await beginWebSignIn();
+
+    const verifier = window.sessionStorage.getItem("newton:auth:pkce_verifier");
+    const state = window.sessionStorage.getItem("newton:auth:pkce_state");
+    expect(verifier).toBeTruthy();
+    expect(state).toBeTruthy();
+
+    const url = new URL(window.location.href);
+    expect(url.pathname).toBe("/realms/newton/protocol/openid-connect/auth");
+    expect(url.searchParams.get("client_id")).toBe("newton-api");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://app.newton.best/callback");
+    expect(url.searchParams.get("scope")).toBe("openid offline_access");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("state")).toBe(state);
+  });
+
+  it("exchanges the code for tokens using the verifier beginWebSignIn stashed, then clears it (one-time use)", async () => {
+    await beginWebSignIn();
+    const state = window.sessionStorage.getItem("newton:auth:pkce_state")!;
+    const verifierBefore = window.sessionStorage.getItem("newton:auth:pkce_verifier")!;
+
+    window.location.search = `?code=abc123&state=${state}`;
+    const fetchMock = vi.fn().mockResolvedValue(fakeTokenResponse(3600));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokens = await completeWebSignIn();
+
+    expect(tokens?.accessToken).toMatch(/^access-/);
+    const body = fetchMock.mock.calls[0]![1]!.body as URLSearchParams;
+    expect(body.get("code")).toBe("abc123");
+    expect(body.get("code_verifier")).toBe(verifierBefore);
+    expect(body.get("redirect_uri")).toBe("https://app.newton.best/callback");
+    expect(window.sessionStorage.getItem("newton:auth:pkce_verifier")).toBeNull();
+    expect(window.sessionStorage.getItem("newton:auth:pkce_state")).toBeNull();
+  });
+
+  it("returns null (not an error) when the page wasn't actually hit as an OAuth redirect", async () => {
+    window.location.search = "";
+    await expect(completeWebSignIn()).resolves.toBeNull();
+  });
+
+  it("rejects a state mismatch rather than accepting a forged/stale callback", async () => {
+    await beginWebSignIn();
+    window.location.search = "?code=abc123&state=not-the-real-state";
+    await expect(completeWebSignIn()).rejects.toThrow(/security check/);
+  });
+
+  it("surfaces an explicit error param from Keycloak (e.g. the student cancelled)", async () => {
+    window.location.search = "?error=access_denied";
+    await expect(completeWebSignIn()).rejects.toThrow(/Sign-in failed/);
+  });
+
+  it("refuses to complete if this tab lost its stashed verifier (e.g. a different tab)", async () => {
+    window.location.search = "?code=abc123&state=some-state";
+    await expect(completeWebSignIn()).rejects.toThrow(/lost track/);
   });
 });
