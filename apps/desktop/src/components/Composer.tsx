@@ -479,6 +479,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
       className={`composer${editing ? " composer--editing" : ""}${
         !editing && requestingChangesFor ? " composer--requesting-changes" : ""
       }`}
+      data-tour="composer"
     >
       {editing ? (
         <div className="composer-editing-banner" role="status">

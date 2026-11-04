@@ -2576,6 +2576,163 @@ body.is-resizing-panel * {
   color: var(--color-text-muted);
 }
 
+/* ---------- Product tour (web only — see ProductTour.tsx) ----------
+   Deliberately NOT a full-screen modal: no backdrop dimming the rest of the app, the
+   composer/sidebar/everything else stay fully clickable the whole time. Just a
+   highlight ring around the real element plus a small anchored card next to it. */
+
+.product-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.product-tour-ring {
+  position: fixed;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 3px var(--color-accent-tint-strong), 0 0 0 999px rgba(15, 15, 20, 0.08);
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+  animation: tour-ring-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes tour-ring-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--color-accent-tint-strong), 0 0 0 999px rgba(15, 15, 20, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--color-accent-tint), 0 0 0 999px rgba(15, 15, 20, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-tour-ring {
+    animation: none;
+  }
+}
+
+.product-tour-card {
+  position: fixed;
+  pointer-events: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  animation: tour-card-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-tour-card {
+    animation: none;
+  }
+}
+
+/* A small triangle pointing back at the target, one per placement variant. */
+.product-tour-card::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  transform: rotate(45deg);
+}
+
+.product-tour-card--right::before {
+  left: -6px;
+  top: 18px;
+  border-right: none;
+  border-top: none;
+}
+
+.product-tour-card--left::before {
+  right: -6px;
+  top: 18px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.product-tour-card--top::before {
+  bottom: -6px;
+  left: 50%;
+  margin-left: -5px;
+  border-left: none;
+  border-top: none;
+}
+
+.product-tour-step {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.product-tour-title {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.product-tour-body {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.product-tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.product-tour-skip {
+  background: none;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.product-tour-skip:hover {
+  color: var(--color-text);
+}
+
+.product-tour-next {
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.product-tour-next:hover {
+  background-color: var(--color-accent-hover);
+}
+
 .message-list {
   display: flex;
   flex-direction: column;

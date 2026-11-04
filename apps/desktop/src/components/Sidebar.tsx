@@ -175,6 +175,7 @@ function Sidebar({
             onClick={onOpenHome}
             aria-label="Home"
             title="Home"
+            data-tour="sidebar-brand"
           >
             <span className="sidebar-brand-mark">
               <NewtonMark size={15} />

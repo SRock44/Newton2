@@ -164,6 +164,16 @@ body {
   padding: 0;
   color: var(--color-text);
   background-color: var(--color-bg);
+  /* A faint, viewport-anchored (`fixed`, so it never scrolls away or repeats) wash —
+     site-wide, every route, not just the landing page's own much more vivid hero
+     aurora. Real bug this fixes: the floating nav (FloatingNav.tsx) has no background
+     of its own by design (that's what makes it "float") — it used to sit on a solid
+     full-width header bar, so the flat `--color-bg` around/above it was never visible.
+     Now it's exposed, and in dark mode `--color-bg` (#1c1712) reads as a dead black
+     gap "where the navbar once was." This keeps every page's backdrop alive instead of
+     flat, in both themes. */
+  background-image: var(--gradient-hero);
+  background-attachment: fixed;
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-regular);

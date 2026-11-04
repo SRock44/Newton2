@@ -20,7 +20,7 @@ import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import { getStudyRemindersEnabled } from "./lib/preferences";
 import { isTauri } from "./lib/platform";
-import { hasSeenOnboarding, markOnboardingSeen } from "./lib/onboarding";
+import { hasSeenOnboarding, markOnboardingSeen, hasSeenTour, markTourSeen } from "./lib/onboarding";
 import type {
   AccountConsentStatus,
   ChatMessage,
@@ -51,6 +51,7 @@ import PracticeExamsPanel from "./components/PracticeExamsPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import ContextPanel from "./components/ContextPanel";
 import HelpModal from "./components/HelpModal";
+import ProductTour from "./components/ProductTour";
 import ContextMenu from "./components/ContextMenu";
 import ScreenSnipModal from "./components/ScreenSnipModal";
 
@@ -145,6 +146,21 @@ function App() {
   const handleDismissOnboarding = useCallback(() => {
     if (userId) markOnboardingSeen(userId);
     setOnboardingSeen(true);
+  }, [userId]);
+
+  // The separate guided-tour coachmarks (ProductTour.tsx) — web only, see
+  // lib/onboarding.ts's own comment for why this is a distinct "seen" flag from the
+  // welcome card above. Starts `true` (hidden) for the same reason onboardingSeen does:
+  // never flash it before userId is known.
+  const [tourSeen, setTourSeen] = useState(true);
+
+  useEffect(() => {
+    setTourSeen(userId ? hasSeenTour(userId) : true);
+  }, [userId]);
+
+  const handleDismissTour = useCallback(() => {
+    if (userId) markTourSeen(userId);
+    setTourSeen(true);
   }, [userId]);
   // True only for the brief moment on launch where we're checking whether a
   // previously signed-in session can be silently resumed (see auth.ts's
@@ -1461,6 +1477,16 @@ function App() {
           mainView={mainView}
         />}
       </div>
+
+      {/* Web only, once per account, and only once the first-run welcome card (if any)
+          is out of the way — see ProductTour.tsx's own comment for why a brand-new
+          account shouldn't get both competing for attention at once, and
+          lib/onboarding.ts for the separate "seen" flags. mainView === "chat" because
+          its three targets (sidebar brand, composer, context panel) are all real,
+          on-screen elements only in that view. */}
+      {!isTauri() && !tourSeen && onboardingSeen && mainView === "chat" && (
+        <ProductTour onFinish={handleDismissTour} />
+      )}
 
       {showStudyPlan && <StudyPlanPanel token={token} onClose={() => setShowStudyPlan(false)} />}
       {showCalendar && <CalendarPanel token={token} onClose={() => setShowCalendar(false)} />}

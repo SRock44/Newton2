@@ -83,7 +83,7 @@ function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0, main
 
   if (collapsed) {
     return (
-      <aside className="right-panel right-panel--collapsed">
+      <aside className="right-panel right-panel--collapsed" data-tour="context-panel">
         <button
           type="button"
           className="sidebar-collapse-toggle"
@@ -116,6 +116,7 @@ function ContextPanel({ token, sessionCount, messageCount, totalTokens = 0, main
       <aside
         className="right-panel"
         style={{ ["--context-panel-width" as string]: `${resize.width}px` }}
+        data-tour="context-panel"
       >
         <div className="right-panel-header">
           <span>Newton context</span>
