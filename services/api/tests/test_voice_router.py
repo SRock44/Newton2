@@ -13,20 +13,66 @@ from app.db.models import User
 async def pro_student(db_session, keycloak_token):
     """Voice is gated to Pro (see app/routers/voice.py's _require_pro) -- flips the
     real dev Keycloak student1 user (the one keycloak_token/auth_headers authenticates
-    as) to plan="pro" for the duration of the test, and reverts it afterward so other
-    tests keep seeing the normal free-tier default."""
+    as) to plan="pro" for the duration of the test, and restores whatever plan it
+    actually had before (snapshot/restore, same pattern as test_billing.py's
+    student1_status_snapshot/student1_focus_mode_snapshot).
+
+    Real incident this fixes: this used to hardcode the teardown to plan="free"
+    instead of snapshotting the original value -- but student1 is a PERMANENT Pro
+    account (ROADMAP.md: "student1 (dev test account) granted permanent Pro access
+    directly in the database"), relied on by dozens of other live-verification passes
+    documented there. Every full suite run that exercised this fixture was silently
+    reverting that permanent grant back to free, which is exactly the "student1 is
+    plan='free' by default" comments elsewhere in this very file were describing --
+    not the real baseline, a side effect of this bug normalizing itself over time.
+    Caught when the product owner reported Settings showing "Free plan" on a real
+    sign-in; traced to this fixture via `git log`/ROADMAP.md, confirmed by a direct
+    `psql` read showing plan='free' on the live dev DB, fixed by restoring it to 'pro'
+    there AND fixing the actual leak here so it can't happen again."""
     sub = jose_jwt.get_unverified_claims(keycloak_token)["sub"]
     user = (await db_session.execute(select(User).where(User.keycloak_sub == sub))).scalar_one_or_none()
     if user is None:
         user = User(keycloak_sub=sub, plan="pro")
         db_session.add(user)
+        await db_session.commit()
+        original_plan = "pro"
     else:
+        original_plan = user.plan
         user.plan = "pro"
-    await db_session.commit()
+        await db_session.commit()
 
     yield
 
-    user.plan = "free"
+    user.plan = original_plan
+    await db_session.commit()
+
+
+@pytest_asyncio.fixture
+async def free_student(db_session, keycloak_token):
+    """The negative-path mirror of pro_student above: temporarily flips student1 to
+    plan="free" so a Pro-gated endpoint's rejection path can actually be exercised,
+    restoring whatever plan it really had before (never hardcoded back to "free" --
+    see pro_student's own comment for the real incident that taught this lesson).
+    Needed because student1 is a PERMANENT Pro account (ROADMAP.md) -- these two
+    rejection tests used to implicitly depend on a *different* bug (pro_student's old
+    hardcoded-to-free teardown) having already corrupted student1 back to free before
+    they ran, which is exactly the kind of cross-test ordering dependency a dedicated
+    fixture exists to avoid."""
+    sub = jose_jwt.get_unverified_claims(keycloak_token)["sub"]
+    user = (await db_session.execute(select(User).where(User.keycloak_sub == sub))).scalar_one_or_none()
+    if user is None:
+        user = User(keycloak_sub=sub, plan="free")
+        db_session.add(user)
+        await db_session.commit()
+        original_plan = "free"
+    else:
+        original_plan = user.plan
+        user.plan = "free"
+        await db_session.commit()
+
+    yield
+
+    user.plan = original_plan
     await db_session.commit()
 
 
@@ -57,8 +103,7 @@ async def test_transcribe_accepts_real_audio_and_returns_text(http_client, auth_
     assert isinstance(resp.json()["text"], str)
 
 
-async def test_transcribe_rejects_a_free_plan_user(http_client, auth_headers):
-    # No pro_student fixture here -- student1 is plan="free" by default.
+async def test_transcribe_rejects_a_free_plan_user(http_client, auth_headers, free_student):
     resp = await http_client.post(
         "/voice/transcribe",
         headers=auth_headers,
@@ -160,8 +205,7 @@ async def test_synthesize_falls_back_honestly_for_an_unsupported_language(http_c
         assert wav_file.getnframes() > 0
 
 
-async def test_synthesize_rejects_a_free_plan_user(http_client, auth_headers):
-    # No pro_student fixture here -- student1 is plan="free" by default.
+async def test_synthesize_rejects_a_free_plan_user(http_client, auth_headers, free_student):
     resp = await http_client.post(
         "/voice/synthesize",
         headers=auth_headers,

@@ -387,7 +387,9 @@ async def test_weak_areas_endpoint_is_worst_first(http_client, auth_headers):
 
 async def test_weak_areas_endpoint_is_not_plan_gated(http_client, auth_headers):
     """Unlike /voice/*, this is the student's own already-recorded data with no expensive
-    compute behind it -- student1 is plan="free" by default and must still get a 200."""
+    compute behind it -- must get a 200 regardless of plan (student1 is actually a
+    permanent Pro account, see ROADMAP.md, but the assertion below holds either way:
+    the real point is the absence of a 402, not which plan happens to be active)."""
     resp = await http_client.get("/weak-areas", headers=auth_headers)
     assert resp.status_code != 402
     assert resp.status_code == 200
