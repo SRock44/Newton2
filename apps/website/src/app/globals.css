@@ -64,14 +64,6 @@
 
   --focus-ring: 0 0 0 3px var(--color-accent-tint-strong);
 
-  /* A warm radial wash used behind the hero — cobalt and gold both present, faint. */
-  --gradient-hero: radial-gradient(
-      circle at 14% -10%,
-      rgba(47, 77, 140, 0.1),
-      transparent 46%
-    ),
-    radial-gradient(circle at 96% 18%, rgba(184, 132, 44, 0.14), transparent 42%);
-
   /* A subtle dot-grid texture (pure CSS, no image asset) applied to alternating
      section backgrounds for real depth instead of one flat fill everywhere. */
   --texture-dots: radial-gradient(var(--color-border) 1px, transparent 1px);
@@ -131,9 +123,6 @@
     --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.55);
 
-    --gradient-hero: radial-gradient(circle at 14% -10%, rgba(124, 157, 232, 0.14), transparent 46%),
-      radial-gradient(circle at 96% 18%, rgba(224, 171, 82, 0.12), transparent 42%);
-
     color-scheme: dark;
   }
 }
@@ -164,16 +153,10 @@ body {
   padding: 0;
   color: var(--color-text);
   background-color: var(--color-bg);
-  /* A faint, viewport-anchored (`fixed`, so it never scrolls away or repeats) wash —
-     site-wide, every route, not just the landing page's own much more vivid hero
-     aurora. Real bug this fixes: the floating nav (FloatingNav.tsx) has no background
-     of its own by design (that's what makes it "float") — it used to sit on a solid
-     full-width header bar, so the flat `--color-bg` around/above it was never visible.
-     Now it's exposed, and in dark mode `--color-bg` (#1c1712) reads as a dead black
-     gap "where the navbar once was." This keeps every page's backdrop alive instead of
-     flat, in both themes. */
-  background-image: var(--gradient-hero);
-  background-attachment: fixed;
+  /* The site's actual ambient color now comes entirely from AmbientBackground.tsx (a
+     real `position: fixed` element in the root layout, not a CSS background property)
+     — see its own comment for why that replaced an earlier `background-attachment:
+     fixed` version of this rule, which was a real, reported cause of page-wide jank. */
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-regular);

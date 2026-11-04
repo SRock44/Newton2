@@ -9,17 +9,22 @@
 }
 
 /* ---------------------------------------------------------------------
- * Section background variety — real depth instead of one flat fill
- * repeated down the whole page. Each variant is deliberate, not
- * decorative noise: a dot-grid texture for sections about real
- * computed/structured output, a warm gradient wash for the two big
- * emotional beats (hero, closing CTA).
+ * Section background variety. The ambient color itself now comes entirely from
+ * AmbientBackground.tsx (one static layer, rendered once in the root layout, behind
+ * everything on every route) — these two variants used to ALSO paint their own
+ * separately-colored, separately-blurred aurora patch on top, each with a hard blur
+ * edge where it ended. That's exactly what produced visible seams between sections
+ * ("doesn't blend") and, since one of them was animated, a real reported jank bug
+ * ("pages randomly start shaking"). What's left here is only the one cheap, static,
+ * genuinely free-to-render texture that actually earns its keep: a dot grid for
+ * sections about real computed/structured output. No opaque fill either — these
+ * sections are transparent, so the shared ambient layer shows through consistently
+ * instead of being blocked by a solid surface-2 fill.
  * ------------------------------------------------------------------- */
 
 .sectionTextured {
   position: relative;
   overflow: hidden;
-  background-color: var(--color-surface-2);
 }
 
 .sectionTextured::before {
@@ -33,20 +38,6 @@
   pointer-events: none;
 }
 
-/* Same real-color grounding as .sectionWarm above, for the same reason — a flat
- * surface-2 fill plus a faint dot texture read as a near-black void in dark mode. */
-.sectionTextured::after {
-  content: "";
-  position: absolute;
-  inset: -20%;
-  z-index: 0;
-  background: radial-gradient(circle at 85% 15%, var(--color-accent-2-tint), transparent 46%),
-    radial-gradient(circle at 10% 85%, var(--color-accent-3-tint), transparent 44%);
-  filter: blur(50px);
-  opacity: 0.9;
-  pointer-events: none;
-}
-
 .sectionTextured > * {
   position: relative;
   z-index: 1;
@@ -54,29 +45,6 @@
 
 .sectionWarm {
   position: relative;
-  overflow: hidden;
-  background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-accent-3-tint) 130%);
-}
-
-/* Real feedback on the plain gradient above: in dark mode it read as flat, near-black
- * "void" — the capability cards floated in it with nothing to visually ground them.
- * The same vivid, colorful aurora the hero uses, just calmer (no drift animation —
- * this section isn't the first thing a visitor sees, so it stays still). */
-.sectionWarm::before {
-  content: "";
-  position: absolute;
-  inset: -20%;
-  z-index: 0;
-  background: radial-gradient(circle at 10% 10%, var(--color-accent-tint-strong), transparent 48%),
-    radial-gradient(circle at 92% 70%, var(--color-accent-2-tint), transparent 46%);
-  filter: blur(50px);
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.sectionWarm > * {
-  position: relative;
-  z-index: 1;
 }
 
 /* ---------------------------------------------------------------------
@@ -192,10 +160,20 @@
  * "on the LANDING page once you go to the website," not scrolled-to.
  * ------------------------------------------------------------------- */
 
+/* The hero's own color used to come from TWO more layers stacked here (an opaque
+ * `--gradient-hero` fill, plus a separately-animated aurora pseudo-element) on top of
+ * whatever else was behind it — real bugs, not just excess: the animated one
+ * (`transform`/`scale` on a `filter: blur(40px)`, `inset: -10%` element — expensive to
+ * repaint every frame at that size) was the direct cause of a reported "pages randomly
+ * start shaking" bug, and its own blur recipe didn't match the sections around it,
+ * producing a visible seam ("doesn't blend with the rest of the gradient"). The hero's
+ * color is now exactly the same shared, static AmbientBackground.tsx every other
+ * section already uses — nothing of its own to seam against, nothing animated to
+ * repaint. Only the dot texture survives here (cheap, static, masked to fade out by
+ * the bottom of the hero). */
 .heroShell {
   position: relative;
   overflow: hidden;
-  background-image: var(--gradient-hero);
 }
 
 .heroShell::before {
@@ -209,38 +187,6 @@
   -webkit-mask-image: linear-gradient(180deg, black, transparent 60%);
   mask-image: linear-gradient(180deg, black, transparent 60%);
   pointer-events: none;
-}
-
-/* A slow-drifting aurora of color behind the hero — the thing a flat parchment fill
-   was missing. Product owner, verbatim (second pass): "it needs to be seamless,
-   animated, colorful ... not plain boring and vibe-coded." */
-.heroShell::after {
-  content: "";
-  position: absolute;
-  inset: -10%;
-  z-index: 0;
-  background: radial-gradient(circle at 16% 20%, var(--color-accent-tint-strong), transparent 45%),
-    radial-gradient(circle at 86% 12%, var(--color-accent-2-tint), transparent 42%),
-    radial-gradient(circle at 55% 85%, var(--color-accent-3-tint), transparent 40%);
-  filter: blur(40px);
-  opacity: 0.85;
-  pointer-events: none;
-  animation: hero-aurora-drift 15s ease-in-out infinite alternate;
-}
-
-@keyframes hero-aurora-drift {
-  from {
-    transform: translate(0, 0) scale(1);
-  }
-  to {
-    transform: translate(2%, -2%) scale(1.06);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .heroShell::after {
-    animation: none;
-  }
 }
 
 .hero {
@@ -455,11 +401,21 @@
  * reads with real variety, not one repeated blue) plus a lift-and-glow on hover.
  * ------------------------------------------------------------------- */
 
+/* A bento grid, not a uniform repeating one — one featured 2x2 cell, one full-width
+   cell, four plain 1x1 cells. Direct feedback on the previous uniform grid: "WHAT IS
+   THE POINT OF THIS? DO A BENTO OR SOMETHING CREATIVE, USE UP THE SPACE." Cell
+   assignment is positional (nth-child), matching CAPABILITIES' own fixed order in
+   page.tsx (big=1st, wide=6th) — the `size` field there drives the matching
+   .capabilityCardBig/Wide class, this just places them. */
 .capabilityGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  max-width: 1040px;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-areas:
+    "big big b c"
+    "big big d e"
+    "wide wide wide wide";
+  gap: 20px;
+  max-width: 1160px;
   margin: 0 auto;
 }
 
@@ -473,6 +429,144 @@
   background-color: var(--color-surface);
   box-shadow: var(--shadow-sm);
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.capabilityCard:nth-child(1) {
+  grid-area: big;
+}
+
+.capabilityCard:nth-child(2) {
+  grid-area: b;
+}
+
+.capabilityCard:nth-child(3) {
+  grid-area: c;
+}
+
+.capabilityCard:nth-child(4) {
+  grid-area: d;
+}
+
+.capabilityCard:nth-child(5) {
+  grid-area: e;
+}
+
+.capabilityCard:nth-child(6) {
+  grid-area: wide;
+}
+
+/* The featured 2x2 cell — bigger type, and a real grounded decoration (not invented
+   chrome): the exact same Verified-badge treatment InteractiveDemo.tsx's hero widget
+   already uses, so it reads as "the same real UI," not a mockup made just for this
+   card. */
+.capabilityCardBig {
+  justify-content: center;
+  padding: 36px 32px;
+}
+
+.capabilityCardBig .capabilityIcon {
+  width: 56px;
+  height: 56px;
+}
+
+.capabilityCardBig .capabilityIcon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.capabilityCardBig .capabilityTitle {
+  font-size: var(--font-size-lg);
+}
+
+.capabilityCardBig .capabilityBody {
+  font-size: var(--font-size-base);
+  max-width: 44ch;
+}
+
+.capabilitySnippet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-2);
+  border: 1px solid var(--color-border-2);
+}
+
+.capabilitySnippetBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-success-tint);
+  color: var(--color-success);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.capabilitySnippetIcon {
+  width: 13px;
+  height: 13px;
+}
+
+.capabilitySnippetCode {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+/* The full-width wide cell — icon/title/body on the left, a small audio-bar visual on
+   the right (the capability it's attached to is literally voice practice). */
+.capabilityCardWide {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 28px 36px;
+}
+
+.capabilityWideText {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.capabilityBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.capabilityBars span {
+  display: block;
+  width: 5px;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, var(--color-accent-3), var(--color-accent-3-tint));
+  animation: capability-bar-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes capability-bar-pulse {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .capabilityBars span {
+    animation: none;
+    transform: scaleY(0.7);
+  }
 }
 
 .capabilityCard:hover {
@@ -530,12 +624,34 @@
 @media (max-width: 860px) {
   .capabilityGrid {
     grid-template-columns: repeat(2, 1fr);
+    grid-template-areas:
+      "big big"
+      "b c"
+      "d e"
+      "wide wide";
   }
 }
 
 @media (max-width: 560px) {
   .capabilityGrid {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "big"
+      "b"
+      "c"
+      "d"
+      "e"
+      "wide";
+  }
+
+  .capabilityCardWide {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .capabilityBars {
+    align-self: stretch;
+    justify-content: center;
   }
 }
 

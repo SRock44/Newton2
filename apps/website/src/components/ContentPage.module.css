@@ -28,7 +28,8 @@
 
 /* ---------------------------------------------------------------------
  * Intro hero — a smaller, single-column relative of the landing page's own hero:
- * eyebrow / serif title / muted subtitle, over the same radial cobalt+gold wash.
+ * eyebrow / serif title / muted subtitle. No background of its own — the shared
+ * AmbientBackground.tsx (root layout) already shows through consistently here.
  * ------------------------------------------------------------------- */
 
 .hero {
@@ -36,7 +37,6 @@
   max-width: 760px;
   margin: 0 auto;
   padding: 72px 32px 48px;
-  background-image: var(--gradient-hero);
 }
 
 .eyebrow {

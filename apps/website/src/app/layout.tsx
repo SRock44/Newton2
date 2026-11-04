@@ -10,6 +10,7 @@ import "@fontsource/public-sans/700.css";
 import "@fontsource-variable/fraunces/full.css";
 import "@fontsource-variable/fraunces/full-italic.css";
 import "./globals.css";
+import AmbientBackground from "@/components/AmbientBackground";
 
 export const metadata: Metadata = {
   title: "Newton",
@@ -20,7 +21,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AmbientBackground />
+        {children}
+      </body>
     </html>
   );
 }

@@ -151,11 +151,23 @@ function IconVoice() {
 // and reuses the exact card/hover treatment the Pro section below already establishes,
 // not a new visual language. Every claim is unchanged from the plain-list version; only
 // the presentation changed.
-const CAPABILITIES: { icon: ReactNode; title: string; body: string }[] = [
+interface Capability {
+  icon: ReactNode;
+  title: string;
+  body: string;
+  /** Drives both the grid cell's span (CSS, see page.module.css's .capabilityGrid) and
+   * which real decoration (if any) it gets — "big" and "wide" are the only two cells
+   * large enough to carry one without it reading as cramped. Undefined = a plain 1x1
+   * cell, same as every cell before this pass. */
+  size?: "big" | "wide";
+}
+
+const CAPABILITIES: Capability[] = [
   {
     icon: <IconExact />,
     title: "Exact computation",
     body: "Symbolic math, linear algebra, chemistry, and statistics — solved exactly, not predicted.",
+    size: "big",
   },
   {
     icon: <IconCode />,
@@ -181,6 +193,7 @@ const CAPABILITIES: { icon: ReactNode; title: string; body: string }[] = [
     icon: <IconVoice />,
     title: "Voice practice",
     body: "Spoken conversation practice and production-mode flashcards for language courses.",
+    size: "wide",
   },
 ];
 
@@ -274,8 +287,12 @@ export default function Home() {
         </div>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Capability cards — an icon-card grid, see CAPABILITIES' own comment for why  */}
-        {/* this replaced the plain text list a previous pass had cut it down to.        */}
+        {/* Capability cards — a bento grid: one featured 2x2 cell, a full-width wide   */}
+        {/* cell, four plain 1x1 cells around them. Direct feedback on the previous     */}
+        {/* uniform 3x2 grid: "WHAT IS THE POINT OF THIS? DO A BENTO OR SOMETHING       */}
+        {/* CREATIVE, USE UP THE SPACE." The two non-uniform cells each carry one real  */}
+        {/* piece of decoration (grounded in the same claim as their body copy, not     */}
+        {/* invented) — see .capabilitySnippet/.capabilityBars in page.module.css.      */}
         {/* ---------------------------------------------------------------- */}
         <section id="features" className={`${styles.section} ${styles.sectionWarm}`} aria-labelledby="features-heading">
           <Reveal className={styles.sectionHead}>
@@ -287,10 +304,52 @@ export default function Home() {
 
           <div className={styles.capabilityGrid}>
             {CAPABILITIES.map((item, i) => (
-              <Reveal key={item.title} className={styles.capabilityCard} delayMs={i * 60}>
-                <span className={styles.capabilityIcon}>{item.icon}</span>
-                <h3 className={styles.capabilityTitle}>{item.title}</h3>
-                <p className={styles.capabilityBody}>{item.body}</p>
+              <Reveal
+                key={item.title}
+                className={`${styles.capabilityCard} ${
+                  item.size === "big" ? styles.capabilityCardBig : item.size === "wide" ? styles.capabilityCardWide : ""
+                }`}
+                delayMs={i * 60}
+              >
+                {item.size === "wide" ? (
+                  <>
+                    <div className={styles.capabilityWideText}>
+                      <span className={styles.capabilityIcon}>{item.icon}</span>
+                      <h3 className={styles.capabilityTitle}>{item.title}</h3>
+                      <p className={styles.capabilityBody}>{item.body}</p>
+                    </div>
+                    <div className={styles.capabilityBars} aria-hidden="true">
+                      {Array.from({ length: 7 }).map((_, barIndex) => (
+                        <span key={barIndex} style={{ animationDelay: `${barIndex * 0.12}s` }} />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className={styles.capabilityIcon}>{item.icon}</span>
+                    <h3 className={styles.capabilityTitle}>{item.title}</h3>
+                    <p className={styles.capabilityBody}>{item.body}</p>
+                    {item.size === "big" && (
+                      <div className={styles.capabilitySnippet}>
+                        <span className={styles.capabilitySnippetBadge}>
+                          <svg viewBox="0 0 20 20" aria-hidden="true" className={styles.capabilitySnippetIcon}>
+                            <circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.18" />
+                            <path
+                              d="M6 10.5l2.5 2.5L14 7"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              fill="none"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          Verified
+                        </span>
+                        <code className={styles.capabilitySnippetCode}>∫ 2x dx = x² + C</code>
+                      </div>
+                    )}
+                  </>
+                )}
               </Reveal>
             ))}
           </div>

@@ -1,0 +1,48 @@
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Solid-color shapes, not gradients — a gradient's own soft falloff plus a blur filter
+   on top is what produced the previous version's visible hard edges at the blur
+   radius. A flat color blob blurred this heavily has no edge to see at all. Uses the
+   theme's own --color-accent* custom properties directly (not fixed hex values), so
+   this recolors for dark mode automatically with zero extra rules. */
+.blob {
+  position: absolute;
+  border-radius: 100%;
+  filter: blur(90px);
+}
+
+.blobAccent {
+  top: -20%;
+  left: -12%;
+  width: 55vw;
+  height: 70vh;
+  background-color: var(--color-accent);
+  opacity: 0.14;
+  transform: rotate(-18deg);
+}
+
+.blobAccent2 {
+  top: -18%;
+  right: -15%;
+  width: 46vw;
+  height: 60vh;
+  background-color: var(--color-accent-2);
+  opacity: 0.14;
+  transform: rotate(22deg);
+}
+
+.blobAccent3 {
+  bottom: -32%;
+  left: 12%;
+  width: 60vw;
+  height: 52vh;
+  background-color: var(--color-accent-3);
+  opacity: 0.1;
+  transform: rotate(-10deg);
+}
