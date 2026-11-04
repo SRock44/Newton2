@@ -88,6 +88,22 @@ x-api-env: &api-env
   STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
   STRIPE_PRICE_ID_PRO: ${STRIPE_PRICE_ID_PRO:-}
   PRO_MONTHLY_CREDIT_CENTS: ${PRO_MONTHLY_CREDIT_CENTS:-600}
+  # Outbound email for app/services/edu_verification.py's free-Pro verification codes --
+  # deliberately the SAME SMTP_* values infra/keycloak/setup_smtp.py already reads from
+  # this same .env to configure Keycloak's own verifyEmail relay (one set of email
+  # credentials for the whole product, not two). Unlike that one-time admin script, the
+  # api/worker containers need these standing (every code send is a live request), which
+  # is why this is in the compose environment at all rather than exec-time-only like the
+  # Google/Stripe one-time setup scripts.
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_LOGIN: ${SMTP_LOGIN:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Newton}
+  # School email domains eligible for free Pro once verified (app/services/
+  # edu_verification.py) -- comma-separated, add more here, no code change needed.
+  EDU_VERIFIED_DOMAINS: ${EDU_VERIFIED_DOMAINS:-nyit.edu}
   # Optional error tracking (https://sentry.io) -- same dormant-until-configured shape as
   # every other optional integration above: empty by default, and app/core/sentry.py's
   # init_sentry() no-ops with no DSN set. To activate: create a Sentry project (Python/

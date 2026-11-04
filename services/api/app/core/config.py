@@ -174,6 +174,29 @@ class Settings(BaseSettings):
     # without a code change.
     pro_monthly_credit_cents: int = 600
 
+    # Outbound email for app/services/edu_verification.py's verification codes --
+    # deliberately the SAME env var names infra/keycloak/setup_smtp.py already reads
+    # from this same .env to configure Keycloak's own verifyEmail relay ("use the one
+    # we already have," not a second, parallel SMTP config). Unlike that one-time setup
+    # script, this app needs these as STANDING config (every verification-code send is
+    # a live request, not a one-time admin action) -- see infra/docker-compose.yml's
+    # api/worker environment for where these actually get passed in. Same
+    # dormant-until-configured pattern as Stripe/Groq above: empty by default, and
+    # app/services/email.py's send_email() raises a clear RuntimeError (-> a 503 from
+    # the router) instead of crashing until a real relay is configured.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_login: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "Newton"
+
+    # Email domains (after the "@", lowercase) eligible for free Pro once verified --
+    # comma-separated so a school can be added or removed with an .env change alone,
+    # no code change or redeploy of app logic needed. See
+    # app/services/edu_verification.py's allowed_domains().
+    edu_verified_domains: str = "nyit.edu"
+
     # Optional error tracking (https://sentry.io) -- dormant-until-configured, same
     # pattern as every other optional integration above (Stripe, Groq/OpenRouter, Google
     # Classroom): empty by default, and app/core/sentry.py's init_sentry() no-ops with no

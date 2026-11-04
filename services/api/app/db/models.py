@@ -43,6 +43,17 @@ class User(Base):
     # the roster's default" (see billing.resolve_pro_model), not "no access".
     preferred_pro_model: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Free Pro for a verified school email (Settings -> "Verify your school email", see
+    # app/services/edu_verification.py) -- deliberately NOT the `plan`/stripe_* fields
+    # above: billing.is_pro() ORs the two, but this can be granted or revoked (just set
+    # it back to None) without ever touching real subscription/billing state, and a
+    # future Stripe webhook can never misinterpret it as a cancelled/renewed
+    # subscription since it never looks at these columns at all. `edu_email` is the
+    # verified school address, which may differ from `email` above (the account's real
+    # sign-in identity, untouched by this flow).
+    edu_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    edu_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Minor-consent / age-gate scaffolding (ROADMAP.md Phase 7's "explicit FERPA/COPPA/
     # GDPR data-retention posture" item -- a first-pass DRAFT, not a lawyer-reviewed
     # compliance flow; see docs/data-retention-and-privacy.md for the real design
@@ -104,6 +115,29 @@ class User(Base):
     # place by POST /calendar/feed-url/regenerate, which instantly and permanently breaks
     # every previously-handed-out link -- the leak-recovery path.
     calendar_feed_token: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class EduVerificationCode(Base):
+    """A short-lived, single-use 6-digit code proving ownership of an allowlisted
+    school-domain inbox -- see app/services/edu_verification.py, which grants free Pro
+    (User.edu_verified_at) on a match. Deliberately NOT the account's real sign-in
+    email -- see User.edu_email's own comment. One row per account: starting a new
+    verification deletes any previous code for that user first (see
+    start_edu_verification), so an old code can never be replayed after a newer one was
+    requested, and this table never grows unbounded."""
+
+    __tablename__ = "edu_verification_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String)
+    code: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Wrong-guess counter -- confirm_edu_verification refuses to check the code at all
+    # once this hits MAX_ATTEMPTS, so the 6-digit space (1M possibilities) can't be
+    # brute-forced against a single still-valid code within its 15-minute window.
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ChatSession(Base):

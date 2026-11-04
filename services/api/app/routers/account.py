@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import require_user
 from app.db.base import get_db
 from app.db.models import User
+from app.services import edu_verification
 from app.services.account import delete_own_account
 from app.services.users import get_or_create_user
 
@@ -87,3 +88,75 @@ async def delete_account(
     await db.commit()  # persist the user row if get_or_create_user just created it
     await delete_own_account(db, user)
     return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Free Pro for a verified school email -- see app/services/edu_verification.py.
+# ---------------------------------------------------------------------------
+
+
+class EduVerificationStart(BaseModel):
+    email: str
+
+
+class EduVerificationConfirm(BaseModel):
+    code: str
+
+
+def _serialize_edu_status(user: User) -> dict:
+    return {
+        "edu_email": user.edu_email,
+        "edu_verified_at": user.edu_verified_at.isoformat() if user.edu_verified_at else None,
+        "eligible_domains": edu_verification.allowed_domains(),
+    }
+
+
+@router.get("/edu-verification")
+async def edu_verification_status(
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Whether this account already has free Pro from a verified school email, and
+    which domains are currently eligible (so the Settings UI can say so before the
+    student even types an address)."""
+    user = await get_or_create_user(db, claims)
+    await db.commit()
+    return _serialize_edu_status(user)
+
+
+@router.post("/edu-verification/start")
+async def start_edu_verification(
+    body: EduVerificationStart,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Emails a 6-digit code to the given school address. 400 for a domain that isn't
+    on the allowlist, 503 if outbound email isn't configured yet (see
+    app/services/email.py) -- never a raw 500 for either, both are expected,
+    recoverable states, not bugs."""
+    user = await get_or_create_user(db, claims)
+    try:
+        await edu_verification.start_edu_verification(db, user, body.email)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    await db.commit()
+    return {"status": "sent"}
+
+
+@router.post("/edu-verification/confirm")
+async def confirm_edu_verification(
+    body: EduVerificationConfirm,
+    claims: dict = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Checks the code the student typed back in. A wrong/expired/missing code is
+    reported identically (400, same message) -- see edu_verification.confirm_
+    edu_verification's own comment for why that's deliberate, not an oversight."""
+    user = await get_or_create_user(db, claims)
+    verified = await edu_verification.confirm_edu_verification(db, user, body.code)
+    await db.commit()
+    if not verified:
+        raise HTTPException(status_code=400, detail="That code is wrong or has expired.")
+    return _serialize_edu_status(user)

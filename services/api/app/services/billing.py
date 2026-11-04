@@ -169,8 +169,11 @@ def is_pro(user: User) -> bool:
     """The one place that decides "is this user's plan Pro" -- reused by the tutor's
     frontier-model routing decision (app/agents/tutor.py) and both Pro-only feature
     gates (start_study_session, the voice endpoints) so the check never drifts between
-    the three call sites."""
-    return user.plan == "pro"
+    the three call sites. ORs in a verified school email (app/services/
+    edu_verification.py) as an independent second path to Pro -- deliberately not
+    folded into `plan` itself, so a real Stripe subscription/cancellation and this
+    never interact with or overwrite each other."""
+    return user.plan == "pro" or user.edu_verified_at is not None
 
 
 def pro_credits_remaining(user: User) -> bool:
