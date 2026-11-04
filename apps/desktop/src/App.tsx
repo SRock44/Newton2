@@ -15,10 +15,11 @@ import {
   openChatSocket,
   uploadChatImage,
 } from "./api";
-import { TokenManager, decodeJwtPayload } from "./auth";
+import { TokenManager, completeWebSignIn, decodeJwtPayload } from "./auth";
 import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import { getStudyRemindersEnabled } from "./lib/preferences";
+import { isTauri } from "./lib/platform";
 import { hasSeenOnboarding, markOnboardingSeen } from "./lib/onboarding";
 import type {
   AccountConsentStatus,
@@ -284,9 +285,34 @@ function App() {
   // required every single time the app is opened.
   useEffect(() => {
     let cancelled = false;
-    tokenManager.tryRestoreSession().finally(() => {
+    (async () => {
+      // apps/web only: if this exact page load IS Keycloak redirecting back with an
+      // authorization code (completeWebSignIn resolves non-null only when the URL
+      // actually has ?code= on it — a no-op on every desktop launch and every
+      // ordinary web page load), finish sign-in with it before falling back to the
+      // stored-session restore path below. Scrub the one-time code/state off the URL
+      // either way so a page refresh can't try to redeem the same code twice.
+      if (!isTauri() && window.location.search.includes("code=")) {
+        try {
+          const tokens = await completeWebSignIn();
+          window.history.replaceState({}, "", window.location.pathname);
+          if (tokens) {
+            if (!cancelled) {
+              tokenManager.setTokens(tokens);
+              setBootstrapping(false);
+            }
+            return;
+          }
+        } catch (err) {
+          window.history.replaceState({}, "", window.location.pathname);
+          console.error("completeWebSignIn failed", err);
+          // Falls through to tryRestoreSession below, same as any other failed
+          // sign-in attempt — the student lands on the login screen, not stuck.
+        }
+      }
+      await tokenManager.tryRestoreSession();
       if (!cancelled) setBootstrapping(false);
-    });
+    })();
     return () => {
       cancelled = true;
     };

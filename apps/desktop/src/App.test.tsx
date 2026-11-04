@@ -1499,3 +1499,70 @@ describe("App", () => {
     expect(lastNotepadAuthCall?.[1]).toEqual({ token: expect.any(String) });
   });
 });
+
+// apps/web's path: no Tauri bridge, and this exact page load is Keycloak redirecting
+// back with an authorization code — App.tsx's bootstrap effect should finish sign-in via
+// completeWebSignIn() instead of (or before falling back to) the ordinary stored-session
+// restore, and scrub the one-time code/state off the URL either way.
+describe("App (web — completing an OAuth redirect)", () => {
+  beforeEach(() => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    vi.mocked(openChatSocket).mockClear();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, writable: true, configurable: true });
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("signs in from the redirect's ?code, with no login-screen click needed, and cleans the URL", async () => {
+    window.sessionStorage.setItem("newton:auth:pkce_verifier", "the-verifier");
+    window.sessionStorage.setItem("newton:auth:pkce_state", "the-state");
+    window.history.pushState({}, "", "/?code=abc123&state=the-state");
+
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({
+        access_token: "web-access-token",
+        refresh_token: "web-refresh-token",
+        expires_in: 3600,
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(await (await messageList()).findByText("Hello from s1")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/protocol/openid-connect/token"),
+      expect.objectContaining({ body: expect.any(URLSearchParams) }),
+    );
+    const body = fetchMock.mock.calls[0]![1]!.body as URLSearchParams;
+    expect(body.get("code")).toBe("abc123");
+    expect(body.get("code_verifier")).toBe("the-verifier");
+
+    // The one-time code/state must not linger in the URL (a refresh shouldn't try to
+    // redeem the same code again), and the stashed PKCE verifier/state are consumed.
+    expect(window.location.search).toBe("");
+    expect(window.sessionStorage.getItem("newton:auth:pkce_verifier")).toBeNull();
+
+    await waitFor(() => expect(vi.mocked(openChatSocket)).toHaveBeenCalled());
+    const socket = vi.mocked(openChatSocket).mock.results[0]!.value as { send: (d: string) => void };
+    await waitFor(() =>
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "auth", token: "web-access-token" })),
+    );
+  });
+
+  it("falls back to the login screen (not stuck) if the redirect fails a security check", async () => {
+    // No matching verifier/state stashed at all — e.g. a stale or forged callback.
+    window.history.pushState({}, "", "/?code=abc123&state=some-state");
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
+});

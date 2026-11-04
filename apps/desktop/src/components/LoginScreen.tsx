@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ApiError } from "../api";
-import { signInWithBrowser } from "../auth";
+import { beginWebSignIn, signInWithBrowser } from "../auth";
 import type { TokenSet } from "../auth";
+import { isTauri } from "../lib/platform";
 import NewtonMark from "./NewtonMark";
 
 interface LoginScreenProps {
@@ -17,8 +18,16 @@ function LoginScreen({ onSuccess }: LoginScreenProps) {
     setError(null);
     setSigningIn(true);
     try {
-      const tokens = await signInWithBrowser();
-      onSuccess(tokens);
+      if (isTauri()) {
+        const tokens = await signInWithBrowser();
+        onSuccess(tokens);
+      } else {
+        // Navigates the whole page away to Keycloak's hosted login — never resolves
+        // in the normal case. App.tsx's bootstrap effect picks the tokens back up via
+        // completeWebSignIn() once Keycloak redirects back; onSuccess is called from
+        // there instead, not here.
+        await beginWebSignIn();
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
     } finally {
