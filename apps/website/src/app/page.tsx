@@ -7,6 +7,7 @@ import Reveal from "@/components/Reveal";
 import AppWalkthrough from "@/components/AppWalkthrough";
 import ResearchFilmSection from "@/components/ResearchFilmSection";
 import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
+import { appAuthUrl } from "@/lib/env";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
 // built (see ROADMAP.md's Phases 28-32 and services/api/app/tools/registry.py) — no
@@ -165,10 +166,10 @@ export default function Home() {
           </nav>
 
           <div className={styles.headerActions}>
-            <a href="#" className={styles.navLinkAuth}>
+            <a href={appAuthUrl("login")} className={styles.navLinkAuth}>
               Sign In
             </a>
-            <a href="#" className={styles.btnPrimarySm}>
+            <a href={appAuthUrl("register")} className={styles.btnPrimarySm}>
               Sign Up
             </a>
             <button
@@ -196,11 +197,11 @@ export default function Home() {
                 {link.label}
               </Link>
             ))}
-            <a href="#" className={styles.mobileNavLink} onClick={() => setMobileMenuOpen(false)}>
+            <a href={appAuthUrl("login")} className={styles.mobileNavLink} onClick={() => setMobileMenuOpen(false)}>
               Sign In
             </a>
             <a
-              href="#"
+              href={appAuthUrl("register")}
               className={styles.mobileNavLinkPrimary}
               onClick={() => setMobileMenuOpen(false)}
             >
@@ -234,7 +235,7 @@ export default function Home() {
               whole semester.
             </p>
             <div className={styles.heroActions}>
-              <a href="#" className={styles.btnPrimary}>
+              <a href="/download" className={styles.btnPrimary}>
                 Download Newton
               </a>
               <a href="#demo" className={styles.btnSecondary}>
@@ -242,7 +243,7 @@ export default function Home() {
               </a>
               <CornerArrow className={styles.cornerArrow} />
             </div>
-            <p className={styles.heroNote}>Windows, macOS, and Linux. Free to start.</p>
+            <p className={styles.heroNote}>Windows and macOS. Free to start.</p>
           </section>
         </div>
 

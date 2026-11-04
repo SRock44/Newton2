@@ -142,6 +142,16 @@ describe("beginWebSignIn / completeWebSignIn (apps/web's redirect-based OAuth fl
     expect(url.searchParams.get("state")).toBe(state);
   });
 
+  it("with mode='register', redirects to Keycloak's registration form instead of login — same params otherwise", async () => {
+    await beginWebSignIn("register");
+
+    const url = new URL(window.location.href);
+    expect(url.pathname).toBe("/realms/newton/protocol/openid-connect/registrations");
+    expect(url.searchParams.get("client_id")).toBe("newton-api");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://app.newton.best/callback");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
   it("exchanges the code for tokens using the verifier beginWebSignIn stashed, then clears it (one-time use)", async () => {
     await beginWebSignIn();
     const state = window.sessionStorage.getItem("newton:auth:pkce_state")!;

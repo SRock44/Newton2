@@ -127,11 +127,25 @@ interface OAuthCallbackResult {
   error?: string;
 }
 
+/** "login" or "register" — both go through the exact same Authorization Code + PKCE
+ * request, against two different Keycloak endpoints that happen to accept identical
+ * query params: /auth lands on the sign-in form, /registrations lands on the Create
+ * Account form instead. This is Keycloak's own documented way to deep-link straight to
+ * registration rather than making the student land on sign-in and hunt for a "Register"
+ * link — see beginWebSignIn below, the only caller that actually varies this. */
+export type SignInMode = "login" | "register";
+
+function authEndpointPath(mode: SignInMode): string {
+  return mode === "register"
+    ? "/realms/newton/protocol/openid-connect/registrations"
+    : "/realms/newton/protocol/openid-connect/auth";
+}
+
 /** Shared by both the desktop and web sign-in flows below — everything about the
  * authorization request is identical between them; only how the browser gets opened and
  * how the redirect comes back differs. */
-function buildAuthUrl(redirectUri: string, challenge: string, state: string): string {
-  const authUrl = new URL(`${KEYCLOAK_URL}/realms/newton/protocol/openid-connect/auth`);
+function buildAuthUrl(redirectUri: string, challenge: string, state: string, mode: SignInMode = "login"): string {
+  const authUrl = new URL(`${KEYCLOAK_URL}${authEndpointPath(mode)}`);
   authUrl.searchParams.set("client_id", "newton-api");
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("redirect_uri", redirectUri);
@@ -152,11 +166,11 @@ function buildAuthUrl(redirectUri: string, challenge: string, state: string): st
  *
  * Desktop (Tauri) only — apps/web uses beginWebSignIn/completeWebSignIn instead, since
  * there's no loopback listener to bind in a browser. */
-export async function signInWithBrowser(): Promise<TokenSet> {
+export async function signInWithBrowser(mode: SignInMode = "login"): Promise<TokenSet> {
   const verifier = randomString(48);
   const challenge = await pkceChallenge(verifier);
   const state = randomString(16);
-  const authUrl = buildAuthUrl(DESKTOP_REDIRECT_URI, challenge, state);
+  const authUrl = buildAuthUrl(DESKTOP_REDIRECT_URI, challenge, state, mode);
 
   const { invoke } = await import("@tauri-apps/api/core");
   const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -189,12 +203,13 @@ const WEB_PKCE_VERIFIER_KEY = "newton:auth:pkce_verifier";
 const WEB_PKCE_STATE_KEY = "newton:auth:pkce_state";
 
 /** apps/web's equivalent of signInWithBrowser: navigates the WHOLE page to Keycloak's
- * hosted login (there's no second "system browser" to open — the page itself is the
- * browser), stashing the PKCE verifier/state first so completeWebSignIn can pick them
- * back up after Keycloak redirects back to webRedirectUri(). Never resolves in the normal
- * case — the navigation itself is the point — so callers should not `await` expecting
- * code to run after it; it's async only because pkceChallenge is. */
-export async function beginWebSignIn(): Promise<void> {
+ * hosted login or registration form (there's no second "system browser" to open — the
+ * page itself is the browser), stashing the PKCE verifier/state first so
+ * completeWebSignIn can pick them back up after Keycloak redirects back to
+ * webRedirectUri(). Never resolves in the normal case — the navigation itself is the
+ * point — so callers should not `await` expecting code to run after it; it's async only
+ * because pkceChallenge is. */
+export async function beginWebSignIn(mode: SignInMode = "login"): Promise<void> {
   const verifier = randomString(48);
   const challenge = await pkceChallenge(verifier);
   const state = randomString(16);
@@ -202,7 +217,7 @@ export async function beginWebSignIn(): Promise<void> {
   window.sessionStorage.setItem(WEB_PKCE_VERIFIER_KEY, verifier);
   window.sessionStorage.setItem(WEB_PKCE_STATE_KEY, state);
 
-  window.location.href = buildAuthUrl(webRedirectUri(), challenge, state);
+  window.location.href = buildAuthUrl(webRedirectUri(), challenge, state, mode);
 }
 
 /** Call once, on load of the `/callback` route: reads `?code&state&error` off the current

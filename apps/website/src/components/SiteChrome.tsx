@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
+import { appAuthUrl } from "@/lib/env";
 import styles from "./SiteChrome.module.css";
 
 /**
@@ -36,10 +37,10 @@ export function SiteHeader() {
         </nav>
 
         <div className={styles.headerActions}>
-          <a href="#" className={styles.navLinkAuth}>
+          <a href={appAuthUrl("login")} className={styles.navLinkAuth}>
             Sign In
           </a>
-          <a href="#" className={styles.btnPrimarySm}>
+          <a href={appAuthUrl("register")} className={styles.btnPrimarySm}>
             Sign Up
           </a>
         </div>

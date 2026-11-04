@@ -1,0 +1,238 @@
+/* Newton's Keycloak theme. Re-skins the default "keycloak" (PatternFly v5, Keycloak 26's
+ * keycloak.v2) login theme to match the real app's own visual identity — the exact same
+ * tokens as apps/desktop/src/App.css and apps/website/src/app/globals.css (identical in
+ * both already; reproduced here under an `nt-` prefix since a Keycloak theme can't
+ * import either file). Selectors below were taken from the REAL rendered login/register
+ * pages (fetched and inspected via a real browser before writing this), not guessed from
+ * Keycloak documentation — see infra/keycloak/themes/newton/login/theme.properties for
+ * why this is pure CSS with zero template overrides. */
+
+@import url("https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,600&display=swap");
+
+:root {
+  --nt-bg: #f5efe3;
+  --nt-surface: #fffcf6;
+  --nt-surface-2: #ede2ca;
+  --nt-border: #ddcca5;
+  --nt-text: #241f16;
+  --nt-text-muted: #6d6250;
+  --nt-text-faint: #a2947a;
+  --nt-accent: #2f4d8c;
+  --nt-accent-hover: #263e70;
+  --nt-accent-active: #1e325a;
+  --nt-accent-contrast: #fdf9f0;
+  --nt-accent-tint: rgba(47, 77, 140, 0.12);
+  --nt-danger: #b23b3b;
+  --nt-radius-md: 9px;
+  --nt-radius-lg: 14px;
+  --nt-shadow-md: 0 12px 32px rgba(36, 26, 12, 0.14);
+}
+
+/* Keycloak toggles this on <html> itself from prefers-color-scheme (see the inline
+ * script every real login page ships) — same dark palette the app's own App.css uses
+ * under its own `@media (prefers-color-scheme: dark)` block. */
+html.pf-v5-theme-dark {
+  --nt-bg: #1c1712;
+  --nt-surface: #251f18;
+  --nt-surface-2: #2d251c;
+  --nt-border: #3c3021;
+  --nt-text: #f1e7d6;
+  --nt-text-muted: #b3a488;
+  --nt-text-faint: #7c6f59;
+  --nt-accent: #7c9de8;
+  --nt-accent-hover: #93b1ec;
+  --nt-accent-active: #648ae0;
+  --nt-accent-contrast: #10182a;
+  --nt-accent-tint: rgba(124, 157, 232, 0.18);
+  --nt-danger: #e28080;
+}
+
+body#keycloak-bg {
+  background: var(--nt-bg);
+  font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Avenir, Helvetica, Arial, sans-serif;
+  color: var(--nt-text);
+}
+
+/* The base theme's .pf-v5-c-login__container is a real two-column CSS grid (brand panel
+ * beside the form card, a "split" login layout meant for a big illustration in that
+ * second column) -- confirmed by inspecting its real computed style
+ * (grid-template-columns: 544px 476px) after a first version of this file left it alone
+ * and the brand/logo ended up floating in its own column, vertically off-center from the
+ * card, not above it. Newton has no such illustration, so this collapses it to a single
+ * centered column instead: header, then card, stacked -- matching their real DOM order. */
+.pf-v5-c-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.pf-v5-c-login__container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 460px;
+  padding: 24px;
+}
+
+.pf-v5-c-login__header {
+  width: 100%;
+}
+
+/* The brand/logo area. realm.displayName (infra/keycloak/realm-newton.json) renders as
+ * plain text here -- NOT displayNameHtml: Keycloak's own HTML sanitizer on that field
+ * silently strips <svg> as unsafe, so the actual icon is a real static file instead
+ * (login/resources/img/newton-mark.svg, the same mark apps/desktop's NewtonMark.tsx
+ * draws) painted in via ::before, not inline markup. */
+#kc-header-wrapper.pf-v5-c-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--nt-text);
+  letter-spacing: -0.01em;
+}
+
+#kc-header-wrapper.pf-v5-c-brand::before {
+  content: "";
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  background: url("../img/newton-mark.svg") no-repeat center / contain;
+}
+
+.pf-v5-c-login__main {
+  width: 100%;
+  background: var(--nt-surface);
+  border: 1px solid var(--nt-border);
+  border-radius: var(--nt-radius-lg);
+  box-shadow: var(--nt-shadow-md);
+  padding: 32px 30px;
+}
+
+.pf-v5-c-login__main-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+#kc-page-title.pf-v5-c-title {
+  font-family: "Fraunces", Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.25;
+  color: var(--nt-text);
+}
+
+.pf-v5-c-login__main-body {
+  color: var(--nt-text);
+}
+
+.subtitle,
+.pf-v5-c-helper-text__item-text {
+  color: var(--nt-text-muted);
+}
+
+.pf-v5-c-form__label-text {
+  font-family: "Public Sans", sans-serif;
+  font-weight: 500;
+  color: var(--nt-text);
+}
+
+.pf-v5-c-form__label-required {
+  color: var(--nt-accent);
+}
+
+.pf-v5-c-form-control,
+.pf-v5-c-form-control input {
+  background: var(--nt-surface);
+  border: 1px solid var(--nt-border);
+  border-radius: var(--nt-radius-md);
+  color: var(--nt-text);
+  font-family: "Public Sans", sans-serif;
+}
+
+input:focus,
+.pf-v5-c-form-control:focus-within {
+  border-color: var(--nt-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--nt-accent-tint);
+}
+
+.pf-v5-c-input-group {
+  border-radius: var(--nt-radius-md);
+  overflow: hidden;
+}
+
+.pf-v5-c-button.pf-m-control {
+  background: transparent;
+  color: var(--nt-text-muted);
+}
+
+.pf-v5-c-button.pf-m-primary {
+  background: var(--nt-accent);
+  color: var(--nt-accent-contrast);
+  border: none;
+  border-radius: var(--nt-radius-md);
+  font-family: "Public Sans", sans-serif;
+  font-weight: 600;
+  transition: background-color 120ms ease;
+}
+
+.pf-v5-c-button.pf-m-primary:hover {
+  background: var(--nt-accent-hover);
+}
+
+.pf-v5-c-button.pf-m-primary:active {
+  background: var(--nt-accent-active);
+}
+
+a {
+  color: var(--nt-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--nt-accent-hover);
+  text-decoration: underline;
+}
+
+.pf-v5-c-login__main-footer-band-item {
+  color: var(--nt-text-muted);
+}
+
+/* The "Sign in with Google" link — styled as a real secondary button (matching the
+ * app's own .btn-secondary look), not left as Keycloak's default bare text link. Its
+ * real multi-color "G" mark is left alone — brand icons stay recognizable, not
+ * recolored to match the theme. */
+#social-google.pf-v5-c-login__main-footer-links-item-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid var(--nt-border);
+  border-radius: var(--nt-radius-md);
+  background: var(--nt-surface-2);
+  color: var(--nt-text) !important;
+}
+
+#social-google.pf-v5-c-login__main-footer-links-item-link:hover {
+  background: var(--nt-border);
+  text-decoration: none;
+}
+
+#social-google svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pf-v5-c-helper-text__item.pf-m-error,
+.kc-feedback-text {
+  color: var(--nt-danger);
+}

@@ -18,6 +18,18 @@ describe("SiteHeader", () => {
     render(<SiteHeader />);
     expect(screen.getByRole("link", { name: "Newton" })).toHaveAttribute("href", "/");
   });
+
+  it("Sign In/Sign Up link straight into apps/web's own real auth flow", () => {
+    render(<SiteHeader />);
+    expect(screen.getByRole("link", { name: "Sign In" })).toHaveAttribute(
+      "href",
+      "http://localhost:5173/?auth=login"
+    );
+    expect(screen.getByRole("link", { name: "Sign Up" })).toHaveAttribute(
+      "href",
+      "http://localhost:5173/?auth=register"
+    );
+  });
 });
 
 describe("SiteFooter", () => {
@@ -32,10 +44,10 @@ describe("SiteFooter", () => {
     );
   });
 
-  it("keeps genuinely unbuilt destinations (download, contact) honestly stubbed", () => {
+  it("Download leads to the real download page now (Phase 4 is built)", () => {
     render(<SiteFooter />);
     const footer = screen.getByRole("contentinfo");
-    expect(within(footer).getByRole("link", { name: "Download" })).toHaveAttribute("href", "#");
+    expect(within(footer).getByRole("link", { name: "Download" })).toHaveAttribute("href", "/download");
   });
 
   it("doesn't repeat Sign In/Sign Up — they already live in the header", () => {

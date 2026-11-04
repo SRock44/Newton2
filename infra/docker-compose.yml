@@ -207,6 +207,12 @@ services:
     volumes:
       - newton_keycloakdata:/opt/keycloak/data
       - ./keycloak/realm-newton.json:/opt/keycloak/data/import/realm-newton.json:ro
+      # The real Newton-branded login/register theme (infra/keycloak/themes/newton) —
+      # parent=keycloak + CSS only, see its theme.properties. realm-newton.json's
+      # loginTheme picks it up on a fresh import; infra/keycloak/apply_theme.py applies
+      # the same setting live to an already-imported realm (see its own header comment
+      # for why that's a separate step).
+      - ./keycloak/themes/newton:/opt/keycloak/themes/newton:ro
     ports:
       - "127.0.0.1:58180:8080"
     networks: [newton_net]

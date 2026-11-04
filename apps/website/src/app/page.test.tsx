@@ -28,10 +28,16 @@ describe("Home", () => {
       expect(within(nav).getByRole("link", { name: "Pro" })).toHaveAttribute("href", "/#pro");
     });
 
-    it("renders Sign In and Sign Up entry points", () => {
+    it("Sign In/Sign Up link straight into apps/web's own real auth flow, not a stub", () => {
       render(<Home />);
-      expect(screen.getAllByRole("link", { name: "Sign In" }).length).toBeGreaterThan(0);
-      expect(screen.getAllByRole("link", { name: "Sign Up" }).length).toBeGreaterThan(0);
+      const signIns = screen.getAllByRole("link", { name: "Sign In" });
+      const signUps = screen.getAllByRole("link", { name: "Sign Up" });
+      expect(signIns.length).toBeGreaterThan(0);
+      expect(signUps.length).toBeGreaterThan(0);
+      // ?auth= is what LoginScreen.tsx (apps/desktop/src/components/LoginScreen.tsx,
+      // reused by apps/web) reads on load to start the right flow immediately.
+      signIns.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:5173/?auth=login"));
+      signUps.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:5173/?auth=register"));
     });
 
     it("has a working mobile menu that reveals Features/Pro/FAQ/Sign In", () => {
@@ -72,11 +78,11 @@ describe("Home", () => {
       );
     });
 
-    it("does not claim sign-up/download are wired up yet (Phase 4, not built)", () => {
+    it("Download Newton leads to the real download page, not a stub anymore (Phase 4 is built)", () => {
       render(<Home />);
       const downloadLinks = screen.getAllByRole("link", { name: /download newton/i });
       for (const link of downloadLinks) {
-        expect(link).toHaveAttribute("href", "#");
+        expect(link).toHaveAttribute("href", "/download");
       }
     });
 

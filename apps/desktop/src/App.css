@@ -4475,6 +4475,32 @@ body.is-resizing-panel * {
   margin-top: var(--space-1);
 }
 
+.login-create-account {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border: none;
+  border-top: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  cursor: pointer;
+}
+
+.login-create-account:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.login-create-account:disabled {
+  color: var(--color-text-faint);
+  cursor: default;
+  text-decoration: none;
+}
+
 .context-menu {
   position: fixed;
   z-index: 1000;

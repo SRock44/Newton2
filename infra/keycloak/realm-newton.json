@@ -2,6 +2,8 @@
   "realm": "newton",
   "enabled": true,
   "sslRequired": "none",
+  "displayName": "Newton",
+  "loginTheme": "newton",
   "registrationAllowed": true,
   "registrationEmailAsUsername": true,
   "verifyEmail": true,
