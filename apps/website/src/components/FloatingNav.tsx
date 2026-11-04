@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { NAV_LINKS } from "@/lib/siteNav";
 import { appAuthUrl } from "@/lib/env";
+import { redirectToSignIn } from "@/lib/authRedirect";
 import styles from "./FloatingNav.module.css";
 
 /** A tight hamburger icon for the mobile nav toggle — plain spans, not SVG, so the
@@ -48,6 +49,18 @@ export default function FloatingNav() {
     };
   }, []);
 
+  // Real `appAuthUrl` href kept as the fallback — JS-disabled visitors and a
+  // middle-click/ctrl-click "open in new tab" (which bypasses onClick entirely) still
+  // get a working, if slower, path straight through apps/web. See authRedirect.ts's
+  // own comment for the ~650ms stop at /chat this skips for everyone else.
+  function handleAuthClick(mode: "login" | "register") {
+    return (e: MouseEvent<HTMLAnchorElement>) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      void redirectToSignIn(mode);
+    };
+  }
+
   return (
     <div className={styles.navOuter}>
       <div className={`${styles.navBar} ${scrolled ? styles.navBarScrolled : ""}`}>
@@ -69,10 +82,10 @@ export default function FloatingNav() {
         </nav>
 
         <div className={styles.headerActions}>
-          <a href={appAuthUrl("login")} className={styles.navLinkAuth}>
+          <a href={appAuthUrl("login")} className={styles.navLinkAuth} onClick={handleAuthClick("login")}>
             Sign In
           </a>
-          <a href={appAuthUrl("register")} className={styles.btnPrimarySm}>
+          <a href={appAuthUrl("register")} className={styles.btnPrimarySm} onClick={handleAuthClick("register")}>
             Sign Up
           </a>
           <button
@@ -100,13 +113,23 @@ export default function FloatingNav() {
               {link.label}
             </Link>
           ))}
-          <a href={appAuthUrl("login")} className={styles.mobileNavLink} onClick={() => setMobileMenuOpen(false)}>
+          <a
+            href={appAuthUrl("login")}
+            className={styles.mobileNavLink}
+            onClick={(e) => {
+              handleAuthClick("login")(e);
+              setMobileMenuOpen(false);
+            }}
+          >
             Sign In
           </a>
           <a
             href={appAuthUrl("register")}
             className={styles.mobileNavLinkPrimary}
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={(e) => {
+              handleAuthClick("register")(e);
+              setMobileMenuOpen(false);
+            }}
           >
             Sign Up
           </a>

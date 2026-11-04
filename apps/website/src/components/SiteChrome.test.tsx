@@ -1,8 +1,17 @@
-import { describe, it, expect } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import { SiteHeader, SiteFooter } from "./SiteChrome";
 
+const redirectToSignIn = vi.fn();
+vi.mock("@/lib/authRedirect", () => ({
+  redirectToSignIn: (mode: "login" | "register") => redirectToSignIn(mode),
+}));
+
 describe("SiteHeader", () => {
+  beforeEach(() => {
+    redirectToSignIn.mockClear();
+  });
+
   it("renders the primary nav with real internal routes for FAQ and Pro", () => {
     render(<SiteHeader />);
     const nav = screen.getByRole("navigation", { name: /primary/i });
@@ -29,6 +38,16 @@ describe("SiteHeader", () => {
       "href",
       "http://localhost:3000/chat?auth=register"
     );
+  });
+
+  it("Sign In/Sign Up redirect straight to Keycloak on click, skipping the /chat stop", () => {
+    render(<SiteHeader />);
+
+    fireEvent.click(screen.getByRole("link", { name: "Sign In" }));
+    expect(redirectToSignIn).toHaveBeenCalledWith("login");
+
+    fireEvent.click(screen.getByRole("link", { name: "Sign Up" }));
+    expect(redirectToSignIn).toHaveBeenCalledWith("register");
   });
 });
 

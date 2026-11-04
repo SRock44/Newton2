@@ -1,8 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import Home from "./page";
 
+const redirectToSignIn = vi.fn();
+vi.mock("@/lib/authRedirect", () => ({
+  redirectToSignIn: (mode: "login" | "register") => redirectToSignIn(mode),
+}));
+
 describe("Home", () => {
+  beforeEach(() => {
+    redirectToSignIn.mockClear();
+  });
+
   it("renders the Newton wordmark in both the header and footer", () => {
     render(<Home />);
     expect(screen.getAllByText("Newton").length).toBeGreaterThanOrEqual(2);
@@ -79,6 +88,26 @@ describe("Home", () => {
       // appAuthUrl. Chat Now doesn't presume the visitor is new, so it's "login" mode
       // (Keycloak's hosted page covers both a new and returning student from there).
       chatLinks.forEach((link) => expect(link).toHaveAttribute("href", "http://localhost:3000/chat?auth=login"));
+    });
+
+    it("Chat Now redirects straight to Keycloak on click — skips the /chat stop (a real, measured ~650ms detour)", () => {
+      render(<Home />);
+      const chatLink = screen.getAllByRole("link", { name: "Chat Now" })[0]!;
+      const event = fireEvent.click(chatLink);
+
+      expect(redirectToSignIn).toHaveBeenCalledWith("login");
+      // The click was handled client-side (preventDefault), not left to the browser to
+      // follow the href — fireEvent.click's return value is false when preventDefault
+      // was called.
+      expect(event).toBe(false);
+    });
+
+    it("a modified click (e.g. ctrl/cmd — \"open in new tab\") is left alone, not intercepted", () => {
+      render(<Home />);
+      const chatLink = screen.getAllByRole("link", { name: "Chat Now" })[0]!;
+      fireEvent.click(chatLink, { ctrlKey: true });
+
+      expect(redirectToSignIn).not.toHaveBeenCalled();
     });
 
     it("Download is a real, secondary CTA — not the primary ask anymore now that chatting needs no download", () => {

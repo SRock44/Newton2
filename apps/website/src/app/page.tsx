@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
@@ -8,6 +8,7 @@ import InteractiveDemo from "@/components/InteractiveDemo";
 import FloatingNav from "@/components/FloatingNav";
 import { FOOTER_COLUMNS } from "@/lib/siteNav";
 import { appAuthUrl } from "@/lib/env";
+import { redirectToSignIn } from "@/lib/authRedirect";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
 // built (see ROADMAP.md's Phases 28-32 and services/api/app/tools/registry.py) — no
@@ -234,6 +235,15 @@ export default function Home() {
     );
   }, []);
 
+  // Real appAuthUrl href kept as the fallback — see authRedirect.ts's own comment and
+  // FloatingNav.tsx's matching handler (same logic, duplicated rather than shared
+  // across two small client components rather than introducing a hook for one line).
+  function handleChatNowClick(e: MouseEvent<HTMLAnchorElement>) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    void redirectToSignIn("login");
+  }
+
   return (
     <div className={styles.page}>
       <a className={styles.skipLink} href="#main">
@@ -269,7 +279,7 @@ export default function Home() {
               whole semester.
             </p>
             <div className={styles.heroActions}>
-              <a href={appAuthUrl("login")} className={styles.btnPrimary}>
+              <a href={appAuthUrl("login")} className={styles.btnPrimary} onClick={handleChatNowClick}>
                 Chat Now
               </a>
               <a href="/download" className={styles.btnSecondary}>
