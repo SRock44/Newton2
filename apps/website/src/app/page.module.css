@@ -18,6 +18,7 @@
 
 .sectionTextured {
   position: relative;
+  overflow: hidden;
   background-color: var(--color-surface-2);
 }
 
@@ -25,19 +26,57 @@
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 0;
   background-image: var(--texture-dots);
   background-size: var(--texture-dots-size);
   opacity: 0.5;
   pointer-events: none;
 }
 
+/* Same real-color grounding as .sectionWarm above, for the same reason — a flat
+ * surface-2 fill plus a faint dot texture read as a near-black void in dark mode. */
+.sectionTextured::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  background: radial-gradient(circle at 85% 15%, var(--color-accent-2-tint), transparent 46%),
+    radial-gradient(circle at 10% 85%, var(--color-accent-3-tint), transparent 44%);
+  filter: blur(50px);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
 .sectionTextured > * {
   position: relative;
+  z-index: 1;
 }
 
 .sectionWarm {
   position: relative;
+  overflow: hidden;
   background: linear-gradient(180deg, var(--color-bg) 0%, var(--color-accent-3-tint) 130%);
+}
+
+/* Real feedback on the plain gradient above: in dark mode it read as flat, near-black
+ * "void" — the capability cards floated in it with nothing to visually ground them.
+ * The same vivid, colorful aurora the hero uses, just calmer (no drift animation —
+ * this section isn't the first thing a visitor sees, so it stays still). */
+.sectionWarm::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  background: radial-gradient(circle at 10% 10%, var(--color-accent-tint-strong), transparent 48%),
+    radial-gradient(circle at 92% 70%, var(--color-accent-2-tint), transparent 46%);
+  filter: blur(50px);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.sectionWarm > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---------------------------------------------------------------------
@@ -430,16 +469,15 @@
   gap: 12px;
   padding: 26px 24px;
   border-radius: var(--radius-lg);
-  border: 1px solid transparent;
-  background-color: transparent;
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease,
-    background-color 0.25s ease;
+  border: 1px solid var(--color-border-2);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .capabilityCard:hover {
   transform: translateY(-4px);
-  border-color: var(--color-border-2);
-  background-color: var(--color-surface);
+  border-color: var(--color-accent-tint-strong);
   box-shadow: var(--shadow-md);
 }
 
