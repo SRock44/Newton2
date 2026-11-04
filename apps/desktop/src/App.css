@@ -4281,13 +4281,18 @@ body.is-resizing-panel * {
 }
 
 .composer-attach {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   color: var(--color-text-muted);
   font-size: 18px;
   line-height: 1;
-  padding: 6px 8px;
+  padding: 0;
   border-radius: var(--radius-sm);
 }
 
@@ -4457,20 +4462,38 @@ body.is-resizing-panel * {
    quiet, text-muted treatment when idle. While recording it picks up the same
    danger-tinted "live" treatment .notepad-window__record-btn--active uses, so the two
    recording surfaces in this app read identically. See Composer.tsx. */
+/* Same 32px square footprint as .composer-attach so the two sit at matching size/
+   scale next to each other — a real reported bug ("the microphone looks bad next to
+   the +... make them the same size"), confirmed with a real screenshot showing the +
+   at 30px tall and the mic at 26.5px, visibly smaller and mis-aligned. `min-width`
+   (not a fixed `width`) because this button's content genuinely changes shape: resting
+   state is just the icon (exactly 32px with this padding), recording state adds a
+   pulsing dot + elapsed-time text and needs to grow wider — `height` stays locked at
+   32px either way, which is the dimension that actually needs to match .composer-attach. */
 .composer-mic {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   flex-shrink: 0;
   align-self: flex-end;
+  min-width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   color: var(--color-text-muted);
   font-family: inherit;
   font-size: var(--font-size-xs);
   line-height: 1;
-  padding: 7px 8px;
+  padding: 0 8px;
   border-radius: var(--radius-sm);
+}
+
+/* The resting mic glyph specifically gets a bigger size than the button's own
+   font-size (which stays small for the recording-elapsed-time digits) — otherwise the
+   emoji renders tiny and reads as a different visual weight than the "+" beside it. */
+.composer-mic-icon {
+  font-size: 17px;
 }
 
 .composer-mic:hover:not(:disabled) {

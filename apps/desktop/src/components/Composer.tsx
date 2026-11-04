@@ -698,7 +698,9 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           ) : transcribing ? (
             "…"
           ) : (
-            <span aria-hidden="true">🎙</span>
+            <span className="composer-mic-icon" aria-hidden="true">
+              🎙
+            </span>
           )}
         </button>
         <textarea
