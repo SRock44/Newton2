@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  // The two ambient .d.ts files apps/desktop/src needs (vite/client's CSS-side-effect-
+  // import and import.meta.env types, and plotly.js-basic-dist-min's hand-rolled module
+  // declaration) — reused directly rather than duplicated, same as everything else this
+  // package shares with apps/desktop. Ambient declaration files have to be explicitly
+  // part of the program (unlike regular modules, they're not pulled in just by being
+  // imported), which is the one case where apps/desktop/src genuinely needs listing here.
+  "include": ["src", "../desktop/src/vite-env.d.ts", "../desktop/src/plotly-basic-dist-min.d.ts"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

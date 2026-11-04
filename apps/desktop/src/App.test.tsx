@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
@@ -1564,5 +1565,47 @@ describe("App (web — completing an OAuth redirect)", () => {
 
     expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
     expect(window.location.search).toBe("");
+  });
+
+  // Regression test for a real bug a real browser test caught (not a unit test — every
+  // OTHER test in this file renders <App/> directly, without the <React.StrictMode>
+  // wrapper bootstrap.tsx actually uses in both real builds, so none of them exercised
+  // this). StrictMode double-invokes effects once in development; completeWebSignIn()'s
+  // very first (synchronous) line clears the one-time PKCE verifier out of sessionStorage,
+  // so the SECOND invocation used to run against state the first had already consumed and
+  // fail with "lost track of the request" — even though sign-in had just genuinely
+  // succeeded from the student's point of view. See bootstrapRanRef in App.tsx.
+  it("under React.StrictMode's double-invoked effects, still completes sign-in exactly once (not 'lost track of the request')", async () => {
+    window.sessionStorage.setItem("newton:auth:pkce_verifier", "the-verifier");
+    window.sessionStorage.setItem("newton:auth:pkce_state", "the-state");
+    window.history.pushState({}, "", "/?code=abc123&state=the-state");
+
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({
+        access_token: "web-access-token",
+        refresh_token: "web-refresh-token",
+        expires_in: 3600,
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(screen.queryByRole("button", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(await (await messageList()).findByText("Hello from s1")).toBeInTheDocument();
+    // The real failure mode this guards against: completeWebSignIn failing and logging
+    // "lost track of the request" despite the student actually being signed in now.
+    expect(errorSpy).not.toHaveBeenCalledWith("completeWebSignIn failed", expect.anything());
+    // Exactly one token exchange — a second, StrictMode-duplicated attempt using the
+    // already-cleared verifier would otherwise have fired a second (failing) one.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    errorSpy.mockRestore();
   });
 });

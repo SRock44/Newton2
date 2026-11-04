@@ -49,12 +49,18 @@ class Settings(BaseSettings):
     whisper_asr_url: str = "http://whisper-asr:9000"
     piper_tts_url: str = "http://piper-tts:8000"
 
-    # Origins the Tauri webview runs under: Vite dev server, and the custom-protocol
-    # origins WebView2/WKWebView use for a packaged app in production.
+    # Origins the Tauri webview runs under (Vite dev server, and the custom-protocol
+    # origins WebView2/WKWebView use for a packaged app in production), plus
+    # apps/web's own Vite dev server (pinned to this exact port in apps/web/vite.config.ts
+    # specifically so this list can name one fixed origin). A real public web deployment
+    # adds its own real https:// origin(s) via the CORS_ALLOW_ORIGINS env var (pydantic-
+    # settings parses it as a JSON array automatically, same as any other list-typed
+    # setting here) rather than editing this hardcoded dev-convenience default.
     cors_allow_origins: list[str] = [
         "http://localhost:1420",
         "tauri://localhost",
         "https://tauri.localhost",
+        "http://localhost:5173",
     ]
 
     # Provider adapter: our own cost-conscious defaults (Groq/OpenRouter), tried in this

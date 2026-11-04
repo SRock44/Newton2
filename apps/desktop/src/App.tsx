@@ -283,8 +283,35 @@ function App() {
   // Runs once, before rendering the login screen: try to silently resume whatever
   // session a previous run of the app persisted (see auth.ts) so signing in isn't
   // required every single time the app is opened.
+  //
+  // Real bug this guard fixes (found by a real browser test, not a unit test — the unit
+  // tests render <App/> directly, without the <React.StrictMode> wrapper bootstrap.tsx
+  // actually uses): React's StrictMode deliberately mounts, unmounts, and re-mounts once
+  // in development, invoking this effect twice in the same synchronous pass. Both the web
+  // sign-in-completion branch below and TokenManager.tryRestoreSession() have a
+  // non-idempotent side effect on their very first (synchronous, pre-`await`) line —
+  // completeWebSignIn() clears the one-time PKCE verifier out of sessionStorage,
+  // tryRestoreSession() is about to redeem a refresh token Keycloak may rotate/invalidate
+  // on use — so a second invocation running against state the first had already consumed
+  // failed with "lost track of the request" even though sign-in had, from the student's
+  // point of view, just genuinely succeeded.
+  //
+  // bootstrapRanRef (not a `cancelled` flag returned from cleanup — a first attempt at
+  // this fix used one, and introduced a WORSE bug: StrictMode's cleanup ran between the
+  // two invocations and marked the one invocation that actually did the work as
+  // "cancelled", so its own `if (!cancelled) setBootstrapping(false)` never fired and the
+  // app hung on the loading spinner forever — also only caught by the same real browser
+  // test, not a unit test) persists across StrictMode's extra mount/unmount pass (only
+  // effects get re-invoked, not a component's own refs/state): checked and set BEFORE any
+  // async work starts, so whichever invocation runs first does the one real bootstrap
+  // end-to-end, uninterrupted, and the other is a complete no-op with nothing to cancel.
+  // This component is the app's root, rendered once for the lifetime of the page — a real
+  // (not StrictMode-synthetic) unmount never happens, so there's no case where skipping
+  // the old `cancelled`-based "ignore a stale result" guard actually matters.
+  const bootstrapRanRef = useRef(false);
   useEffect(() => {
-    let cancelled = false;
+    if (bootstrapRanRef.current) return;
+    bootstrapRanRef.current = true;
     (async () => {
       // apps/web only: if this exact page load IS Keycloak redirecting back with an
       // authorization code (completeWebSignIn resolves non-null only when the URL
@@ -297,10 +324,8 @@ function App() {
           const tokens = await completeWebSignIn();
           window.history.replaceState({}, "", window.location.pathname);
           if (tokens) {
-            if (!cancelled) {
-              tokenManager.setTokens(tokens);
-              setBootstrapping(false);
-            }
+            tokenManager.setTokens(tokens);
+            setBootstrapping(false);
             return;
           }
         } catch (err) {
@@ -311,11 +336,8 @@ function App() {
         }
       }
       await tokenManager.tryRestoreSession();
-      if (!cancelled) setBootstrapping(false);
+      setBootstrapping(false);
     })();
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
