@@ -1,52 +1,16 @@
-"use client";
-
 import Link from "next/link";
-import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
-import { appAuthUrl } from "@/lib/env";
+import { FOOTER_COLUMNS } from "@/lib/siteNav";
+import FloatingNav from "./FloatingNav";
 import styles from "./SiteChrome.module.css";
 
 /**
- * The header/footer chrome shared by every standalone content route (FAQ/About/
- * Changelog/Roadmap) — visually identical to the header/footer built inline in
- * src/app/page.tsx (same tokens, same wordmark-apple hover easter egg, same nav/footer
- * link data via src/lib/siteNav.ts), just factored out so four new routes don't each
- * duplicate ~120 lines of near-identical header/footer JSX. The landing page itself
- * (page.tsx) keeps its own inline header/footer untouched — this component is
- * deliberately NOT swapped in there, to avoid touching page.tsx's hero/walkthrough
- * region, which another pass owns.
+ * The header shared by every standalone content route (FAQ/About/Changelog/Roadmap)
+ * AND the landing page itself — both now render the same FloatingNav (previously two
+ * near-identical ~60-line header blocks kept manually in sync; a nav complex enough to
+ * have its own scroll state and mobile menu isn't worth duplicating twice over).
  */
 export function SiteHeader() {
-  return (
-    <header className={styles.header}>
-      <div className={styles.headerInner}>
-        <span className={styles.wordmarkWrap}>
-          <Link href="/" className={styles.wordmark}>
-            Newton
-          </Link>
-          <span className={styles.wordmarkApple} aria-hidden="true">
-            🍎
-          </span>
-        </span>
-
-        <nav className={styles.nav} aria-label="Primary">
-          {NAV_LINKS.map((link) => (
-            <Link key={link.label} href={link.href} className={styles.navLink}>
-              {link.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className={styles.headerActions}>
-          <a href={appAuthUrl("login")} className={styles.navLinkAuth}>
-            Sign In
-          </a>
-          <a href={appAuthUrl("register")} className={styles.btnPrimarySm}>
-            Sign Up
-          </a>
-        </div>
-      </div>
-    </header>
-  );
+  return <FloatingNav />;
 }
 
 export function SiteFooter() {

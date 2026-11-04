@@ -48,9 +48,44 @@ html.pf-v5-theme-dark {
 }
 
 body#keycloak-bg {
+  position: relative;
+  overflow-x: hidden;
   background: var(--nt-bg);
   font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Avenir, Helvetica, Arial, sans-serif;
   color: var(--nt-text);
+}
+
+/* The same slow-drifting color aurora the real site's hero uses (apps/website's
+ * page.module.css .heroShell::after) — sign-up/sign-in is the single highest-stakes
+ * page in the whole funnel and it was reading as a flat, unstyled default Keycloak
+ * form next to the rest of the now much more alive site. */
+body#keycloak-bg::before {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  z-index: 0;
+  background: radial-gradient(circle at 18% 22%, rgba(47, 77, 140, 0.16), transparent 45%),
+    radial-gradient(circle at 85% 15%, rgba(184, 132, 44, 0.16), transparent 42%),
+    radial-gradient(circle at 55% 88%, rgba(168, 71, 31, 0.14), transparent 40%);
+  filter: blur(40px);
+  opacity: 0.9;
+  pointer-events: none;
+  animation: nt-aurora-drift 16s ease-in-out infinite alternate;
+}
+
+@keyframes nt-aurora-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(2%, -2%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body#keycloak-bg::before {
+    animation: none;
+  }
 }
 
 /* The base theme's .pf-v5-c-login__container is a real two-column CSS grid (brand panel
@@ -61,6 +96,8 @@ body#keycloak-bg {
  * card, not above it. Newton has no such illustration, so this collapses it to a single
  * centered column instead: header, then card, stacked -- matching their real DOM order. */
 .pf-v5-c-login {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -107,12 +144,44 @@ body#keycloak-bg {
 }
 
 .pf-v5-c-login__main {
+  position: relative;
   width: 100%;
   background: var(--nt-surface);
   border: 1px solid var(--nt-border);
   border-radius: var(--nt-radius-lg);
-  box-shadow: var(--nt-shadow-md);
+  box-shadow: var(--nt-shadow-md), 0 0 0 1px rgba(47, 77, 140, 0.06);
   padding: 32px 30px;
+  animation: nt-card-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes nt-card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-v5-c-login__main {
+    animation: none;
+  }
+}
+
+/* A thin gradient top edge on the card — a small, real color accent instead of the
+ * same flat parchment surface as everything around it. */
+.pf-v5-c-login__main::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14%;
+  right: 14%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, var(--nt-accent), #b8842c, #a8471f);
 }
 
 .pf-v5-c-login__main-header {
@@ -174,21 +243,42 @@ input:focus,
 }
 
 .pf-v5-c-button.pf-m-primary {
-  background: var(--nt-accent);
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--nt-accent) 0%, var(--nt-accent-hover) 100%);
   color: var(--nt-accent-contrast);
   border: none;
   border-radius: var(--nt-radius-md);
   font-family: "Public Sans", sans-serif;
   font-weight: 600;
-  transition: background-color 120ms ease;
+  box-shadow: 0 3px 14px rgba(47, 77, 140, 0.3);
+  transition: transform 160ms cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 160ms ease;
+}
+
+.pf-v5-c-button.pf-m-primary::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(115deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.5s ease;
 }
 
 .pf-v5-c-button.pf-m-primary:hover {
-  background: var(--nt-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(47, 77, 140, 0.4);
+}
+
+.pf-v5-c-button.pf-m-primary:hover::before {
+  left: 120%;
 }
 
 .pf-v5-c-button.pf-m-primary:active {
   background: var(--nt-accent-active);
+  transform: translateY(0);
 }
 
 a {

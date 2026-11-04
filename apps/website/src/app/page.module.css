@@ -79,26 +79,10 @@
 }
 
 /* ---------------------------------------------------------------------
- * Header / nav
+ * Header / nav now lives entirely in FloatingNav.tsx/FloatingNav.module.css, used
+ * directly here and by SiteChrome.tsx's SiteHeader on every other route. .wordmark
+ * stays here — the footer brand below still uses it.
  * ------------------------------------------------------------------- */
-
-.header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  border-bottom: 1px solid var(--color-border);
-  background-color: var(--color-surface);
-}
-
-.headerInner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  max-width: 1160px;
-  margin: 0 auto;
-  padding: 18px 32px;
-}
 
 .wordmark {
   font-family: var(--font-serif);
@@ -107,154 +91,6 @@
   color: var(--color-text);
   text-decoration: none;
   white-space: nowrap;
-}
-
-/* A small, tasteful nod to the name — Newton's apple — dropping past the wordmark on
- * hover/focus. Purely decorative (aria-hidden in the markup), and reduced-motion turns
- * it into a plain fade rather than a fall. */
-.wordmarkWrap {
-  position: relative;
-  display: inline-block;
-}
-
-.wordmarkApple {
-  position: absolute;
-  top: -2px;
-  right: -14px;
-  font-size: 13px;
-  opacity: 0;
-  transform: translateY(-6px);
-  pointer-events: none;
-}
-
-.wordmarkWrap:hover .wordmarkApple,
-.wordmarkWrap:focus-within .wordmarkApple {
-  animation: wordmark-apple-fall 0.7s cubic-bezier(0.55, 0, 0.2, 1) both;
-}
-
-@keyframes wordmark-apple-fall {
-  0% {
-    opacity: 0;
-    transform: translateY(-6px) rotate(0deg);
-  }
-  15% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(16px) rotate(50deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wordmarkWrap:hover .wordmarkApple,
-  .wordmarkWrap:focus-within .wordmarkApple {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  flex: 1;
-  justify-content: center;
-}
-
-.navLink {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-muted);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.navLink:hover {
-  color: var(--color-text);
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  white-space: nowrap;
-}
-
-.navLinkAuth {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-muted);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.navLinkAuth:hover {
-  color: var(--color-text);
-}
-
-.btnPrimarySm {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-accent);
-  color: var(--color-accent-contrast);
-  text-decoration: none;
-  padding: 8px 16px;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  border-radius: var(--radius-sm);
-  transition: background-color 0.15s ease;
-}
-
-.btnPrimarySm:hover {
-  background-color: var(--color-accent-hover);
-}
-
-/* ---------------------------------------------------------------------
- * Mobile nav — Phase 3.8 fix: below 720px the primary nav/Sign-In link are
- * hidden (see the responsive block at the bottom of this file) with no
- * replacement, leaving Features/Pro/FAQ/Sign In completely unreachable on
- * mobile. This hamburger toggle + dropdown panel is the fix.
- * ------------------------------------------------------------------- */
-
-.menuToggle {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.menuToggle:hover,
-.menuToggle:focus-visible {
-  background-color: var(--color-surface-2);
-}
-
-.menuToggleBars {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-  width: 20px;
-}
-
-.menuToggleBar {
-  display: block;
-  width: 100%;
-  height: 2px;
-  background-color: var(--color-text);
-  border-radius: 1px;
-}
-
-.mobileNav {
-  display: none;
 }
 
 /* ---------------------------------------------------------------------
@@ -319,6 +155,7 @@
 
 .heroShell {
   position: relative;
+  overflow: hidden;
   background-image: var(--gradient-hero);
 }
 
@@ -326,6 +163,7 @@
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 0;
   background-image: var(--texture-dots);
   background-size: var(--texture-dots-size);
   opacity: 0.35;
@@ -334,8 +172,41 @@
   pointer-events: none;
 }
 
+/* A slow-drifting aurora of color behind the hero — the thing a flat parchment fill
+   was missing. Product owner, verbatim (second pass): "it needs to be seamless,
+   animated, colorful ... not plain boring and vibe-coded." */
+.heroShell::after {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  z-index: 0;
+  background: radial-gradient(circle at 16% 20%, var(--color-accent-tint-strong), transparent 45%),
+    radial-gradient(circle at 86% 12%, var(--color-accent-2-tint), transparent 42%),
+    radial-gradient(circle at 55% 85%, var(--color-accent-3-tint), transparent 40%);
+  filter: blur(40px);
+  opacity: 0.85;
+  pointer-events: none;
+  animation: hero-aurora-drift 15s ease-in-out infinite alternate;
+}
+
+@keyframes hero-aurora-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(2%, -2%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroShell::after {
+    animation: none;
+  }
+}
+
 .hero {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -343,6 +214,52 @@
   max-width: 760px;
   margin: 0 auto;
   padding: 76px 32px 48px;
+}
+
+/* Entrance stagger for the hero's own content, on load — not scroll-triggered (it's
+   above the fold already) and scoped to `.hero` so this never touches the shared
+   `.eyebrow`/`.sectionTitle` classes reused lower on the page inside <Reveal>. */
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hero > * {
+  animation: hero-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hero > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+
+.hero > *:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.hero > *:nth-child(3) {
+  animation-delay: 0.14s;
+}
+
+.hero > *:nth-child(4) {
+  animation-delay: 0.2s;
+}
+
+.hero > *:nth-child(5) {
+  animation-delay: 0.26s;
+}
+
+.hero > *:nth-child(6) {
+  animation-delay: 0.32s;
+}
+
+.hero > *:nth-child(7) {
+  animation-delay: 0.38s;
 }
 
 .eyebrow {
@@ -356,7 +273,8 @@
 
 /* The category-claim badge, above the "Verified, not vibes" eyebrow — not replacing it,
    stacked above it. Product owner, verbatim: "WE NEED TO POUND HEAVY INTO AGENTIC
-   LEARNING ENVIRONMENT." */
+   LEARNING ENVIRONMENT." A soft pulsing glow gives it some life instead of sitting
+   there static. */
 .aleBadge {
   display: inline-flex;
   align-items: center;
@@ -369,6 +287,23 @@
   font-size: 12px;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em;
+  animation: hero-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both, badge-pulse 2.6s ease-in-out 0.7s infinite;
+}
+
+@keyframes badge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--color-accent-tint);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--color-accent-tint);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aleBadge {
+    animation: none;
+  }
 }
 
 .title {
@@ -377,6 +312,34 @@
   color: var(--color-text);
   letter-spacing: -0.015em;
   margin: 0 0 20px;
+}
+
+/* The gradient-filled "checks its work" — a moving three-color sweep instead of flat
+   ink, the one piece of the headline the squiggle underline already calls out as the
+   key phrase. */
+.gradientText {
+  background: linear-gradient(100deg, var(--color-accent) 10%, var(--color-accent-2) 50%, var(--color-accent-3) 90%);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradient-text-shift 7s ease-in-out infinite;
+}
+
+@keyframes gradient-text-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gradientText {
+    animation: none;
+  }
 }
 
 .subtitle {
@@ -446,40 +409,69 @@
 }
 
 /* ---------------------------------------------------------------------
- * Capability cards — a flat icon-row grid, deliberately NOT a bordered/
- * shadowed/hover-lifting card (a previous pass's version was). Checked
- * claude.com directly before this pass: its own marketing page carries
- * near-zero boxed-card chrome — generous whitespace and plain typography
- * do the work instead. No visible boundary here either; the grid gap
- * alone separates each item.
+ * Capability cards. An earlier pass went fully flat/colorless here (modeled on
+ * claude.com's own near-zero card chrome) — direct later feedback was that the whole
+ * page, this section included, read as "plain... not colorful... vibe-coded." Each
+ * card now gets its own gradient icon badge (cycling three accent colors so the grid
+ * reads with real variety, not one repeated blue) plus a lift-and-glow on hover.
  * ------------------------------------------------------------------- */
 
 .capabilityGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 40px 32px;
-  max-width: 1000px;
+  gap: 24px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 
 .capabilityCard {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  padding: 26px 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  background-color: transparent;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease,
+    background-color 0.25s ease;
+}
+
+.capabilityCard:hover {
+  transform: translateY(-4px);
+  border-color: var(--color-border-2);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-md);
 }
 
 .capabilityIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--color-accent-tint), var(--color-accent-tint-strong));
   color: var(--color-accent);
+  transition: transform 0.3s cubic-bezier(0.34, 1.5, 0.64, 1);
+}
+
+.capabilityCard:hover .capabilityIcon {
+  transform: scale(1.08) rotate(-4deg);
 }
 
 .capabilityIcon svg {
-  width: 19px;
-  height: 19px;
+  width: 21px;
+  height: 21px;
+}
+
+.capabilityCard:nth-child(3n + 2) .capabilityIcon {
+  background: linear-gradient(135deg, var(--color-accent-2-tint), rgba(184, 132, 44, 0.3));
+  color: var(--color-accent-2-ink);
+}
+
+.capabilityCard:nth-child(3n + 3) .capabilityIcon {
+  background: linear-gradient(135deg, var(--color-accent-3-tint), rgba(168, 71, 31, 0.3));
+  color: var(--color-accent-3);
 }
 
 .capabilityTitle {
@@ -717,54 +709,6 @@
 @media (max-width: 960px) {
   .hero {
     padding: 56px 28px 40px;
-  }
-}
-
-@media (max-width: 720px) {
-  .headerInner {
-    padding: 16px 20px;
-  }
-
-  .nav {
-    display: none;
-  }
-
-  .navLinkAuth {
-    display: none;
-  }
-
-  .menuToggle {
-    display: flex;
-  }
-
-  .mobileNav {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 4px 20px 20px;
-    border-top: 1px solid var(--color-border-2);
-    background-color: var(--color-surface);
-  }
-
-  .mobileNavLink {
-    padding: 12px 4px;
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-medium);
-    color: var(--color-text-muted);
-    text-decoration: none;
-    border-bottom: 1px solid var(--color-border-2);
-  }
-
-  .mobileNavLinkPrimary {
-    margin-top: 10px;
-    display: inline-flex;
-    justify-content: center;
-    padding: 12px;
-    background-color: var(--color-accent);
-    color: var(--color-accent-contrast);
-    border-radius: var(--radius-sm);
-    text-decoration: none;
-    font-weight: var(--font-weight-semibold);
   }
 }
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
 import InteractiveDemo from "@/components/InteractiveDemo";
-import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
+import FloatingNav from "@/components/FloatingNav";
+import { FOOTER_COLUMNS } from "@/lib/siteNav";
 import { appAuthUrl } from "@/lib/env";
 
 // Phase 3: the real landing page. Every claim below is grounded in what's actually
@@ -78,19 +79,6 @@ function Squiggle() {
         strokeLinecap="round"
       />
     </svg>
-  );
-}
-
-/** A tight hamburger icon for the mobile nav toggle. Purely decorative (the button
- * carries its own aria-label); the three bars are plain spans, not SVG, so they can
- * be styled/animated with CSS alone. */
-function MenuIcon() {
-  return (
-    <span className={styles.menuToggleBars} aria-hidden="true">
-      <span className={styles.menuToggleBar} />
-      <span className={styles.menuToggleBar} />
-      <span className={styles.menuToggleBar} />
-    </span>
   );
 }
 
@@ -222,8 +210,6 @@ const PRO_FEATURES = [
 ];
 
 export default function Home() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
   // A small, tasteful easter egg for anyone curious enough to open the console — not
   // required by anything, doesn't affect the honest-claims surface of the page itself.
   useEffect(() => {
@@ -241,70 +227,7 @@ export default function Home() {
         Skip to content
       </a>
 
-      <header className={styles.header}>
-        <div className={styles.headerInner}>
-          <span className={styles.wordmarkWrap}>
-            <a href="#" className={styles.wordmark}>
-              Newton
-            </a>
-            <span className={styles.wordmarkApple} aria-hidden="true">
-              🍎
-            </span>
-          </span>
-
-          <nav className={styles.nav} aria-label="Primary">
-            {NAV_LINKS.map((link) => (
-              <Link key={link.label} href={link.href} className={styles.navLink}>
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className={styles.headerActions}>
-            <a href={appAuthUrl("login")} className={styles.navLinkAuth}>
-              Sign In
-            </a>
-            <a href={appAuthUrl("register")} className={styles.btnPrimarySm}>
-              Sign Up
-            </a>
-            <button
-              type="button"
-              className={styles.menuToggle}
-              aria-expanded={mobileMenuOpen}
-              aria-controls="mobile-nav"
-              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-              onClick={() => setMobileMenuOpen((open) => !open)}
-            >
-              <MenuIcon />
-            </button>
-          </div>
-        </div>
-
-        {mobileMenuOpen && (
-          <nav id="mobile-nav" className={styles.mobileNav} aria-label="Mobile">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                className={styles.mobileNavLink}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
-            <a href={appAuthUrl("login")} className={styles.mobileNavLink} onClick={() => setMobileMenuOpen(false)}>
-              Sign In
-            </a>
-            <a
-              href={appAuthUrl("register")}
-              className={styles.mobileNavLinkPrimary}
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Sign Up
-            </a>
-          </nav>
-        )}
-      </header>
+      <FloatingNav />
 
       <main id="main">
         {/* ---------------------------------------------------------------- */}
@@ -322,7 +245,7 @@ export default function Home() {
             <h1 className={styles.title}>
               An AI tutor that{" "}
               <span className={styles.squiggleWrap}>
-                checks its work
+                <span className={styles.gradientText}>checks its work</span>
                 <Squiggle />
               </span>{" "}
               — with real computation.
