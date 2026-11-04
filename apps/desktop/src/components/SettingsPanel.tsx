@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  confirmEduVerification,
   createCheckoutSession,
   createPortalSession,
   createTopupCheckoutSession,
   deleteAccount,
   getBillingStatus,
   getCalendarFeedUrl,
+  getEduVerificationStatus,
   getProModels,
   regenerateCalendarFeedUrl,
   setFocusMode,
   setLearnMode,
   setPreferredProModel,
+  startEduVerification,
 } from "../api";
-import type { BillingStatus, ProModel } from "../types";
+import type { BillingStatus, EduVerificationStatus, ProModel } from "../types";
 import {
   ACCENT_PRESETS,
   applyAppearance,
@@ -133,6 +136,17 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
   const [waitingForTopup, setWaitingForTopup] = useState(false);
   const topupPollRef = useRef<{ interval: number; timeout: number } | null>(null);
 
+  // Free Pro for a verified school email (app/routers/account.py's edu-verification
+  // endpoints). `eduStep` drives which half of the mini-form shows: an email input
+  // first, then (once a code has been sent) a code input instead of both at once.
+  const [eduStatus, setEduStatus] = useState<EduVerificationStatus | null>(null);
+  const [eduEmail, setEduEmail] = useState("");
+  const [eduCode, setEduCode] = useState("");
+  const [eduStep, setEduStep] = useState<"email" | "code">("email");
+  const [eduBusy, setEduBusy] = useState(false);
+  const [eduError, setEduError] = useState<string | null>(null);
+  const [eduSentNotice, setEduSentNotice] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     getBillingStatus(token)
@@ -159,6 +173,21 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
       .catch(() => {
         // Non-fatal — if this fails, the picker section just doesn't render (guarded by
         // proModels.length > 0 below) rather than breaking the rest of Settings.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getEduVerificationStatus(token)
+      .then((status) => {
+        if (!cancelled) setEduStatus(status);
+      })
+      .catch(() => {
+        // Non-fatal — the section below just doesn't render without eduStatus, same
+        // "degrade quietly" treatment as the Pro-model picker's proModels fetch above.
       });
     return () => {
       cancelled = true;
@@ -239,6 +268,43 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
       setPortalError(err instanceof ApiError ? err.message : "Couldn't open the billing portal.");
     } finally {
       setOpeningPortal(false);
+    }
+  }
+
+  async function handleStartEduVerification() {
+    if (eduBusy || !eduEmail.trim()) return;
+    setEduBusy(true);
+    setEduError(null);
+    setEduSentNotice(false);
+    try {
+      await startEduVerification(token, eduEmail.trim());
+      setEduStep("code");
+      setEduSentNotice(true);
+    } catch (err) {
+      setEduError(err instanceof ApiError ? err.message : "Couldn't send a verification code.");
+    } finally {
+      setEduBusy(false);
+    }
+  }
+
+  async function handleConfirmEduVerification() {
+    if (eduBusy || !eduCode.trim()) return;
+    setEduBusy(true);
+    setEduError(null);
+    try {
+      const status = await confirmEduVerification(token, eduCode.trim());
+      setEduStatus(status);
+      // A verified account is also now Pro — the Plan & billing section above reads
+      // this same billing_service.is_pro() OR (see app/routers/billing.py's
+      // _serialize_status), so refresh it too rather than leaving it showing "Free"
+      // until the next full reload.
+      getBillingStatus(token)
+        .then(setBilling)
+        .catch(() => {});
+    } catch (err) {
+      setEduError(err instanceof ApiError ? err.message : "That code is wrong or has expired.");
+    } finally {
+      setEduBusy(false);
     }
   }
 
@@ -579,6 +645,89 @@ function SettingsPanel({ token, username, onClose, onAccountDeleted }: SettingsP
             </div>
           )}
         </section>
+
+        {/* Free Pro for a verified school email — see app/services/
+            edu_verification.py. Only rendered once eduStatus has loaded; degrades
+            quietly (nothing shown) if that fetch failed, same as the Pro-model
+            picker's proModels guard above. */}
+        {eduStatus && (
+          <section className="settings-section">
+            <h3 className="settings-section-title">Student verification</h3>
+
+            {eduStatus.edu_verified_at ? (
+              <p className="settings-plan-line">
+                Verified with <strong>{eduStatus.edu_email}</strong> — you have Pro.
+              </p>
+            ) : (
+              <>
+                <p className="settings-note">
+                  Students at {eduStatus.eligible_domains.join(", ")} get Pro free. Verify your school email to
+                  unlock it.
+                </p>
+
+                {eduError && <div className="banner banner--error">{eduError}</div>}
+                {eduSentNotice && eduStep === "code" && (
+                  <p className="settings-waiting">Code sent — check your inbox.</p>
+                )}
+
+                {eduStep === "email" ? (
+                  <div className="settings-edu-form">
+                    <input
+                      type="email"
+                      className="settings-edu-input"
+                      placeholder="you@nyit.edu"
+                      value={eduEmail}
+                      onChange={(e) => setEduEmail(e.target.value)}
+                      disabled={eduBusy}
+                    />
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={handleStartEduVerification}
+                      disabled={eduBusy || !eduEmail.trim()}
+                    >
+                      {eduBusy ? "Sending…" : "Send code"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="settings-edu-form">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="settings-edu-input settings-edu-input--code"
+                      placeholder="6-digit code"
+                      maxLength={6}
+                      value={eduCode}
+                      onChange={(e) => setEduCode(e.target.value)}
+                      disabled={eduBusy}
+                    />
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={handleConfirmEduVerification}
+                      disabled={eduBusy || !eduCode.trim()}
+                    >
+                      {eduBusy ? "Checking…" : "Verify"}
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-edu-change-email"
+                      onClick={() => {
+                        setEduStep("email");
+                        setEduCode("");
+                        setEduError(null);
+                        setEduSentNotice(false);
+                      }}
+                      disabled={eduBusy}
+                    >
+                      Use a different email
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         {/* Appearance is purely local window chrome (see lib/preferences.ts) — it
             deliberately sits between billing and the behavioral preferences below,

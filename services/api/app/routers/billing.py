@@ -42,7 +42,14 @@ class TopupCheckoutRequest(BaseModel):
 def _serialize_status(user: User) -> dict:
     settings = get_settings()
     return {
-        "plan": user.plan,
+        # billing_service.is_pro(), NOT the raw `user.plan` column -- a verified school
+        # email (app/services/edu_verification.py) grants Pro WITHOUT ever setting
+        # `plan` itself (see User.edu_verified_at's own comment for why they're kept
+        # separate columns). Serializing the raw column here would show "Free plan" in
+        # Settings for an edu-verified student even though every other Pro check in
+        # this app (frontier routing, generation limits, voice access) already treats
+        # them as Pro -- a real inconsistency, not a hypothetical one.
+        "plan": "pro" if billing_service.is_pro(user) else "free",
         "subscription_status": user.stripe_subscription_status,
         "current_period_end": user.current_period_end.isoformat() if user.current_period_end else None,
         "credits_used_cents": user.credits_used_cents,

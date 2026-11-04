@@ -2263,6 +2263,54 @@ body.is-resizing-panel * {
   color: var(--color-text-faint);
 }
 
+/* Student verification (free Pro for a verified school email) -- see
+   app/services/edu_verification.py / SettingsPanel.tsx's own comment. */
+.settings-edu-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.settings-edu-input {
+  flex: 1;
+  min-width: 180px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.settings-edu-input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--color-accent);
+}
+
+.settings-edu-input--code {
+  flex: none;
+  width: 140px;
+  letter-spacing: 0.08em;
+}
+
+.settings-edu-change-email {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.settings-edu-change-email:hover {
+  color: var(--color-text);
+}
+
 .settings-topup {
   width: 100%;
   margin-top: var(--space-2);

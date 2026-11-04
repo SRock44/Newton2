@@ -8,6 +8,7 @@ import type {
   ChatSession,
   ClassroomStatus,
   DocumentContent,
+  EduVerificationStatus,
   Flashcard,
   GamificationStats,
   GradedFlashcard,
@@ -73,6 +74,36 @@ export async function deleteAccount(token: string): Promise<void> {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't delete your account."));
+}
+
+/** Free Pro for a verified school email — see SettingsPanel.tsx's "Student
+ * verification" section and app/routers/account.py's edu-verification endpoints. */
+export async function getEduVerificationStatus(token: string): Promise<EduVerificationStatus> {
+  const res = await fetch(`${API_URL}/account/edu-verification`, { headers: authHeaders(token) });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't load verification status."));
+  return (await res.json()) as EduVerificationStatus;
+}
+
+/** Sends a 6-digit code to `email`. Throws with the real server message on an
+ * ineligible domain (400) or email not configured yet (503) — SettingsPanel.tsx shows
+ * ApiError.message directly rather than a generic "something went wrong". */
+export async function startEduVerification(token: string, email: string): Promise<void> {
+  const res = await fetch(`${API_URL}/account/edu-verification/start`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "Couldn't send a verification code."));
+}
+
+export async function confirmEduVerification(token: string, code: string): Promise<EduVerificationStatus> {
+  const res = await fetch(`${API_URL}/account/edu-verification/confirm`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) throw new ApiError(await detailOrFallback(res, "That code is wrong or has expired."));
+  return (await res.json()) as EduVerificationStatus;
 }
 
 export async function createSession(token: string): Promise<string> {

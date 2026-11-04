@@ -281,6 +281,15 @@ export interface AccountConsentStatus {
   needs_consent: boolean;
 }
 
+/** Free Pro for a verified school email (SettingsPanel.tsx's "Student verification"
+ * section, app/routers/account.py's /account/edu-verification* endpoints). Mirrors
+ * app/services/edu_verification.py's own serialization exactly. */
+export interface EduVerificationStatus {
+  edu_email: string | null;
+  edu_verified_at: string | null;
+  eligible_domains: string[];
+}
+
 /** `front` is always the prompt shown and `back` always the expected answer, in BOTH
  * directions — the backend swaps them when it creates a production card, so nothing
  * that merely displays a card has to know about direction. */

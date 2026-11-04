@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SettingsPanel from "../SettingsPanel";
-import type { BillingStatus, ProModel } from "../../types";
+import type { BillingStatus, EduVerificationStatus, ProModel } from "../../types";
 
 const freeStatus: BillingStatus = {
   plan: "free",
@@ -41,12 +41,27 @@ const proModels: ProModel[] = [
   { id: "model-b", label: "Model B" },
 ];
 
+const eduUnverified: EduVerificationStatus = {
+  edu_email: null,
+  edu_verified_at: null,
+  eligible_domains: ["nyit.edu"],
+};
+
+const eduVerified: EduVerificationStatus = {
+  edu_email: "student@nyit.edu",
+  edu_verified_at: "2026-10-13T12:00:00Z",
+  eligible_domains: ["nyit.edu"],
+};
+
 vi.mock("../../api", async () => {
   const actual = await vi.importActual<typeof import("../../api")>("../../api");
   return {
     ...actual,
     getBillingStatus: vi.fn(async () => freeStatus),
     getProModels: vi.fn(async () => proModels),
+    getEduVerificationStatus: vi.fn(async () => eduUnverified),
+    startEduVerification: vi.fn(async () => undefined),
+    confirmEduVerification: vi.fn(async () => eduVerified),
     createCheckoutSession: vi.fn(async () => "https://checkout.stripe.com/session123"),
     createPortalSession: vi.fn(async () => "https://billing.stripe.com/portal123"),
     createTopupCheckoutSession: vi.fn(async () => "https://checkout.stripe.com/topup123"),
@@ -66,17 +81,20 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 import {
   ApiError,
+  confirmEduVerification,
   createCheckoutSession,
   createPortalSession,
   createTopupCheckoutSession,
   deleteAccount,
   getBillingStatus,
   getCalendarFeedUrl,
+  getEduVerificationStatus,
   getProModels,
   regenerateCalendarFeedUrl,
   setFocusMode,
   setLearnMode,
   setPreferredProModel,
+  startEduVerification,
 } from "../../api";
 import { getAccentPreset, getThemePreference } from "../../lib/preferences";
 
@@ -84,6 +102,9 @@ describe("SettingsPanel", () => {
   beforeEach(() => {
     vi.mocked(getBillingStatus).mockReset().mockResolvedValue(freeStatus);
     vi.mocked(getProModels).mockReset().mockResolvedValue(proModels);
+    vi.mocked(getEduVerificationStatus).mockReset().mockResolvedValue(eduUnverified);
+    vi.mocked(startEduVerification).mockReset().mockResolvedValue(undefined);
+    vi.mocked(confirmEduVerification).mockReset().mockResolvedValue(eduVerified);
     vi.mocked(createCheckoutSession).mockReset().mockResolvedValue("https://checkout.stripe.com/session123");
     vi.mocked(createPortalSession).mockReset().mockResolvedValue("https://billing.stripe.com/portal123");
     vi.mocked(createTopupCheckoutSession).mockReset().mockResolvedValue("https://checkout.stripe.com/topup123");
@@ -711,6 +732,95 @@ describe("SettingsPanel", () => {
       await user.click(screen.getByRole("button", { name: "Delete account" }));
 
       expect(within(screen.getByRole("alertdialog")).getByText("sean@rockwitz.com")).toBeInTheDocument();
+    });
+  });
+
+  describe("Student verification (free Pro for a verified school email)", () => {
+    it("shows the eligible domains and an email input before anything's been sent", async () => {
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      expect(await screen.findByText(/nyit\.edu/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("you@nyit.edu")).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("6-digit code")).not.toBeInTheDocument();
+    });
+
+    it("sends a code, then shows the code input instead of the email input", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      await user.type(await screen.findByPlaceholderText("you@nyit.edu"), "student@nyit.edu");
+      await user.click(screen.getByRole("button", { name: "Send code" }));
+
+      expect(startEduVerification).toHaveBeenCalledWith("tok", "student@nyit.edu");
+      expect(await screen.findByPlaceholderText("6-digit code")).toBeInTheDocument();
+      expect(screen.getByText(/code sent/i)).toBeInTheDocument();
+    });
+
+    it("shows the real server error for an ineligible domain instead of a generic message", async () => {
+      vi.mocked(startEduVerification).mockRejectedValueOnce(
+        new ApiError("student@gmail.com isn't an eligible school email"),
+      );
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      await user.type(await screen.findByPlaceholderText("you@nyit.edu"), "student@gmail.com");
+      await user.click(screen.getByRole("button", { name: "Send code" }));
+
+      expect(await screen.findByText("student@gmail.com isn't an eligible school email")).toBeInTheDocument();
+      // Still on the email step — a failed send shouldn't advance past it.
+      expect(screen.getByPlaceholderText("you@nyit.edu")).toBeInTheDocument();
+    });
+
+    it("confirming the right code shows the verified state and refreshes billing status", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      await user.type(await screen.findByPlaceholderText("you@nyit.edu"), "student@nyit.edu");
+      await user.click(screen.getByRole("button", { name: "Send code" }));
+      await user.type(await screen.findByPlaceholderText("6-digit code"), "123456");
+      await user.click(screen.getByRole("button", { name: "Verify" }));
+
+      expect(confirmEduVerification).toHaveBeenCalledWith("tok", "123456");
+      expect(await screen.findByText(/student@nyit\.edu/i)).toBeInTheDocument();
+      expect(screen.getByText(/you have pro/i)).toBeInTheDocument();
+      await waitFor(() => expect(getBillingStatus).toHaveBeenCalledTimes(2)); // initial load + post-verify refresh
+    });
+
+    it("shows the real server error for a wrong code and stays on the code step", async () => {
+      vi.mocked(confirmEduVerification).mockRejectedValueOnce(new ApiError("That code is wrong or has expired."));
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      await user.type(await screen.findByPlaceholderText("you@nyit.edu"), "student@nyit.edu");
+      await user.click(screen.getByRole("button", { name: "Send code" }));
+      await user.type(await screen.findByPlaceholderText("6-digit code"), "000000");
+      await user.click(screen.getByRole("button", { name: "Verify" }));
+
+      expect(await screen.findByText("That code is wrong or has expired.")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("6-digit code")).toBeInTheDocument();
+    });
+
+    it("'Use a different email' goes back to the email step", async () => {
+      const user = userEvent.setup();
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      await user.type(await screen.findByPlaceholderText("you@nyit.edu"), "student@nyit.edu");
+      await user.click(screen.getByRole("button", { name: "Send code" }));
+      await screen.findByPlaceholderText("6-digit code");
+
+      await user.click(screen.getByRole("button", { name: "Use a different email" }));
+
+      expect(screen.getByPlaceholderText("you@nyit.edu")).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("6-digit code")).not.toBeInTheDocument();
+    });
+
+    it("already-verified accounts see their verified email and no form at all", async () => {
+      vi.mocked(getEduVerificationStatus).mockResolvedValue(eduVerified);
+      render(<SettingsPanel token="tok" username="sean" onAccountDeleted={vi.fn()} onClose={vi.fn()} />);
+
+      expect(await screen.findByText(/student@nyit\.edu/i)).toBeInTheDocument();
+      expect(screen.getByText(/you have pro/i)).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("you@nyit.edu")).not.toBeInTheDocument();
     });
   });
 });
