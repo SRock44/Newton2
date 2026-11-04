@@ -5,7 +5,6 @@ import Link from "next/link";
 import styles from "./page.module.css";
 import Reveal from "@/components/Reveal";
 import InteractiveDemo from "@/components/InteractiveDemo";
-import MomentsShowcase from "@/components/MomentsShowcase";
 import { NAV_LINKS, FOOTER_COLUMNS } from "@/lib/siteNav";
 import { appAuthUrl } from "@/lib/env";
 
@@ -42,12 +41,30 @@ import { appAuthUrl } from "@/lib/env";
 // autoplaying screen-recordings back to back, directly under a hero with no visual at
 // all, was the specific, literal thing reading as "a slideshow." Replaced by
 // InteractiveDemo.tsx (a real, clickable, web-native component, not a recording) right
-// under the hero copy, and MomentsShowcase.tsx (four real screenshots — still the real
-// product, just static images instead of video) where the two film sections were. The
-// plain-text capability list became an icon-card grid for the same "too plain" reason.
-// Also: "POUND HEAVY INTO AGENTIC LEARNING ENVIRONMENT" — a badge above the eyebrow,
-// not just a buried walkthrough-section kicker — and a "Chat Now" primary CTA (apps/web
-// now exists; chatting with Newton no longer requires a download at all).
+// under the hero copy, and MomentsShowcase.tsx (four real screenshots) where the two
+// film sections were. The plain-text capability list became an icon-card grid for the
+// same "too plain" reason. Also: "POUND HEAVY INTO AGENTIC LEARNING ENVIRONMENT" — a
+// badge above the eyebrow, not just a buried walkthrough-section kicker — and a
+// "Chat Now" primary CTA (apps/web now exists; chatting needs no download at all).
+//
+// Phase 3.25 (this pass): MomentsShowcase itself didn't survive contact with the
+// product owner either — "I hate the picture stuff as well... need to showcase
+// features without a ton of shit on the screen, without looking like vibe-coded
+// slop... look at your competitors... find a solid hybrid of all of them." Checked
+// claude.com directly (fetched and read, not assumed from memory): its real marketing
+// hero carries zero product screenshots at all — headline, subhead, one sign-in
+// action, nothing else — the same restraint ChatGPT's and Perplexity's own marketing
+// pages are well known for. A dense screenshot of the actual desktop app's title
+// bar/sidebar/chrome, shrunk into a card, is exactly the opposite move from what every
+// serious AI competitor's own page actually does. MomentsShowcase.tsx (+ its images) is
+// deleted, not kept around unused. InteractiveDemo — a real interactive component, not a
+// picture — stays; it's the one place a "show, don't just tell" instinct survives,
+// because it's never a screenshot. The decorative hand-drawn CornerArrow nudge-to-CTA
+// is also cut here: competitor marketing pages at this level carry near-zero
+// illustrative ornament, and a doodle arrow pointing at a button reads closer to an
+// indie-blog tutorial callout than a serious product's own confidence in its copy and
+// whitespace. The capability cards also lose their heavy border/shadow/hover-lift
+// treatment for the same flatter, lower-chrome reason — see page.module.css.
 
 /** A hand-drawn-style wavy underline, dropped beneath a key phrase. Purely decorative. */
 function Squiggle() {
@@ -59,28 +76,6 @@ function Squiggle() {
         stroke="currentColor"
         strokeWidth="3"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-/** A small hand-drawn-style arrow, nudging toward the secondary CTA. Purely decorative. */
-function CornerArrow({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 46 34" fill="none" aria-hidden="true">
-      <path
-        d="M2 3 C 16 4, 32 8, 40 22"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M29 20 L40 22 L36 11"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
       />
     </svg>
   );
@@ -344,7 +339,6 @@ export default function Home() {
               <a href="/download" className={styles.btnSecondary}>
                 Download
               </a>
-              <CornerArrow className={styles.cornerArrow} />
             </div>
             <p className={styles.heroNote}>
               No download required — chat right in your browser. Free to start.
@@ -355,13 +349,6 @@ export default function Home() {
             </div>
           </section>
         </div>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Real, static screenshots of the real product — replaces the two  */}
-        {/* autoplaying videos (AppWalkthrough/ResearchFilmSection) that     */}
-        {/* used to sit here. See MomentsShowcase.tsx's own header comment.  */}
-        {/* ---------------------------------------------------------------- */}
-        <MomentsShowcase />
 
         {/* ---------------------------------------------------------------- */}
         {/* Capability cards — an icon-card grid, see CAPABILITIES' own comment for why  */}

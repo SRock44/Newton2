@@ -96,18 +96,15 @@ describe("Home", () => {
 
     it("pounds heavy on the Agentic Learning Environment positioning with a real badge above the eyebrow", () => {
       render(<Home />);
-      // Appears twice by design (the hero badge, and MomentsShowcase's own eyebrow below
-      // it) — "pound heavy," not "mention once."
-      const mentions = screen.getAllByText("The first Agentic Learning Environment");
-      expect(mentions.length).toBeGreaterThanOrEqual(2);
-      const badge = mentions[0]!;
+      const badge = screen.getByText("The first Agentic Learning Environment");
       const eyebrow = screen.getByText("Verified, not vibes");
+      expect(badge).toBeInTheDocument();
       // The hero badge sits above the "Verified, not vibes" eyebrow, not replacing it.
       // eslint-disable-next-line no-bitwise
       expect(badge.compareDocumentPosition(eyebrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    it("renders the real, interactive demo widget directly under the hero copy, not a video", () => {
+    it("renders the real, interactive demo widget directly under the hero copy, not a video or a screenshot", () => {
       render(<Home />);
       const tabs = screen.getAllByRole("tab");
       expect(tabs.length).toBe(3);
@@ -118,39 +115,26 @@ describe("Home", () => {
     });
   });
 
-  describe("Phase 3.24: the two autoplaying videos are gone, replaced by a real interactive demo + real screenshots", () => {
+  describe("Phase 3.25: no screenshots, no video — every competitor at this level (checked claude.com directly) carries near-zero product imagery on its own marketing page", () => {
     it("renders zero <video> elements anywhere on the page", () => {
       render(<Home />);
       expect(document.querySelectorAll("video")).toHaveLength(0);
     });
 
-    it("MomentsShowcase renders real screenshots in real order, after the hero and its interactive demo", () => {
+    it("renders zero <img> elements anywhere on the page — the interactive demo is real markup, not a picture of the app", () => {
       render(<Home />);
-      const headings = screen
-        .getAllByRole("heading", { level: 1 })
-        .concat(screen.getAllByRole("heading", { level: 2 }));
-      const headingTexts = headings.map((h) => h.textContent ?? "");
-      const heroIndex = headingTexts.findIndex((t) => /checks its work/i.test(t));
-      const momentsIndex = headingTexts.findIndex((t) => /not a pitch/i.test(t));
-      const featuresIndex = headingTexts.findIndex((t) => /what it does/i.test(t));
-      expect(heroIndex).toBeGreaterThanOrEqual(0);
-      expect(momentsIndex).toBeGreaterThan(heroIndex);
-      expect(momentsIndex).toBeLessThan(featuresIndex);
+      expect(document.querySelectorAll("img")).toHaveLength(0);
     });
 
-    it("every screenshot is real, captured product UI with a real file under /moments, not an invented mockup", () => {
+    it("no longer renders the deleted MomentsShowcase screenshot grid", () => {
       render(<Home />);
-      const images = screen.getAllByRole("img").filter((img) => img.getAttribute("src")?.startsWith("/moments/"));
-      expect(images.length).toBe(4);
-      images.forEach((img) => expect(img.getAttribute("alt")?.length).toBeGreaterThan(20));
+      expect(screen.queryByText(/this is the app, not a pitch/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/real computation, not a guess/i)).not.toBeInTheDocument();
     });
 
-    it("captions ground every screenshot in a real, specific mechanism, not generic marketing language", () => {
+    it("no longer renders the decorative corner-arrow nudge toward the secondary CTA", () => {
       render(<Home />);
-      expect(screen.getByText(/real computation, not a guess/i)).toBeInTheDocument();
-      expect(screen.getByText(/pushes back until it clicks/i)).toBeInTheDocument();
-      expect(screen.getByText(/a full study session, from your own material/i)).toBeInTheDocument();
-      expect(screen.getByText(/research-grade output/i)).toBeInTheDocument();
+      expect(document.querySelector("svg path[d^='M2 3 C 16 4']")).toBeNull();
     });
   });
 

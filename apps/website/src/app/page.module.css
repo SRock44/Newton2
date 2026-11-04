@@ -397,22 +397,6 @@
   margin-bottom: 14px;
 }
 
-.cornerArrow {
-  position: absolute;
-  left: calc(100% + 6px);
-  top: 100%;
-  width: 46px;
-  height: 34px;
-  color: var(--color-accent-2);
-  pointer-events: none;
-}
-
-@media (max-width: 960px) {
-  .cornerArrow {
-    display: none;
-  }
-}
-
 .heroNote {
   font-size: var(--font-size-sm);
   color: var(--color-text-faint);
@@ -462,16 +446,18 @@
 }
 
 /* ---------------------------------------------------------------------
- * Capability cards — an icon-card grid. See page.tsx's CAPABILITIES
- * comment for why this replaced the plain text list a previous pass
- * had cut the old 13-card/5-subgroup grid down to — reuses the same
- * card/hover treatment the Pro section below already establishes.
+ * Capability cards — a flat icon-row grid, deliberately NOT a bordered/
+ * shadowed/hover-lifting card (a previous pass's version was). Checked
+ * claude.com directly before this pass: its own marketing page carries
+ * near-zero boxed-card chrome — generous whitespace and plain typography
+ * do the work instead. No visible boundary here either; the grid gap
+ * alone separates each item.
  * ------------------------------------------------------------------- */
 
 .capabilityGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  gap: 40px 32px;
   max-width: 1000px;
   margin: 0 auto;
 }
@@ -479,29 +465,15 @@
 .capabilityCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 24px 22px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
-}
-
-.capabilityCard:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--color-accent-tint-strong);
-  transform: translateY(-3px);
+  gap: 8px;
 }
 
 .capabilityIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
-  background-color: var(--color-accent-tint);
+  width: 30px;
+  height: 30px;
   color: var(--color-accent);
 }
 
