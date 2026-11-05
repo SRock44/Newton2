@@ -1,3 +1,36 @@
-:80 {
+# Three site blocks, one per public-facing surface. Every address below is a plain
+# env-var placeholder ({$VAR}, Caddy's own syntax -- it does NOT support a bash-style
+# `:-default` suffix; a literal `{$VAR:-:80}` gets parsed as env var "VAR:-:80", which
+# doesn't exist, substituting to an empty string and producing a broken site block
+# (confirmed with `caddy adapt`: it silently became a host-matcher on the literal
+# string "-"). The actual default lives in docker-compose.yml's caddy service
+# `environment:` block instead, using Compose's own `${VAR:-default}` substitution --
+# by the time Caddy reads these, a real value is always already set. Caddy only
+# attempts automatic HTTPS (a real ACME/Let's Encrypt certificate request) for a block
+# whose address is an actual hostname, never for a bare ":port" address, so an
+# unconfigured dev/shared box (docker-compose.yml's own defaults) gets plain HTTP on an
+# internal port and Caddy never reaches out to Let's Encrypt at all. A real deployment
+# sets these three vars (plus CADDY_HTTP_BIND/CADDY_HTTPS_BIND) in its own .env to the
+# real public hostnames -- see infra/README.md's "Production box" section.
+#
+# Why three separate hostnames instead of path-routing everything under one domain: the
+# product's user-FACING surface (the marketing site and the real app) is deliberately one
+# origin (newton.best + newton.best/chat -- see apps/website/next.config.ts's own
+# comment) -- but the API and Keycloak's hosted login page are never navigated to
+# directly by a person, only fetched/redirected to by code, so a subdomain costs nothing
+# in UX and avoids this Caddyfile having to path-strip "/api" off every FastAPI route
+# (none of which are written to expect that prefix) or collide with apps/web's own
+# "/chat" path. Auth uses Bearer tokens, not cookies (see app/core/security.py), so a
+# separate subdomain has no CORS/SameSite cost either.
+
+{$NEWTON_WEBSITE_ADDR} {
+	reverse_proxy website:3000
+}
+
+{$NEWTON_API_ADDR} {
 	reverse_proxy api:8000
+}
+
+{$NEWTON_AUTH_ADDR} {
+	reverse_proxy keycloak:8080
 }

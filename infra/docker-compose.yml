@@ -29,6 +29,7 @@ volumes:
   newton_keycloakdata:
   newton_embedcache:
   newton_searxngdata:
+  newton_caddydata:
 
 x-api-env: &api-env
   DATABASE_URL: postgresql+asyncpg://newton:${POSTGRES_PASSWORD:-newton-dev-secret}@postgres:5432/newton
@@ -43,7 +44,7 @@ x-api-env: &api-env
   # is the token `iss` string to validate against, which is now KC_HOSTNAME above (the
   # browser-facing address), not the internal one -- these must be kept in sync manually.
   KEYCLOAK_INTERNAL_URL: http://keycloak:8080/realms/newton
-  KEYCLOAK_ISSUER: http://127.0.0.1:58180/realms/newton
+  KEYCLOAK_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://127.0.0.1:58180}/realms/newton
   KEYCLOAK_AUDIENCE: newton-api
   EMBED_CACHE_DIR: /data/fastembed_cache
   GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -216,7 +217,12 @@ services:
       # this is a value correction, matching the SSH-tunnel dev workflow documented in
       # infra/README.md, not a loosened check. services/api's KEYCLOAK_ISSUER below must
       # stay in sync with this exact value.
-      KC_HOSTNAME: http://127.0.0.1:58180
+      # KEYCLOAK_PUBLIC_URL defaults to the SSH-tunnel dev address this file's own
+      # comment above documents -- a real deployment (see "Production box" in
+      # infra/README.md) overrides it in that box's own .env (never committed) to its
+      # real public hostname, e.g. https://auth.newton.best. services/api's
+      # KEYCLOAK_ISSUER below reads the SAME var so the two can never drift out of sync.
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://127.0.0.1:58180}
       KC_HOSTNAME_STRICT: "true"
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
@@ -340,14 +346,54 @@ services:
     networks: [newton_net]
     mem_limit: 640m
 
+  # apps/website (marketing site) + apps/web (the real signed-in app, baked in as a
+  # static build under public/chat/ -- see infra/website.Dockerfile) as one Next.js
+  # server. Dormant/unused on a dev box unless something actually points Caddy at it
+  # (see caddy's own comment below) -- building it costs a few minutes and ~1GB either
+  # way, which is cheap compared to every other image in this stack.
+  website:
+    build:
+      context: ..
+      dockerfile: infra/website.Dockerfile
+      args:
+        # Both inlined into their respective bundles AT BUILD TIME (Vite's
+        # import.meta.env.VITE_* and Next's NEXT_PUBLIC_* are compile-time constants,
+        # not read at container startup) -- a real deployment overrides both in its own
+        # .env to real public HTTPS origins. The defaults below reproduce exactly what
+        # `npm run dev` already does locally, so an unconfigured `docker compose build
+        # website` still produces a working (dev-pointed) image rather than a broken one.
+        VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:58001}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000/chat}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEBSITE_PORT:-53000}:3000"
+    networks: [newton_net]
+    mem_limit: 512m
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      # The real defaults a Caddyfile placeholder itself can't express (Caddy's `{$VAR}`
+      # syntax has no bash-style `:-default` form -- see the Caddyfile's own comment) --
+      # Compose's `${VAR:-default}` resolves it instead, so Caddy always receives a real
+      # value. Bare ports here (no hostname) mean no automatic-HTTPS/ACME attempt.
+      NEWTON_WEBSITE_ADDR: ${NEWTON_WEBSITE_ADDR:-:80}
+      NEWTON_API_ADDR: ${NEWTON_API_ADDR:-:8081}
+      NEWTON_AUTH_ADDR: ${NEWTON_AUTH_ADDR:-:8082}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - newton_caddydata:/data
     depends_on:
       - api
+      - website
     ports:
-      - "127.0.0.1:58080:80"
+      # Loopback-only by default on every box (same isolation model as everything else
+      # in this file) -- a real public deployment overrides CADDY_HTTP_BIND/
+      # CADDY_HTTPS_BIND in its own .env to 0.0.0.0:80/0.0.0.0:443 so Caddy can actually
+      # receive real internet traffic and obtain real Let's Encrypt certificates (see
+      # infra/README.md's "Production box" section and the Caddyfile's own comments).
+      - "${CADDY_HTTP_BIND:-127.0.0.1:58080}:80"
+      - "${CADDY_HTTPS_BIND:-127.0.0.1:58443}:443"
     networks: [newton_net]
-    mem_limit: 64m
+    mem_limit: 128m

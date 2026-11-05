@@ -1,0 +1,14 @@
+# Keeps the website image's build context (repo root -- it needs apps/desktop, apps/web,
+# AND apps/website together, see infra/website.Dockerfile) from including the Rust build
+# output (tens of GB), every node_modules tree (reinstalled fresh inside the image), and
+# anything else no Dockerfile in this repo actually needs.
+.git
+**/node_modules
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
+services/api/__pycache__
+services/api/.pytest_cache
+**/__pycache__
+**/dist
+**/.next
+apps/promo-video/out

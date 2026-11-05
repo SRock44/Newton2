@@ -14,7 +14,15 @@ import type { NextConfig } from "next";
 // serves it as plain static files under the same path — see WEBSITE-ROADMAP.md.
 const nextConfig: NextConfig = {
   async rewrites() {
-    if (process.env.NODE_ENV !== "development") return [];
+    if (process.env.NODE_ENV !== "development") {
+      // Production: apps/web's build lives at public/chat/index.html (see this file's
+      // own header comment). Next's static file serving matches request paths to real
+      // files exactly -- it does NOT do directory-index resolution -- so "/chat" itself
+      // (no trailing slash, the exact link every Sign In/Sign Up/Chat Now button on this
+      // site points at) would 404 without this, even though "/chat/index.html" and every
+      // other file under it resolve fine on their own.
+      return [{ source: "/chat", destination: "/chat/index.html" }];
+    }
     return [
       // Next's own default trailing-slash normalization (trailingSlash: false, left at
       // its default here — every OTHER route on this site uses that convention) redirects
