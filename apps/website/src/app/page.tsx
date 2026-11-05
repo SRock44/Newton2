@@ -289,11 +289,11 @@ export default function Home() {
             <p className={styles.heroNote}>
               No download required — chat right in your browser. Free to start.
             </p>
-
-            <div className={styles.heroDemo}>
-              <InteractiveDemo />
-            </div>
           </section>
+
+          <div className={styles.heroDemo}>
+            <InteractiveDemo />
+          </div>
         </div>
 
         {/* ---------------------------------------------------------------- */}

@@ -135,12 +135,12 @@ describe("Home", () => {
 
     it("renders the real, interactive demo widget directly under the hero copy, not a video or a screenshot", () => {
       render(<Home />);
-      const tabs = screen.getAllByRole("tab");
-      expect(tabs.length).toBe(3);
-      expect(screen.getByRole("tab", { name: "Real computation" })).toHaveAttribute(
-        "aria-selected",
-        "true"
-      );
+      // Round 3: all three capability cards render simultaneously (a bento grid, not
+      // tabs hiding two of them behind a click) — see InteractiveDemo.tsx.
+      expect(screen.getByRole("heading", { name: "Real computation" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Pushes back" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Remembers your semester" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Flip flashcard" })).toBeInTheDocument();
     });
   });
 

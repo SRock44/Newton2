@@ -1,174 +1,60 @@
-.demoShell {
+.bentoWrap {
   position: relative;
-  max-width: 560px;
-  margin: 0 auto;
-}
-
-/* A soft, colorful glow behind the card — the thing that was missing before: every
-   container on the page was the same flat surface color with a thin border. */
-.glow {
-  position: absolute;
-  inset: -30px;
-  z-index: 0;
-  background: radial-gradient(circle at 30% 20%, var(--color-accent-tint-strong), transparent 55%),
-    radial-gradient(circle at 80% 85%, var(--color-accent-2-tint), transparent 60%);
-  filter: blur(18px);
-  opacity: 0.9;
-  pointer-events: none;
-  animation: demo-glow-drift 10s ease-in-out infinite alternate;
-}
-
-@keyframes demo-glow-drift {
-  from {
-    transform: translate(0, 0) scale(1);
-  }
-  to {
-    transform: translate(-10px, 8px) scale(1.06);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .glow {
-    animation: none;
-  }
-}
-
-/* Liquid glass — the explicitly-named "newton.best/chat modal" revamp (see globals.css's
-   shared --glass-* recipe, ported from the silk-design kit). A real translucent panel
-   over AmbientBackground.tsx's colorful blobs, not an opaque card with a decorative glow
-   painted behind it — the .glow layer above still adds its own color, but now the card
-   itself is part of the glass effect instead of fully hiding whatever's behind it. */
-.demo {
-  position: relative;
-  z-index: 1;
   width: 100%;
-  background: var(--glass-bg-strong);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--glass-shadow), var(--shadow-md);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  overflow: hidden;
-  text-align: left;
 }
 
-/* A tiny browser-chrome strip — reinforces "this is a real web app," the exact thing
-   the product owner asked this component to prove, without it being a screenshot. A
-   touch more opaque than the card body (same idea FloatingNav's own scrolled state
-   uses) so the three traffic-light dots stay legible against whatever's behind it. */
-.windowBar {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 11px 14px;
-  background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
-  border-bottom: 1px solid var(--glass-border);
-}
-
-.windowDot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background-color: var(--color-border);
-}
-
-.windowDot:nth-child(1) {
-  background-color: #e0756a;
-}
-
-.windowDot:nth-child(2) {
-  background-color: var(--color-accent-2);
-}
-
-.windowDot:nth-child(3) {
-  background-color: var(--color-success);
-}
-
-.windowUrl {
-  margin-left: 10px;
-  font-size: 11.5px;
-  color: var(--color-text-faint);
-  font-family: var(--font-mono, monospace);
-}
-
-.tabs {
-  position: relative;
-  display: flex;
-  border-bottom: 1px solid var(--glass-border);
-  background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
-  padding: 6px;
-  gap: 4px;
-}
-
-/* A real sliding pill behind the active tab, not just a bottom border. Width = 1/3 of
-   the row (minus the row's own padding), position driven by --active-index. */
-.tabIndicator {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  width: calc((100% - 12px) / 3);
-  height: calc(100% - 12px);
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
-  box-shadow: 0 2px 10px rgba(47, 77, 140, 0.35);
-  transform: translateX(calc(var(--active-index, 0) * 100%));
-  transition: transform 0.32s cubic-bezier(0.34, 1.1, 0.64, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tabIndicator {
-    transition: none;
-  }
-}
-
-.tab {
-  position: relative;
-  z-index: 1;
-  flex: 1;
+/* A small real-web-app signal that survives the old "fake browser window" chrome being
+   dropped — a live status dot instead of three traffic-light dots nobody could click
+   anyway. */
+.liveLabel {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 6px;
-  background: none;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
+  gap: 8px;
+  margin: 0 0 18px;
   font-size: 12.5px;
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: color 0.2s ease;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
 }
 
-.tabIcon {
-  font-size: 13px;
-  opacity: 0.75;
+.liveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--color-success);
+  box-shadow: 0 0 0 3px var(--color-success-tint);
+  animation: live-dot-pulse 2.4s ease-in-out infinite;
 }
 
-.tabActive {
-  color: var(--color-accent-contrast);
+@keyframes live-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--color-success-tint);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--color-success-tint);
+  }
 }
 
-.tabActive .tabIcon {
-  opacity: 1;
+/* ---------------------------------------------------------------------
+ * The bento grid itself — three real, separately-colored, ALREADY-moving cards
+ * (silk-design kit's "bento live widgets" recipe: pure CSS/keyframe motion, token-
+ * colored, no scroll listeners) instead of one window with tabs hiding two of them.
+ * Grid-or-carousel rule: <=3 items -> grid.
+ * ------------------------------------------------------------------- */
+.bentoGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  text-align: left;
 }
 
-.panel {
-  padding: 24px 24px 28px;
-  min-height: 260px;
-}
-
-.conversation {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  animation: demo-fade-in 0.3s ease both;
-}
-
-@keyframes demo-fade-in {
+@keyframes bento-rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
@@ -176,16 +62,106 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .conversation {
-    animation: none;
-  }
+.bentoCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 22px 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+  animation: bento-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, background 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.bentoCard:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.bentoCard:nth-child(3) {
+  animation-delay: 0.16s;
+}
+
+.bentoCard:hover {
+  transform: translateY(-4px);
+  background: var(--glass-bg-strong);
+  box-shadow: var(--glass-shadow), var(--shadow-md);
+}
+
+.bentoCompute {
+  border-top: 2px solid var(--color-accent);
+}
+
+.bentoPushback {
+  border-top: 2px solid var(--color-accent-2);
+}
+
+.bentoRemembers {
+  border-top: 2px solid var(--color-accent-3);
+}
+
+.bentoHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bentoIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-size: 17px;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--color-accent-tint), var(--color-accent-tint-strong));
+  color: var(--color-accent);
+  transition: transform 0.3s cubic-bezier(0.34, 1.5, 0.64, 1);
+}
+
+.bentoCard:hover .bentoIcon {
+  transform: scale(1.08) rotate(-4deg);
+}
+
+.bentoPushback .bentoIcon {
+  background: linear-gradient(135deg, var(--color-accent-2-tint), rgba(184, 132, 44, 0.3));
+  color: var(--color-accent-2-ink);
+}
+
+.bentoRemembers .bentoIcon {
+  background: linear-gradient(135deg, var(--color-accent-3-tint), rgba(168, 71, 31, 0.3));
+  color: var(--color-accent-3);
+}
+
+.bentoTitle {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------
+ * Conversation / chat-bubble content — unchanged from the previous round, just no
+ * longer living inside a tab panel.
+ * ------------------------------------------------------------------- */
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .bubbleRow {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
 }
 
 .avatar {
@@ -193,10 +169,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: var(--font-weight-semibold);
 }
 
@@ -217,25 +193,25 @@
 }
 
 .bubbleUser {
-  max-width: 80%;
+  max-width: 85%;
   background: color-mix(in srgb, var(--color-surface-2) 75%, transparent);
   color: var(--color-text);
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
-  font-size: var(--font-size-sm);
+  font-size: 13px;
   order: 1;
 }
 
 .bubbleNewton {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: 85%;
+  gap: 7px;
+  max-width: 94%;
   color: var(--color-text);
-  font-size: var(--font-size-sm);
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.5;
   background: color-mix(in srgb, var(--color-surface-2) 75%, transparent);
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 4px;
 }
 
@@ -250,9 +226,33 @@
   border-radius: var(--radius-sm);
 }
 
+/* A slow light-sweep across the computed result — the one card whose whole point is
+   "this was actually run, not predicted," so it's the one that gets a subtle compute
+   shimmer instead of a generic pulse. */
+.computeLine code {
+  background: linear-gradient(
+    100deg,
+    var(--color-surface-3) 30%,
+    var(--color-accent-tint-strong) 50%,
+    var(--color-surface-3) 70%
+  );
+  background-size: 260% 100%;
+  animation: compute-sweep 4s ease-in-out infinite;
+}
+
+@keyframes compute-sweep {
+  0% {
+    background-position: 110% 0;
+  }
+  100% {
+    background-position: -110% 0;
+  }
+}
+
 .fine {
   color: var(--color-text-faint);
-  font-size: 12px;
+  font-size: 11.5px;
+  margin: 0;
 }
 
 .verifiedBadge {
@@ -280,12 +280,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .verifiedBadge {
-    animation: none;
-  }
-}
-
 .verifiedIcon {
   width: 13px;
   height: 13px;
@@ -297,7 +291,7 @@
   background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
   border: 1px solid var(--color-accent-tint-strong);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
+  padding: 11px 13px;
 }
 
 .yourTurnGlow {
@@ -305,25 +299,39 @@
   inset: 0;
   background: linear-gradient(135deg, var(--color-accent-tint), transparent 60%);
   pointer-events: none;
+  animation: your-turn-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes your-turn-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .yourTurn p {
   position: relative;
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-size: 12.5px;
   line-height: 1.5;
 }
 
 .yourTurnLabel {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--color-accent);
-  margin-bottom: 6px !important;
+  margin-bottom: 5px !important;
 }
 
-/* A real click-to-flip flashcard, not a static caption claiming you can tap it. */
+/* ---------------------------------------------------------------------
+ * Flashcard — a real click-to-flip card, now also auto-demoed once on load
+ * (InteractiveDemo.tsx) so the interaction is seen even by a visitor who never clicks.
+ * ------------------------------------------------------------------- */
 .flashcard {
   display: block;
   width: 100%;
@@ -338,19 +346,13 @@
   position: relative;
   display: block;
   width: 100%;
-  min-height: 128px;
+  min-height: 118px;
   transition: transform 0.5s cubic-bezier(0.34, 0.8, 0.44, 1);
   transform-style: preserve-3d;
 }
 
 .flashcardFlipped .flashcardInner {
   transform: rotateY(180deg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .flashcardInner {
-    transition: none;
-  }
 }
 
 .flashcardFace {
@@ -360,7 +362,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   text-align: center;
   background: linear-gradient(
     160deg,
@@ -369,7 +371,7 @@
   );
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  padding: 20px 18px;
+  padding: 16px 14px;
   backface-visibility: hidden;
 }
 
@@ -377,63 +379,69 @@
   transform: rotateY(180deg);
   background: linear-gradient(
     160deg,
-    var(--color-accent-tint),
+    var(--color-accent-3-tint),
     color-mix(in srgb, var(--color-surface-2) 80%, transparent)
   );
 }
 
 .flashcardLabel {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--color-accent-2-ink);
+  color: var(--color-accent-3);
 }
 
 .flashcardBack .flashcardLabel {
-  color: var(--color-accent);
+  color: var(--color-accent-3);
 }
 
 .flashcardFront {
   font-family: var(--font-serif);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-base);
   color: var(--color-text);
 }
 
 .flashcardHint {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-faint);
 }
 
 .weakArea {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
+  gap: 7px;
+  font-size: 12.5px;
   color: var(--color-text-muted);
-  padding: 10px 2px 0;
+  padding-top: 2px;
 }
 
 .weakDot {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background-color: var(--color-accent-3);
   box-shadow: 0 0 0 3px var(--color-accent-3-tint);
 }
 
-@media (max-width: 640px) {
-  .tab {
-    font-size: 11.5px;
-    padding: 9px 4px;
+/* ---------------------------------------------------------------------
+ * Responsive
+ * ------------------------------------------------------------------- */
+@media (max-width: 980px) {
+  .bentoGrid {
+    grid-template-columns: 1fr;
   }
+}
 
-  .tabIcon {
-    display: none;
-  }
-
-  .panel {
-    padding: 20px 18px 24px;
+@media (prefers-reduced-motion: reduce) {
+  .bentoCard,
+  .liveDot,
+  .computeLine code,
+  .verifiedBadge,
+  .yourTurnGlow,
+  .flashcardInner {
+    animation: none;
+    transition: none;
   }
 }

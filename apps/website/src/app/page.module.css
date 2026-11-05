@@ -360,8 +360,11 @@
 
 .heroDemo {
   position: relative;
+  z-index: 1;
   width: 100%;
-  margin-top: 48px;
+  max-width: 1120px;
+  margin: 8px auto 0;
+  padding: 0 32px 84px;
 }
 
 /* ---------------------------------------------------------------------
@@ -877,6 +880,10 @@
   .hero {
     padding: 56px 28px 40px;
   }
+
+  .heroDemo {
+    padding: 0 28px 64px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -886,6 +893,10 @@
 
   .subtitle {
     font-size: var(--font-size-base);
+  }
+
+  .heroDemo {
+    padding: 0 20px 48px;
   }
 
   .section {
