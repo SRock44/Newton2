@@ -42,7 +42,20 @@ init_sentry(settings)
 
 logger = logging.getLogger("newton.main")
 
-app = FastAPI(title="Newton API")
+# /docs, /redoc, and the raw /openapi.json schema are genuinely useful during
+# development but have no real audience in production -- this is a consumer product
+# with one client (its own frontend), not a public API platform -- and publishing the
+# full route/schema map to the open internet is pure reconnaissance value for an
+# attacker and zero value for a real user. Dev/local keeps them (settings.env == "dev"
+# default), any real deployment (ENV set to anything else, see config.py) gets None,
+# which tells FastAPI to register none of these three routes at all.
+_docs_enabled = settings.env == "dev"
+app = FastAPI(
+    title="Newton API",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 
 app.add_middleware(
     CORSMiddleware,

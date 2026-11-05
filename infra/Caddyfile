@@ -23,7 +23,22 @@
 # "/chat" path. Auth uses Bearer tokens, not cookies (see app/core/security.py), so a
 # separate subdomain has no CORS/SameSite cost either.
 
+# Baseline security headers -- found missing entirely during the newton.best cutover's
+# own security audit (checked with `curl -D -`: no HSTS, no X-Frame-Options, nothing).
+# `(snippet)` + `import` so this applies identically to every real public site block
+# rather than copy-pasted three times and drifting. X-Frame-Options DENY is safe here:
+# nothing this product serves is meant to be embedded in another site's iframe.
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
 {$NEWTON_WEBSITE_ADDR} {
+	import security_headers
 	reverse_proxy website:3000
 }
 
@@ -38,9 +53,20 @@
 }
 
 {$NEWTON_API_ADDR} {
+	import security_headers
 	reverse_proxy api:8000
 }
 
 {$NEWTON_AUTH_ADDR} {
+	import security_headers
+	# The admin console has no legitimate public audience -- every real admin action
+	# already goes over the existing SSH-tunnel pattern (infra/README.md's "Local
+	# development against it", port 58180/58180-equivalent, loopback-only, never through
+	# this public hostname) or `docker compose exec` directly against the container.
+	# Leaving it reachable here is pure attack surface (credential stuffing against
+	# KEYCLOAK_ADMIN_PASSWORD) for zero real benefit -- found during the newton.best
+	# cutover's own security audit.
+	@admin path /admin*
+	respond @admin 404
 	reverse_proxy keycloak:8080
 }
