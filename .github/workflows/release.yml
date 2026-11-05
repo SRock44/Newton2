@@ -12,11 +12,22 @@ name: Release desktop app
 # the embedded pubkey) is separate from OS-level code signing (Apple notarization,
 # Windows Authenticode/EV certs). This workflow does the former via
 # TAURI_SIGNING_PRIVATE_KEY[_PASSWORD] -- required for the updater to accept an update
-# at all. It does NOT attempt Apple notarization or a Windows EV cert (no Apple
-# Developer / EV cert secrets exist in this repo yet); until those are added, the
-# Windows/macOS installers this produces are real and updater-verifiable but will still
-# show an OS "unknown publisher" warning on first run. That's a separate, later,
-# explicitly-scoped piece of work, not silently assumed done here.
+# at all.
+#
+# It ALSO now does real Apple code signing + notarization, via a Developer ID
+# Application certificate (APPLE_CERTIFICATE[_PASSWORD]/APPLE_SIGNING_IDENTITY) and an
+# app-specific password for the Apple ID that owns it (APPLE_ID/APPLE_PASSWORD/
+# APPLE_TEAM_ID) -- tauri-action's macOS build step picks these up automatically and
+# both signs the .app with that identity and submits it to Apple's notarization
+# service, stapling the ticket once it comes back. These six env vars are harmless
+# no-ops on the Windows/Linux matrix legs (tauri-action only acts on them for a Darwin
+# target), so they're set unconditionally in the shared env block below rather than
+# duplicated per-platform.
+#
+# It does NOT attempt a Windows EV cert (no EV cert secret exists in this repo); the
+# Windows installer is real and updater-verifiable but will still show SmartScreen's
+# "unknown publisher" warning on first run. That's a separate, later, explicitly-
+# scoped piece of work, not silently assumed done here.
 #
 # Trigger: push a tag matching `desktop-v*` (e.g. `desktop-v0.1.0`) once
 # src-tauri/tauri.conf.json's `version` has been bumped to match, or run manually via
@@ -108,6 +119,15 @@ jobs:
           # this step, which is the correct, honest failure mode -- not a workflow bug.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Real Apple code signing + notarization -- see this file's header comment.
+          # No-ops on the Windows/Linux matrix legs; tauri-action only applies these on
+          # a macOS (Darwin) build target.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # Real, PUBLIC production origins -- Vite statically inlines any VITE_-prefixed
           # process.env var into the build (same mechanism infra/website.Dockerfile uses
           # for apps/web's own build, just via CI env here instead of a Docker ARG,
