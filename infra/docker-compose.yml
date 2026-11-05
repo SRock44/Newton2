@@ -379,6 +379,7 @@ services:
       # Compose's `${VAR:-default}` resolves it instead, so Caddy always receives a real
       # value. Bare ports here (no hostname) mean no automatic-HTTPS/ACME attempt.
       NEWTON_WEBSITE_ADDR: ${NEWTON_WEBSITE_ADDR:-:80}
+      NEWTON_WWW_ADDR: ${NEWTON_WWW_ADDR:-:8083}
       NEWTON_API_ADDR: ${NEWTON_API_ADDR:-:8081}
       NEWTON_AUTH_ADDR: ${NEWTON_AUTH_ADDR:-:8082}
     volumes:

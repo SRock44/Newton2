@@ -27,6 +27,16 @@
 	reverse_proxy website:3000
 }
 
+# www redirects to the apex rather than being a second live copy of the same site --
+# one canonical URL, no duplicate-content surface, no risk of the two ever silently
+# drifting (a session cookie set on one not applying to the other, etc., even though
+# this app doesn't use cookies today -- no reason to build in that failure mode for
+# later). Deliberately its own site block/hostname rather than trying to fit two
+# hostnames in NEWTON_WEBSITE_ADDR's one placeholder -- untested and unnecessary.
+{$NEWTON_WWW_ADDR} {
+	redir https://{$NEWTON_WEBSITE_ADDR}{uri} permanent
+}
+
 {$NEWTON_API_ADDR} {
 	reverse_proxy api:8000
 }
