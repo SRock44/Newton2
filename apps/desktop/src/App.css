@@ -3292,6 +3292,39 @@ body.is-resizing-panel * {
   animation: thinking-text-shimmer 2.2s linear infinite;
 }
 
+/* The model's live "thinking" trace (reasoning_chunk frames) — see MessageBubble.tsx's
+   hasReasoning/reasoningDone and ReasoningChunk's own backend docstring for the real
+   measured latency fix this is. Deliberately NOT chip-shaped like .plan-chip/
+   .tool-activity-chip above: reasoning is real running prose, not a one-line summary,
+   so it gets a plain quiet container instead of forcing a growing pill into an inline
+   row. Genuinely live text (growing as deltas stream in) doesn't need its own shimmer
+   trick the way a static placeholder sentence does — only the label reuses
+   thinking-indicator-text's shimmer, the body just renders as it streams. */
+.reasoning-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-2);
+  background-color: var(--color-surface-2);
+  animation: tool-activity-chip-enter 0.3s ease-out both;
+}
+
+.reasoning-block-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.reasoning-block-text {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
 .attached-images {
   display: flex;
   flex-wrap: wrap;

@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.router import route
-from app.agents.tutor import PlanChunk, TextChunk, ToolActivity, UsageInfo, run_tutor
+from app.agents.tutor import PlanChunk, ReasoningChunk, TextChunk, ToolActivity, UsageInfo, run_tutor
 from app.core.auth import decode_token, require_user
 from app.core.crisis_detection import CRISIS_RESPONSE_TEXT, classify_crisis, detects_crisis
 from app.core.logging import correlation_id_scope, new_correlation_id
@@ -567,6 +567,11 @@ async def chat_ws(websocket: WebSocket, session_id: uuid.UUID) -> None:
                         ):
                             if isinstance(event, PlanChunk):
                                 await websocket.send_json({"type": "plan_chunk", "content": event.text})
+                            elif isinstance(event, ReasoningChunk):
+                                # Never appended to full_response -- this is the
+                                # model's scratch-work, not part of the persisted
+                                # reply (see ReasoningChunk's own docstring).
+                                await websocket.send_json({"type": "reasoning_chunk", "content": event.text})
                             elif isinstance(event, TextChunk):
                                 full_response += event.text
                                 await websocket.send_json({"type": "chunk", "content": event.text})

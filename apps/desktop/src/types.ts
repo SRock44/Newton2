@@ -47,6 +47,14 @@ export interface ChatMessage {
    * fires (if at all) before any real answer text/tool activity for the same reply.
    * Rendered as its own distinct chip in MessageBubble.tsx, never cleared once set. */
   planNarration?: string;
+  /** Client-side only: the model's own live "thinking" trace, accumulated from
+   * `reasoning_chunk` WS frames (see services/api/app/agents/tutor.py's
+   * ReasoningChunk) — a REAL measured latency fix: a reasoning-capable model can spend
+   * several real seconds producing this before any actual answer text starts, which
+   * used to be invisible dead air (the backend silently discarded it). Never part of
+   * `content` and never persisted — purely a transient "Newton is thinking…" signal,
+   * rendered in MessageBubble.tsx only until real content/tool activity arrives. */
+  reasoningText?: string;
   /** Client-side only: one or more "Open Flashcards"-style buttons to offer on this
    * reply -- a message could plausibly earn more than one (e.g. the model calling two
    * generation tools in one turn), so this is always an array, never clobbered. */

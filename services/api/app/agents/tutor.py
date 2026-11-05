@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.db.base import SessionLocal
 from app.db.models import User
 from app.memory.working import get_bundle
-from app.providers.base import ChatProvider, ChatTurn, TextDelta, ToolCallRequest, ToolSpec
+from app.providers.base import ChatProvider, ChatTurn, ReasoningDelta, TextDelta, ToolCallRequest, ToolSpec
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import get_provider
 from app.services import billing as billing_service
@@ -35,6 +35,21 @@ logger = logging.getLogger("newton.tutor")
 @dataclass
 class TextChunk:
     """A piece of the model's own text answer, streamed as it arrives."""
+
+    text: str
+
+
+@dataclass
+class ReasoningChunk:
+    """A piece of the model's own internal "thinking" trace, streamed as it arrives —
+    see providers/base.py's ReasoningDelta for the real measured latency problem this
+    exists to fix (a reasoning-capable model can spend several real, observed seconds
+    producing this before any TextChunk starts, which used to be invisible dead air).
+    Never persisted as part of the reply (MessageBubble.tsx renders it as a transient
+    "Thinking…" block, not part of message.content) and, like TextChunk, gated behind
+    `suppress_text` — a reasoning model can think through the literal final answer
+    before writing its reply, so this must never leak live during a Focus Mode
+    corrective retry's buffered attempt, exactly the case suppress_text exists for."""
 
     text: str
 
@@ -83,7 +98,7 @@ class PlanChunk:
     text: str
 
 
-TutorEvent = TextChunk | ToolActivity | UsageInfo | PlanChunk
+TutorEvent = TextChunk | ReasoningChunk | ToolActivity | UsageInfo | PlanChunk
 
 # Short, student-facing descriptions of what each tool is doing — keyed by each tool's
 # real registry `.name` (see app/tools/registry.py's _TOOLS). Deliberately not technical
@@ -1200,6 +1215,13 @@ async def run_tutor(
                     draft_parts.append(event.text)
                     if not suppress_text:
                         yield TextChunk(event.text)
+                elif isinstance(event, ReasoningDelta):
+                    # Not accumulated into draft_parts — that's the actual answer text
+                    # (what Focus Mode's unlock-check and the persisted reply are both
+                    # built from), and this is never either of those. Purely a live,
+                    # fire-and-forget student-facing signal.
+                    if not suppress_text:
+                        yield ReasoningChunk(event.text)
                 elif isinstance(event, ToolCallRequest):
                     pending_calls = event.calls
                     break

@@ -7,12 +7,12 @@ import pytest_asyncio
 from sqlalchemy import delete
 
 from app.agents import tutor
-from app.agents.tutor import PlanChunk, TextChunk, ToolActivity, UsageInfo
+from app.agents.tutor import PlanChunk, ReasoningChunk, TextChunk, ToolActivity, UsageInfo
 from app.core.config import Settings
 from app.db.models import User
 from app.providers.base import ChatProvider, TextDelta, ToolCall, ToolCallRequest
 from app.services import billing as billing_service
-from tests.fakes import ScriptedToolCallingProvider
+from tests.fakes import Reasoning, ScriptedToolCallingProvider
 
 
 def text_of(events) -> str:
@@ -30,6 +30,57 @@ async def test_run_tutor_streams_directly_when_no_tool_needed(monkeypatch):
     assert len(fake.calls_seen) == 1
     # the tutor should always offer its tool belt, even when the model doesn't use it
     assert {t.name for t in fake.calls_seen[0]["tools"]} >= {"calculator", "unit_converter"}
+
+
+async def test_run_tutor_streams_reasoning_chunks_separately_from_the_final_answer(monkeypatch):
+    """Real bug this fixes: a reasoning-capable model's "thinking" tokens used to be
+    silently dropped (OpenAICompatibleProvider only ever checked `delta.content`) --
+    measured live, a model can spend several real seconds streaming reasoning before
+    any answer text starts, which read as total dead air. Reasoning must now surface as
+    its own event, in the real order it arrived in, and must NEVER be mixed into the
+    persisted answer text itself."""
+    fake = ScriptedToolCallingProvider(
+        [[Reasoning("Let me work through this. "), Reasoning("Okay, got it."), "The answer is 42."]]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [c async for c in tutor.run_tutor(str(uuid.uuid4()), "what is 6 times 7?")]
+
+    reasoning_events = [e for e in events if isinstance(e, ReasoningChunk)]
+    assert [r.text for r in reasoning_events] == ["Let me work through this. ", "Okay, got it."]
+    assert text_of(events) == "The answer is 42."  # reasoning never leaks into the real answer
+
+    # Reasoning arrived (and must be shown) before the real answer text, matching the
+    # real wire order a reasoning model actually streams in.
+    first_reasoning_index = next(i for i, e in enumerate(events) if isinstance(e, ReasoningChunk))
+    first_text_index = next(i for i, e in enumerate(events) if isinstance(e, TextChunk))
+    assert first_reasoning_index < first_text_index
+
+
+async def test_run_tutor_never_leaks_reasoning_chunks_during_a_buffered_focus_mode_attempt(
+    tutor_user, monkeypatch
+):
+    """The same safety property TextChunk already has for a blocked Focus Mode draft
+    (its exact wording must never reach the student) applies to reasoning too, and for
+    a stronger reason: a reasoning model can think through the literal final answer
+    before writing its reply, which would defeat Focus Mode's whole point if streamed
+    live during the buffered attempt this test exercises."""
+    user = await tutor_user(focus_mode_enabled=True)
+    fake = ScriptedToolCallingProvider(
+        [
+            [Reasoning("The answer is clearly 3, let me just say that."), "The answer is 3."],
+            ["Try dividing 12 by 4 yourself. What do you get?"],
+        ]
+    )
+    monkeypatch.setattr(tutor, "get_provider", lambda **kwargs: (fake, "fake-model"))
+
+    events = [
+        c async for c in tutor.run_tutor(str(uuid.uuid4()), "What is 12 divided by 4?", user_id=str(user.id))
+    ]
+
+    reasoning_events = [e for e in events if isinstance(e, ReasoningChunk)]
+    assert reasoning_events == []  # the blocked attempt's reasoning never reached the caller at all
+    assert "The answer is clearly 3" not in text_of(events)
 
 
 async def test_run_tutor_executes_a_tool_call_then_answers(monkeypatch):

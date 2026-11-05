@@ -860,6 +860,22 @@ function App() {
             if (!last || last.role !== "assistant" || !last.streaming) return prev;
             return [...prev.slice(0, -1), { ...last, planNarration }];
           });
+        } else if (payload.type === "reasoning_chunk") {
+          // The model's live "thinking" trace — see types.ts's reasoningText and
+          // ReasoningChunk's own backend docstring for the real latency problem this
+          // fixes (a reasoning model can stream for several real seconds before any
+          // answer text starts, which used to be invisible dead air). Accumulates the
+          // same way "chunk" accumulates into content, just into its own field —
+          // MessageBubble.tsx hides it again the moment real content/activity lands.
+          setIsStreaming(true);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (!last || last.role !== "assistant" || !last.streaming) return prev;
+            return [
+              ...prev.slice(0, -1),
+              { ...last, reasoningText: (last.reasoningText ?? "") + (payload.content ?? "") },
+            ];
+          });
         } else if (payload.type === "chunk") {
           setIsStreaming(true);
           setMessages((prev) => {

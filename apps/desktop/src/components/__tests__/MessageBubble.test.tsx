@@ -477,6 +477,73 @@ describe("MessageBubble", () => {
     });
   });
 
+  // Real, measured latency fix: a reasoning-capable model can stream several real
+  // seconds of "thinking" (reasoning_chunk frames, see App.tsx) before any answer text
+  // starts -- previously invisible dead air, since the backend silently discarded it.
+  describe("reasoning block", () => {
+    it("renders nothing when the message has no reasoning text", () => {
+      const message: ChatMessage = { role: "assistant", content: "hi", streaming: false };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByLabelText("Newton's reasoning")).not.toBeInTheDocument();
+    });
+
+    it("renders the live reasoning text while no real content/activity has landed yet", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        reasoningText: "Let me work through this step by step.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.getByText("Let me work through this step by step.")).toBeInTheDocument();
+      expect(screen.getByText("Thinking…")).toBeInTheDocument();
+    });
+
+    it("hides the reasoning block the moment real answer text lands, unlike the plan chip which stays done-styled", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "The answer is 42.",
+        streaming: true,
+        reasoningText: "Let me work through this step by step.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByText("Let me work through this step by step.")).not.toBeInTheDocument();
+    });
+
+    it("hides the reasoning block once tool activity has landed, even with no answer text yet", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        reasoningText: "Let me check the math.",
+        activity: [{ tool: "calculator", label: "Doing the math", done: false }],
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByText("Let me check the math.")).not.toBeInTheDocument();
+    });
+
+    it("hides the generic streaming dots once reasoning has arrived, even with no text or activity yet", () => {
+      const message: ChatMessage = {
+        role: "assistant",
+        content: "",
+        streaming: true,
+        reasoningText: "Let me work through this.",
+      };
+      render(
+        <MessageBubble message={message} token="tok" sessionId="s1" onOpenSuggestedPanel={vi.fn()} onOpenDocument={vi.fn()} />,
+      );
+      expect(screen.queryByLabelText("Newton is thinking")).not.toBeInTheDocument();
+    });
+  });
+
   // Product review finding: "verified, not vibes" was invisible in the product -- every
   // tool chip rendered identically whether the underlying result was a real computation
   // (SymPy, a real sandboxed test run, ...) or an LLM judgment call. The backend now

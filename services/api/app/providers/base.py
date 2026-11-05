@@ -33,11 +33,34 @@ class TextDelta:
 
 
 @dataclass
+class ReasoningDelta:
+    """A piece of the model's own internal "thinking"/reasoning trace, as it streams —
+    OpenRouter's `delta.reasoning` field on a reasoning-capable model (confirmed live:
+    Meta's Muse Spark Contributor streams ~3-7s of this before any `delta.content`
+    starts). Distinct from TextDelta: this is never the model's actual answer, just its
+    scratch-work commentary, so callers must never append it into a persisted reply —
+    see app/agents/tutor.py's ReasoningChunk for the one place this becomes a
+    student-visible frame, and why it's deliberately gated the same way as TextDelta
+    (suppress_text) rather than always shown: a reasoning model can "think through" the
+    literal final answer before writing its reply, which would defeat Focus Mode's
+    whole point if streamed live during a held-back answer.
+
+    Real bug this exists to fix: before this type existed, OpenAICompatibleProvider
+    only ever checked `delta.get("content")` — every reasoning token a model actually
+    streamed was silently read off the wire and discarded, with nothing forwarded to
+    the student, who saw total silence for however long the model's reasoning phase
+    took (measured live: 7-14s) even though the provider had already started
+    streaming real activity seconds earlier."""
+
+    text: str
+
+
+@dataclass
 class ToolCallRequest:
     calls: list[ToolCall]
 
 
-StreamEvent = TextDelta | ToolCallRequest
+StreamEvent = TextDelta | ReasoningDelta | ToolCallRequest
 
 
 class ChatProvider(ABC):

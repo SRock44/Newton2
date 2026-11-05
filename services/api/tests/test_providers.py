@@ -1,10 +1,12 @@
+import json
+
 import httpx
 import pytest
 
 from app.core.config import Settings
 from app.providers import registry as registry_module
 from app.providers.anthropic_provider import AnthropicProvider
-from app.providers.base import ChatTurn, TextDelta, ToolCallRequest
+from app.providers.base import ChatTurn, ReasoningDelta, TextDelta, ToolCallRequest
 from app.providers.echo import EchoProvider
 from app.providers.openai_compatible import OpenAICompatibleProvider
 from app.providers.registry import get_provider
@@ -135,6 +137,103 @@ async def test_stream_chat_requests_usage_and_captures_it_after_text_deltas():
     assert events[0].text == "Hi"
     assert '"include_usage":true' in seen["body"]
     assert provider.last_usage == {"prompt_tokens": 12, "completion_tokens": 3}
+
+
+async def test_stream_chat_requests_low_reasoning_effort_and_throughput_routing_on_openrouter_only():
+    """Real, measured latency fix (see openai_compatible.py's own comment for the live
+    numbers: ~35% faster, ~60% fewer reasoning tokens, across 8 repeated live trials,
+    with no model change and no visible quality loss) -- both scoped to OpenRouter
+    only, same as the pre-existing throughput sort, since Groq has no equivalent."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, content="data: [DONE]\n\n", headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://openrouter.ai/api/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    [_ async for _ in provider.stream_chat([ChatTurn(role="user", content="hi")], "some-model")]
+
+    assert seen["body"]["provider"] == {"sort": "throughput"}
+    assert seen["body"]["reasoning"] == {"effort": "low"}
+
+
+async def test_stream_chat_does_not_request_reasoning_effort_on_a_non_openrouter_base_url():
+    """Groq (the other OpenAI-compatible base_url this provider is used against) has no
+    concept of either extension -- sending them anyway risks a real 400 from an API
+    that doesn't recognize the field, so both must stay scoped to OpenRouter only."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, content="data: [DONE]\n\n", headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://api.groq.com/openai/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    [_ async for _ in provider.stream_chat([ChatTurn(role="user", content="hi")], "some-model")]
+
+    assert "provider" not in seen["body"]
+    assert "reasoning" not in seen["body"]
+
+
+async def test_stream_chat_yields_reasoning_deltas_separately_from_content(monkeypatch):
+    """Real bug this guards against: a reasoning-capable model (confirmed live: Meta's
+    Muse Spark Contributor) streams `delta.reasoning` for several real seconds BEFORE
+    any `delta.content` -- this used to be silently dropped entirely (only
+    `delta.get("content")` was ever checked), so a student saw total dead air for
+    however long the model's reasoning phase took, even though the provider had
+    already been actively streaming for seconds. See ReasoningDelta's own docstring."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = (
+            'data: {"choices": [{"delta": {"role": "assistant", "reasoning": "Let me think"}}]}\n\n'
+            'data: {"choices": [{"delta": {"reasoning": " about this."}}]}\n\n'
+            'data: {"choices": [{"delta": {"content": "The answer"}}]}\n\n'
+            'data: {"choices": [{"delta": {"content": " is 4."}}]}\n\n'
+            'data: {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 5}}\n\n'
+            "data: [DONE]\n\n"
+        )
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    events = [e async for e in provider.stream_chat([ChatTurn(role="user", content="2+2?")], "some-model")]
+
+    assert [type(e) for e in events] == [ReasoningDelta, ReasoningDelta, TextDelta, TextDelta]
+    assert events[0].text == "Let me think"
+    assert events[1].text == " about this."
+    assert events[2].text == "The answer"
+    assert events[3].text == " is 4."
+    # Order preserved: reasoning genuinely arrived first on the real wire, and that's
+    # exactly the thing a caller needs to be able to show it before the real answer.
+    reasoning_text = "".join(e.text for e in events if isinstance(e, ReasoningDelta))
+    assert reasoning_text == "Let me think about this."
+
+
+async def test_stream_chat_handles_a_chunk_with_both_reasoning_and_content():
+    """Nothing in the OpenAI-compatible wire format guarantees these never share a
+    single delta -- this must yield both, not silently prefer one (see
+    openai_compatible.py's own comment on why this is two separate `if`s, not
+    `if`/`elif`)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = (
+            'data: {"choices": [{"delta": {"reasoning": "thinking...", "content": "answer"}}]}\n\n'
+            "data: [DONE]\n\n"
+        )
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1", api_key="key", transport=_mock_transport(handler)
+    )
+    events = [e async for e in provider.stream_chat([ChatTurn(role="user", content="hi")], "some-model")]
+
+    assert len(events) == 2
+    assert isinstance(events[0], ReasoningDelta) and events[0].text == "thinking..."
+    assert isinstance(events[1], TextDelta) and events[1].text == "answer"
 
 
 async def test_stream_chat_handles_tool_calls_alongside_a_trailing_usage_chunk():

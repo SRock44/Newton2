@@ -447,14 +447,24 @@ function MessageBubble({
   // Once real text or tool activity has landed, the plan chip is done being "live" --
   // same grayed-out/checked treatment tool chips already get, not an abrupt disappearance.
   const planNarrationDone = hasRealContent || hasActivity;
+  // Real, measured latency fix: a reasoning-capable model can stream several real
+  // seconds of "thinking" (reasoning_chunk frames) before any answer text starts —
+  // previously invisible dead air, since the backend silently discarded these. Shown
+  // only up to the moment real content/activity lands, same "done, not abrupt" shape
+  // as the plan chip above, and shown INSTEAD OF the generic dots below (it's strictly
+  // more informative than "Newton is thinking" once there's real thinking to show).
+  const hasReasoning = Boolean(message.reasoningText && message.reasoningText.trim().length > 0);
+  const reasoningDone = hasRealContent || hasActivity;
   // The "Newton is thinking" indicator exists to signal "genuinely nothing has arrived
-  // yet" -- once any of text, tool activity, or the plan-narration chip has landed, one
-  // of those is already telling the student Newton is working, so the redundant
-  // indicator stops. It's also what App.tsx's handleSend renders synchronously the
-  // instant a message is sent (a fresh placeholder message has none of the three yet),
-  // so there is always visible activity from message zero, not just once a WS frame
-  // eventually arrives — see ROADMAP.md's "always-visible thinking indicator" entry.
-  const showStreamingDots = Boolean(message.streaming) && !hasRealContent && !hasActivity && !hasPlanNarration;
+  // yet" -- once any of text, tool activity, the plan-narration chip, or the live
+  // reasoning trace has landed, one of those is already telling the student Newton is
+  // working, so the redundant indicator stops. It's also what App.tsx's handleSend
+  // renders synchronously the instant a message is sent (a fresh placeholder message
+  // has none of these yet), so there is always visible activity from message zero, not
+  // just once a WS frame eventually arrives — see ROADMAP.md's "always-visible
+  // thinking indicator" entry.
+  const showStreamingDots =
+    Boolean(message.streaming) && !hasRealContent && !hasActivity && !hasPlanNarration && !hasReasoning;
 
   return (
     <div
@@ -490,6 +500,23 @@ function MessageBubble({
               <span className="tool-activity-icon plan-chip-icon" aria-hidden="true" />
               <span className="plan-chip-text">{message.planNarration}</span>
             </span>
+          </div>
+        )}
+        {hasReasoning && !reasoningDone && (
+          // Hidden again the instant real content/activity lands (unlike the plan chip
+          // above, which stays visible done-styled) -- a model's reasoning trace is
+          // verbose scratch-work, not a short one-line summary worth permanently
+          // cluttering the transcript with once the real answer is there. See
+          // showStreamingDots's own comment for why this is the thing replacing the
+          // generic "thinking" dots now, not an addition alongside them.
+          <div className="tool-activity reasoning-activity" aria-label="Newton's reasoning">
+            <div className="reasoning-block">
+              {/* Reuses the exact shimmer treatment thinking-indicator-text already
+                  established for "this is live, ongoing work" — same visual language,
+                  not a new one invented just for this. */}
+              <span className="reasoning-block-label thinking-indicator-text">Thinking…</span>
+              <p className="reasoning-block-text">{message.reasoningText}</p>
+            </div>
           </div>
         )}
         {message.activity && message.activity.length > 0 && (
