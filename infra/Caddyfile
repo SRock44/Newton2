@@ -54,6 +54,7 @@
 
 {$NEWTON_API_ADDR} {
 	import security_headers
+	log
 	reverse_proxy api:8000
 }
 

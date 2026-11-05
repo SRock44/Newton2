@@ -11,7 +11,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # field's own comment for the real incident (a deployment's CORS_ALLOW_ORIGINS override
 # silently dropped these, breaking every real desktop-app user's login) this split
 # exists to make structurally impossible to repeat.
-DESKTOP_APP_ORIGINS = ["tauri://localhost", "https://tauri.localhost"]
+#
+# Confirmed LIVE, not guessed: real production Caddy access logs (a temporary `log`
+# directive added specifically to catch this) for a real Windows desktop app showed
+# every request's Origin as literally "http://tauri.localhost" -- plain HTTP, which
+# "https://tauri.localhost" below does NOT match (CORS origin matching is exact-string,
+# scheme included). That one missing entry was the entire remaining cause of "signed in
+# fine, then nothing in the app loads" surviving the first round of this same fix.
+DESKTOP_APP_ORIGINS = ["tauri://localhost", "https://tauri.localhost", "http://tauri.localhost"]
 
 
 class Settings(BaseSettings):
