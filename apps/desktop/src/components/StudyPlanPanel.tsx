@@ -19,6 +19,16 @@ interface StudyPlanPanelProps {
 const CLASSROOM_POLL_INTERVAL_MS = 3000;
 const CLASSROOM_POLL_TIMEOUT_MS = 2 * 60 * 1000;
 
+// Google Classroom's read scopes are "sensitive" scopes -- Google requires an app
+// verification review before a real (non-test) Google account can grant them, and this
+// app hasn't gone through that review yet. Until then, a real student clicking
+// "Connect" would hit Google's own "this app isn't verified" block, not a working
+// connection -- disabled here rather than shipping a button that can't actually work.
+// Flip back to false once that review is complete; nothing else about this feature
+// changes (the backend flow, connectClassroom/getClassroomStatus/syncClassroom, is
+// untouched and already real).
+const CLASSROOM_CONNECT_DISABLED = true;
+
 function formatDueDate(item: StudyPlanItem): string {
   if (item.due_date) {
     const date = new Date(`${item.due_date}T00:00:00`);
@@ -189,6 +199,13 @@ function StudyPlanPanel({ token, onClose }: StudyPlanPanelProps) {
                 </button>
               </div>
             </>
+          ) : CLASSROOM_CONNECT_DISABLED ? (
+            <div className="classroom-connect-disabled">
+              <button type="button" className="btn-secondary" disabled>
+                Connect Google Classroom
+              </button>
+              <p className="classroom-connect-note">Coming soon — pending Google's app review.</p>
+            </div>
           ) : (
             <button type="button" className="btn-secondary" onClick={handleConnectClassroom} disabled={connecting}>
               {connecting ? "Waiting for Google sign-in…" : "Connect Google Classroom"}

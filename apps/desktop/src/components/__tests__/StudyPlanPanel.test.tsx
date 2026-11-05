@@ -18,6 +18,16 @@ describe("StudyPlanPanel", () => {
     deleteStudyPlanItem.mockReset();
   });
 
+  it("shows the Google Classroom connect button disabled, with a reason, not clickable", async () => {
+    listStudyPlan.mockResolvedValue([]);
+    render(<StudyPlanPanel token="tok" onClose={() => {}} />);
+
+    await screen.findByText(/no study plan items yet/i);
+    const connectButton = screen.getByRole("button", { name: "Connect Google Classroom" });
+    expect(connectButton).toBeDisabled();
+    expect(screen.getByText(/pending google's app review/i)).toBeInTheDocument();
+  });
+
   it("shows an empty state pointing at Documents when there's nothing yet", async () => {
     listStudyPlan.mockResolvedValue([]);
     render(<StudyPlanPanel token="tok" onClose={() => {}} />);
