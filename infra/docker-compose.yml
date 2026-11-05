@@ -32,6 +32,19 @@ volumes:
   newton_caddydata:
 
 x-api-env: &api-env
+  # Both reproduce app/core/config.py's own Python-level defaults EXACTLY when unset,
+  # so a dev/shared box with no .env entry for either behaves identically to before --
+  # a real deployment overrides both in its own .env. ENV=dev is what activates
+  # check_no_default_secrets() (config.py) refusing to start with a publicly-known
+  # default secret still in place; CORS_ALLOW_ORIGINS is the real browser origin(s) a
+  # public deployment's fetch/WebSocket calls actually come from (e.g.
+  # ["https://newton.best"]) -- found missing the hard way during the newton.best
+  # cutover: without it, every REST call from the real site 400'd with "Disallowed
+  # CORS origin" (WebSocket connections aren't browser-CORS-gated the same way, so
+  # chat itself still worked -- only things like GET /account, GET /chat/sessions did
+  # not).
+  ENV: ${ENV:-dev}
+  CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-["http://localhost:1420","tauri://localhost","https://tauri.localhost","http://localhost:3000"]}
   DATABASE_URL: postgresql+asyncpg://newton:${POSTGRES_PASSWORD:-newton-dev-secret}@postgres:5432/newton
   REDIS_URL: redis://redis:6379/0
   ARQ_REDIS_URL: redis://redis:6379/1
@@ -184,8 +197,12 @@ services:
     #   docker compose run --rm keycloak start-dev --import-realm
     # once, then start the stack normally from then on with this standing command. The
     # current live environment already has the realm imported; do not add --import-realm
-    # back here.
-    command: start-dev
+    # back here. KEYCLOAK_COMMAND defaults to start-dev (dev/shared-box behavior,
+    # unchanged) -- a real deployment sets it to `start`, Keycloak's actual production
+    # mode (start-dev logs "Running the server in development mode. DO NOT use this
+    # configuration in production" on every boot, which is not cosmetic -- it also
+    # disables some caching and is explicitly documented as unsupported for real use).
+    command: ${KEYCLOAK_COMMAND:-start-dev}
     depends_on:
       postgres:
         condition: service_healthy
@@ -225,6 +242,14 @@ services:
       KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://127.0.0.1:58180}
       KC_HOSTNAME_STRICT: "true"
       KC_HTTP_ENABLED: "true"
+      # Required for `start` (production mode, see KEYCLOAK_COMMAND above) when
+      # Keycloak itself only ever speaks plain HTTP and a reverse proxy in front of it
+      # (Caddy) terminates real TLS -- tells Keycloak to trust the X-Forwarded-* headers
+      # Caddy's reverse_proxy already sends by default, so it correctly treats the
+      # original request as HTTPS (matching KC_HOSTNAME's own https:// scheme in
+      # production) instead of refusing to start or stamping http:// into every link/
+      # token it issues. Harmless under start-dev too (dev never sits behind a proxy).
+      KC_PROXY_HEADERS: xforwarded
       KC_HEALTH_ENABLED: "true"
     volumes:
       - newton_keycloakdata:/opt/keycloak/data
