@@ -1,14 +1,16 @@
-/** Real GitHub Release assets — the exact 11 files `desktop-v0.1.0` actually publishes
- * (confirmed via `gh release view desktop-v0.1.0 --json assets` before writing this, not
- * guessed), produced by .github/workflows/release.yml. Stable per-asset download URLs
- * (github.com/.../releases/download/<tag>/<asset>) need no API call at request/build
- * time — GitHub serves these directly, permanently, for a given tag.
+/** Real GitHub Release assets — confirmed via `gh release view desktop-v0.2.0 --json
+ * assets` before writing this, not guessed — produced by .github/workflows/release.yml.
+ * Stable per-asset download URLs (github.com/.../releases/download/<tag>/<asset>) need
+ * no API call at request/build time — GitHub serves these directly, permanently, for a
+ * given tag.
  *
- * No Linux entry: the release workflow's matrix includes an ubuntu runner, but no
- * .AppImage/.deb is among the real published assets today — said honestly on the page
- * itself rather than inventing a download that doesn't exist. */
+ * No Linux entry: the release workflow's ubuntu-22.04 matrix leg fails today (a
+ * pre-existing, unrelated upstream build break in the `libspa` crate a transitive
+ * webkit2gtk/PipeWire dependency pulls in — not something this release caused), so
+ * there's no real .AppImage/.deb to link to. Said honestly on the page itself rather
+ * than inventing a download that doesn't exist. */
 
-export const RELEASE_TAG = "desktop-v0.1.0";
+export const RELEASE_TAG = "desktop-v0.2.0";
 export const RELEASE_URL = `https://github.com/SRock44/Newton2/releases/tag/${RELEASE_TAG}`;
 const RELEASE_BASE = `https://github.com/SRock44/Newton2/releases/download/${RELEASE_TAG}`;
 
@@ -29,26 +31,26 @@ export const ASSETS: DownloadAsset[] = [
     label: "macOS — Apple Silicon",
     detail: "M1 and later. .dmg",
     primary: true,
-    url: `${RELEASE_BASE}/Newton_0.1.0_aarch64.dmg`,
+    url: `${RELEASE_BASE}/Newton_0.2.0_aarch64.dmg`,
   },
   {
     platform: "mac",
     label: "macOS — Intel",
     detail: "Intel-based Mac. .dmg",
-    url: `${RELEASE_BASE}/Newton_0.1.0_x64.dmg`,
+    url: `${RELEASE_BASE}/Newton_0.2.0_x64.dmg`,
   },
   {
     platform: "windows",
     label: "Windows — Installer",
     detail: "Recommended for most people. .exe",
     primary: true,
-    url: `${RELEASE_BASE}/Newton_0.1.0_x64-setup.exe`,
+    url: `${RELEASE_BASE}/Newton_0.2.0_x64-setup.exe`,
   },
   {
     platform: "windows",
     label: "Windows — MSI",
     detail: "For managed/enterprise installs. .msi",
-    url: `${RELEASE_BASE}/Newton_0.1.0_x64_en-US.msi`,
+    url: `${RELEASE_BASE}/Newton_0.2.0_x64_en-US.msi`,
   },
 ];
 

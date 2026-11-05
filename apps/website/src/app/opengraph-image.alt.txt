@@ -1,0 +1,1 @@
+Newton — the first Agentic Learning Environment. An AI tutor that checks its work, with an illustration of an apple falling from a tree along its real gravitational trajectory (g = 9.8 m/s²).

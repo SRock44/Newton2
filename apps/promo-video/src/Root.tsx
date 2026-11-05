@@ -2,6 +2,7 @@ import { Composition } from "remotion";
 import { FPS, SHOW_FPS } from "./anim";
 import { ResearchFilm } from "./paper/ResearchFilm";
 import { T as RT } from "./paper/timeline";
+import { ShareImage } from "./share/ShareImage";
 import { ShowFilm } from "./show/ShowFilm";
 import { T } from "./show/timeline";
 import { StudyFilm } from "./study/StudyFilm";
@@ -9,6 +10,14 @@ import { T as ST } from "./study/timeline";
 
 export const RemotionRoot = () => (
   <>
+    <Composition
+      id="ShareImage"
+      component={ShareImage}
+      durationInFrames={1}
+      fps={30}
+      width={1200}
+      height={630}
+    />
     <Composition
       id="ShowFilm"
       component={ShowFilm}
