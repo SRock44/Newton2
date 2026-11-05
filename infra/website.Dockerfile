@@ -25,7 +25,8 @@ COPY apps/web ./apps/web
 # never a loopback/tunnel address, or every fetch/WebSocket call in a real visitor's
 # browser would try to reach their OWN machine instead of this one.
 ARG VITE_API_URL
-RUN cd apps/web && VITE_API_URL=$VITE_API_URL npm run build
+ARG VITE_KEYCLOAK_URL
+RUN cd apps/web && VITE_API_URL=$VITE_API_URL VITE_KEYCLOAK_URL=$VITE_KEYCLOAK_URL npm run build
 
 FROM node:22-slim AS website-build
 WORKDIR /app
