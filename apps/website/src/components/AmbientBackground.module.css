@@ -17,13 +17,17 @@
   filter: blur(90px);
 }
 
+/* Opacity bumped up from an earlier, more conservative pass: with liquid-glass panels
+   now translucent everywhere (globals.css's --glass-* tokens), this wash is what
+   actually shows THROUGH them — too faint here reads as plain frosted gray instead of
+   colorful "liquid" refraction, the whole point of the look. */
 .blobAccent {
   top: -20%;
   left: -12%;
   width: 55vw;
   height: 70vh;
   background-color: var(--color-accent);
-  opacity: 0.14;
+  opacity: 0.24;
   transform: rotate(-18deg);
 }
 
@@ -33,7 +37,7 @@
   width: 46vw;
   height: 60vh;
   background-color: var(--color-accent-2);
-  opacity: 0.14;
+  opacity: 0.22;
   transform: rotate(22deg);
 }
 
@@ -43,6 +47,18 @@
   width: 60vw;
   height: 52vh;
   background-color: var(--color-accent-3);
-  opacity: 0.1;
+  opacity: 0.18;
   transform: rotate(-10deg);
+}
+
+/* A fourth, centered blob — the three corner-anchored ones above left the middle of
+   the viewport (exactly where most cards/panels actually sit) comparatively flat. */
+.blobCenter {
+  top: 20%;
+  left: 30%;
+  width: 45vw;
+  height: 45vh;
+  background-color: var(--color-accent-2);
+  opacity: 0.14;
+  transform: rotate(8deg);
 }

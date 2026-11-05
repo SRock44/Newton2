@@ -26,6 +26,7 @@ export default function AmbientBackground() {
       <div className={`${styles.blob} ${styles.blobAccent}`} />
       <div className={`${styles.blob} ${styles.blobAccent2}`} />
       <div className={`${styles.blob} ${styles.blobAccent3}`} />
+      <div className={`${styles.blob} ${styles.blobCenter}`} />
     </div>
   );
 }

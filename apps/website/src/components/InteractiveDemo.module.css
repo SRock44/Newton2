@@ -33,27 +33,36 @@
   }
 }
 
+/* Liquid glass — the explicitly-named "newton.best/chat modal" revamp (see globals.css's
+   shared --glass-* recipe, ported from the silk-design kit). A real translucent panel
+   over AmbientBackground.tsx's colorful blobs, not an opaque card with a decorative glow
+   painted behind it — the .glow layer above still adds its own color, but now the card
+   itself is part of the glass effect instead of fully hiding whatever's behind it. */
 .demo {
   position: relative;
   z-index: 1;
   width: 100%;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow), var(--shadow-md);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   overflow: hidden;
   text-align: left;
 }
 
 /* A tiny browser-chrome strip — reinforces "this is a real web app," the exact thing
-   the product owner asked this component to prove, without it being a screenshot. */
+   the product owner asked this component to prove, without it being a screenshot. A
+   touch more opaque than the card body (same idea FloatingNav's own scrolled state
+   uses) so the three traffic-light dots stay legible against whatever's behind it. */
 .windowBar {
   display: flex;
   align-items: center;
   gap: 7px;
   padding: 11px 14px;
-  background-color: var(--color-surface-2);
-  border-bottom: 1px solid var(--color-border-2);
+  background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
+  border-bottom: 1px solid var(--glass-border);
 }
 
 .windowDot {
@@ -85,8 +94,8 @@
 .tabs {
   position: relative;
   display: flex;
-  border-bottom: 1px solid var(--color-border-2);
-  background-color: var(--color-surface-2);
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
   padding: 6px;
   gap: 4px;
 }
@@ -209,7 +218,7 @@
 
 .bubbleUser {
   max-width: 80%;
-  background-color: var(--color-surface-2);
+  background: color-mix(in srgb, var(--color-surface-2) 75%, transparent);
   color: var(--color-text);
   padding: 10px 14px;
   border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
@@ -225,7 +234,7 @@
   color: var(--color-text);
   font-size: var(--font-size-sm);
   line-height: 1.55;
-  background-color: var(--color-surface-2);
+  background: color-mix(in srgb, var(--color-surface-2) 75%, transparent);
   padding: 12px 14px;
   border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 4px;
 }
@@ -285,7 +294,7 @@
 .yourTurn {
   position: relative;
   overflow: hidden;
-  background-color: var(--color-surface-2);
+  background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
   border: 1px solid var(--color-accent-tint-strong);
   border-radius: var(--radius-md);
   padding: 12px 14px;
@@ -353,8 +362,12 @@
   justify-content: center;
   gap: 8px;
   text-align: center;
-  background: linear-gradient(160deg, var(--color-surface-2), var(--color-surface-3));
-  border: 1px solid var(--color-border);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--color-surface-2) 80%, transparent),
+    color-mix(in srgb, var(--color-surface-3) 70%, transparent)
+  );
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: 20px 18px;
   backface-visibility: hidden;
@@ -362,7 +375,11 @@
 
 .flashcardBack {
   transform: rotateY(180deg);
-  background: linear-gradient(160deg, var(--color-accent-tint), var(--color-surface-2));
+  background: linear-gradient(
+    160deg,
+    var(--color-accent-tint),
+    color-mix(in srgb, var(--color-surface-2) 80%, transparent)
+  );
 }
 
 .flashcardLabel {

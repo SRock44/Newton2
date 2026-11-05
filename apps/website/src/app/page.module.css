@@ -104,52 +104,58 @@
  * Shared buttons (hero)
  * ------------------------------------------------------------------- */
 
+/* Liquid glass "lit" button — globals.css's --glow-primary (an inset top highlight +
+   a soft color-matched glow ramp, the thing that makes a button look lit rather than
+   flat, ported from the silk-design kit's own primary-button recipe). */
 .btnPrimary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--color-accent);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
   color: var(--color-accent-contrast);
   text-decoration: none;
   padding: 14px 28px;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--glow-primary);
   transition: background-color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
     box-shadow 0.2s ease;
 }
 
 .btnPrimary:hover {
-  background-color: var(--color-accent-hover);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glow-primary-hover);
   transform: translateY(-2px) scale(1.03);
 }
 
 .btnPrimary:active {
-  background-color: var(--color-accent-active);
+  background: var(--color-accent-active);
   transform: translateY(0) scale(0.99);
 }
 
+/* Liquid glass outline — translucent, not transparent, so it reads as a real glass
+   surface even at rest instead of only gaining one on hover. */
 .btnSecondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: transparent;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   color: var(--color-text);
   text-decoration: none;
   padding: 14px 28px;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--glass-border);
   transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
 .btnSecondary:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
-  background-color: var(--color-surface);
+  background: var(--glass-bg-strong);
   transform: translateY(-2px);
 }
 
@@ -425,9 +431,11 @@
   gap: 12px;
   padding: 26px 24px;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-2);
-  background-color: var(--color-surface);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
@@ -491,8 +499,8 @@
   margin-top: 10px;
   padding: 12px 16px;
   border-radius: var(--radius-md);
-  background-color: var(--color-surface-2);
-  border: 1px solid var(--color-border-2);
+  background: color-mix(in srgb, var(--color-surface-2) 70%, transparent);
+  border: 1px solid var(--glass-border);
 }
 
 .capabilitySnippetBadge {
@@ -572,7 +580,8 @@
 .capabilityCard:hover {
   transform: translateY(-4px);
   border-color: var(--color-accent-tint-strong);
-  box-shadow: var(--shadow-md);
+  background: var(--glass-bg-strong);
+  box-shadow: var(--glass-shadow), var(--shadow-md);
 }
 
 .capabilityIcon {
@@ -753,11 +762,13 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 28px 26px;
-  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
 }
 
 .proColumnLabel {
@@ -798,11 +809,13 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  background-color: var(--color-surface);
+  background: var(--glass-bg-strong);
   border: 1.5px solid var(--color-accent);
   border-radius: var(--radius-lg);
   padding: 28px 26px;
-  box-shadow: var(--shadow-md);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), var(--shadow-md);
 }
 
 .proColumnLabelPro {
