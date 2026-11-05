@@ -16,9 +16,14 @@ describe("RoadmapPage", () => {
 
   it("grounds items in ROADMAP.md's real deferred/planned list", () => {
     render(<RoadmapPage />);
-    expect(screen.getByText(/full web-based chat client/i)).toBeInTheDocument();
+    expect(screen.getByText(/pro for every student/i)).toBeInTheDocument();
     expect(screen.getByText(/try it live/i)).toBeInTheDocument();
     expect(screen.getByText(/review reminders as real os notifications/i)).toBeInTheDocument();
+  });
+
+  it("no longer lists the web chat client as unbuilt -- apps/web shipped", () => {
+    render(<RoadmapPage />);
+    expect(screen.queryByText(/full web-based chat client/i)).not.toBeInTheDocument();
   });
 
   it("never claims a specific delivery date", () => {

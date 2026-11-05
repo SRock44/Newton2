@@ -18,7 +18,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "Is it free?",
     answer:
-      "Yes — there's a real free tier, not a time-limited trial. There's no daily, weekly, or time-based cap on chatting with Newton on the free plan. The real difference is generation size: a single free-plan request to build flashcards, a practice exam, or a study plan aims for about 5 items, versus about 15 on Pro (the app tells you this honestly before you generate, not after). Pro adds specific extra tools on top — see the Pro section on the homepage for exactly what's gated and what isn't.",
+      "Yes — there's a real free tier, not a time-limited trial. There's no daily, weekly, or time-based cap on chatting with Newton on the free plan. The real difference is generation size: a single free-plan request to build flashcards, a practice exam, or a study plan aims for about 5 items, versus about 15 on Pro (the app tells you this honestly before you generate, not after). Pro adds specific extra tools on top — see the Pro section on the homepage for exactly what's gated and what isn't. Right now, Pro itself is free for students with a verified eligible school email (currently NYIT, nyit.edu) — there's no paid Pro plan for everyone yet; see the Roadmap.",
   },
   {
     question: "What does \"verified, not vibes\" actually mean?",
@@ -28,7 +28,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "What platforms does it run on?",
     answer:
-      "Windows, macOS, and Linux, as a native desktop app built on Tauri. There's no web version yet — a browser-based chat client for signed-in users is a real, planned feature (see the Roadmap), not something you can use today.",
+      "Windows, macOS, and Linux as a native desktop app built on Tauri, plus a real browser-based version at newton.best/chat for signed-in users — no download required, and genuinely useful on a school-managed Chromebook that can't run the desktop app at all.",
   },
   {
     question: "Does it work without an internet connection?",

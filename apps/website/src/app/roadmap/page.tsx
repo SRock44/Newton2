@@ -10,9 +10,9 @@ import styles from "./roadmap.module.css";
 // is invented.
 const PLANNED_ITEMS: { title: string; body: string }[] = [
   {
-    title: "A full web-based chat client",
+    title: "Pro for every student, not just verified .edu accounts",
     body:
-      "A browser version of Newton for signed-in users, so you're not limited to the native desktop app — genuinely useful on a school-managed Chromebook, which can't run the desktop app at all. Not scheduled yet.",
+      "Right now, Pro is free but limited to students with a verified eligible school email (currently NYIT, nyit.edu) — see the FAQ. A paid Pro plan open to everyone, regardless of school, is planned but not built yet (no checkout flow exists on this site today).",
   },
   {
     title: "A real, live \"Try it live\" demo",

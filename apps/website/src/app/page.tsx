@@ -209,10 +209,12 @@ const FREE_INCLUDES = [
 // the real backend (app/services/billing.py's is_pro, reused by app/tools/
 // write_research_paper.py, create_artifact.py, deep_research.py, study_session.py, and
 // app/routers/voice.py). Titles only (Part 1 cuts the per-feature body paragraphs).
-// Deliberately no dollar figure anywhere on this page — the real Pro price lives in
-// Stripe config, not in this codebase. "Upgrade to Pro" links to "#" for the same
-// Phase-4 reason every other sign-up/billing CTA on this page does: checkout isn't
-// built yet.
+// Deliberately no dollar figure anywhere on this page — Stripe checkout exists in the
+// backend (app/routers/billing.py) but isn't activated on this deployment (no
+// STRIPE_SECRET_KEY/STRIPE_PRICE_ID_PRO/STRIPE_WEBHOOK_SECRET set), so there's no real
+// paid-Pro destination to link to. Today Pro is free, gated on billing.is_pro()'s OTHER
+// path (a verified eligible school email — app/services/edu_verification.py, currently
+// NYIT/nyit.edu only), which is why the CTA below is a real sign-up link, not a stub.
 const PRO_FEATURES = [
   "Full research paper writing",
   "AI-generated interactive artifacts",
@@ -399,8 +401,21 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-              <a href="#" className={styles.btnPrimary}>
-                Upgrade to Pro
+              <p className={styles.proAvailabilityNote}>
+                Free right now for students with a verified NYIT (nyit.edu) email — a paid
+                Pro plan open to every student is on the <Link href="/roadmap">Roadmap</Link>,
+                not available yet.
+              </p>
+              <a
+                href={appAuthUrl("register")}
+                className={styles.btnPrimary}
+                onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+                  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                  e.preventDefault();
+                  void redirectToSignIn("register");
+                }}
+              >
+                Sign up free
               </a>
             </Reveal>
           </div>

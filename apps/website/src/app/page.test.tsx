@@ -258,10 +258,20 @@ describe("Home", () => {
       expect(items.length).toBeLessThanOrEqual(3);
     });
 
-    it("has an Upgrade to Pro CTA (stubbed to '#' — checkout isn't built yet)", () => {
+    it("Pro's CTA is a real sign-up link, not a stubbed checkout — Pro is free (NYIT-only) today, not a paid plan yet", () => {
       render(<Home />);
-      const upgradeLink = screen.getByRole("link", { name: /upgrade to pro/i });
-      expect(upgradeLink).toHaveAttribute("href", "#");
+      const signUpLink = screen.getByRole("link", { name: /sign up free/i });
+      expect(signUpLink).toHaveAttribute("href", expect.stringContaining("auth=register"));
+    });
+
+    it("honestly notes Pro is currently NYIT-only, with general paid Pro on the roadmap", () => {
+      render(<Home />);
+      const proSection = document.getElementById("pro");
+      expect(within(proSection as HTMLElement).getByText(/nyit/i)).toBeInTheDocument();
+      expect(within(proSection as HTMLElement).getByRole("link", { name: /roadmap/i })).toHaveAttribute(
+        "href",
+        "/roadmap"
+      );
     });
   });
 

@@ -866,6 +866,18 @@
   margin: 0;
 }
 
+.proAvailabilityNote {
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.proAvailabilityNote a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 @media (max-width: 900px) {
   .proGrid {
     grid-template-columns: 1fr;
