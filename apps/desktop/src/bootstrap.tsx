@@ -24,6 +24,7 @@ import App from "./App";
 import NotepadWindow from "./NotepadWindow";
 import ErrorBoundary from "./ErrorBoundary";
 import { applyStoredAppearance } from "./lib/preferences";
+import { checkForUpdateAndInstall } from "./lib/autoUpdate";
 
 /** The actual "mount the React tree" logic, factored out of main.tsx so apps/web's own
  * entry point (apps/web/src/main.tsx) can call the exact same function instead of being a
@@ -55,8 +56,20 @@ function isNotepadWindow(): boolean {
   }
 }
 
+const isNotepad = isNotepadWindow();
+
+// Fired here (not inside <App/>) deliberately: this must run independent of sign-in
+// state, and before React has even decided what to render, to cover a student stuck on
+// a broken build who can never reach a signed-in screen at all -- see
+// lib/autoUpdate.ts's own docstring for the real incident this exists for. Guarded to
+// the main window only (not the second always-on-top Notepad window, which loads this
+// exact same bundle) so two windows open at once don't both try to download/install/
+// relaunch at the same time. Fire-and-forget -- never awaited, never blocks the render
+// below; checkForUpdateAndInstall() already swallows every failure internally.
+if (!isNotepad) void checkForUpdateAndInstall();
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ErrorBoundary>{isNotepadWindow() ? <NotepadWindow /> : <App />}</ErrorBoundary>
+    <ErrorBoundary>{isNotepad ? <NotepadWindow /> : <App />}</ErrorBoundary>
   </React.StrictMode>,
 );

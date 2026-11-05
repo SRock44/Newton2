@@ -1,6 +1,6 @@
 [package]
 name = "desktop"
-version = "0.2.1"
+version = "0.2.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -30,6 +30,12 @@ base64 = "0.22"
 tauri-plugin-fs = "2.5.2"
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-updater = "2.11.0"
+# Needed to actually apply a downloaded update: tauri-plugin-updater's own
+# Update.downloadAndInstall() installs the new version on disk, but the already-running
+# process keeps running the OLD code until relaunched -- this plugin's relaunch() is
+# what restarts the app into the new version instead of leaving a student to notice
+# nothing changed and manually quit/reopen it themselves.
+tauri-plugin-process = "2"
 tauri-plugin-deep-link = "2.4.10"
 tauri-plugin-single-instance = { version = "2.4.4", features = ["deep-link"] }
 

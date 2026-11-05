@@ -16,6 +16,7 @@
     "core:window:allow-start-dragging",
     "deep-link:default",
     "updater:default",
+    "process:allow-relaunch",
     "dialog:allow-save",
     "fs:default",
     "fs:allow-write-file",
