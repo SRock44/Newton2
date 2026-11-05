@@ -601,7 +601,7 @@ async def test_selection_topic_router_returns_the_cleaned_label(db_session, monk
         assert result == {"topic": "iteration counts and convergence rates"}
         assert [t.role for t in fake.calls_seen[0]["messages"]] == ["system", "user"]
     finally:
-        await documents_service.delete_document(db_session, document)
+        await documents_service.delete_document(db_session, document, reason="test cleanup")
         await db_session.execute(delete(User).where(User.id == user.id))
         await db_session.commit()
 
@@ -623,7 +623,7 @@ async def test_selection_topic_endpoint_wires_up_over_http(http_client, auth_hea
     assert isinstance(resp.json()["topic"], str)
 
     document = await db_session.get(Document, uuid.UUID(document_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_selection_topic_rejects_an_empty_selection(http_client, auth_headers, db_session):
@@ -640,7 +640,7 @@ async def test_selection_topic_rejects_an_empty_selection(http_client, auth_head
     assert resp.status_code == 422
 
     document = await db_session.get(Document, uuid.UUID(document_id))
-    await documents_service.delete_document(db_session, document)
+    await documents_service.delete_document(db_session, document, reason="test cleanup")
 
 
 async def test_selection_topic_404s_for_another_users_document(someone_elses_document, http_client, auth_headers):
