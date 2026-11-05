@@ -326,7 +326,17 @@ describe("ArtifactBlock", () => {
       expect(frameInDialog?.getAttribute("srcdoc")).toBe(ARTIFACT_HTML);
       // The inline card no longer shows its own live iframe while expanded — only the
       // one inside the dialog, not two copies of the same artifact's JS running at once.
-      expect(container.querySelectorAll("iframe").length).toBe(1);
+      expect(container.querySelectorAll("iframe").length).toBe(0);
+      // The dialog is portaled onto document.body, not rendered in place -- real,
+      // reported bug: nested deep inside the scrolling message list, a plain
+      // position:fixed overlay got trapped inside an ancestor's own stacking/
+      // containing context instead of actually covering the real viewport ("the text
+      // from the chatbox bleeds through"). Asserting the dialog is a DIRECT CHILD of
+      // body (not just "exists somewhere in the document") is what actually proves
+      // the portal, not just that *a* dialog with the right role got rendered
+      // somewhere.
+      expect(dialog.parentElement?.parentElement).toBe(document.body);
+      expect(document.body.querySelectorAll("iframe").length).toBe(1);
     });
 
     it("Shrink closes the dialog and restores the inline card's own iframe", async () => {

@@ -23,14 +23,14 @@ describe("DownloadPage", () => {
   });
 
   // Every href checked against the REAL release asset list (gh release view
-  // desktop-v0.2.5 --json assets), not invented — see downloadAssets.ts's own comment.
+  // desktop-v0.2.6 --json assets), not invented — see downloadAssets.ts's own comment.
   it("links every real published asset, with the exact real GitHub Release URL", () => {
     render(<DownloadPage />);
     const real = [
-      ["macOS — Apple Silicon", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.5/Newton_0.2.5_aarch64.dmg"],
-      ["macOS — Intel", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.5/Newton_0.2.5_x64.dmg"],
-      ["Windows — Installer", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.5/Newton_0.2.5_x64-setup.exe"],
-      ["Windows — MSI", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.5/Newton_0.2.5_x64_en-US.msi"],
+      ["macOS — Apple Silicon", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.6/Newton_0.2.6_aarch64.dmg"],
+      ["macOS — Intel", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.6/Newton_0.2.6_x64.dmg"],
+      ["Windows — Installer", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.6/Newton_0.2.6_x64-setup.exe"],
+      ["Windows — MSI", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.6/Newton_0.2.6_x64_en-US.msi"],
     ] as const;
     for (const [label, url] of real) {
       expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", url);
@@ -53,7 +53,7 @@ describe("DownloadPage", () => {
     render(<DownloadPage />);
     expect(screen.getByRole("link", { name: /release notes on github/i })).toHaveAttribute(
       "href",
-      "https://github.com/SRock44/Newton2/releases/tag/desktop-v0.2.5"
+      "https://github.com/SRock44/Newton2/releases/tag/desktop-v0.2.6"
     );
   });
 

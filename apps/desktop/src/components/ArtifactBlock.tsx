@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { API_URL } from "../api";
 import { fetchBytes, saveBytesToDisk } from "../lib/download";
 
@@ -248,32 +249,43 @@ function ArtifactBlock({ json, token }: ArtifactBlockProps) {
         anything else in Newton.
       </p>
 
-      {expanded && (
-        <div className="artifact-viewer-overlay" onClick={() => setExpanded(false)}>
-          <div
-            className="artifact-viewer-panel"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label={block.title}
-          >
-            <div className="artifact-viewer-panel__header">
-              <span className="artifact-block__kind">{kindLabel}</span>
-              <span className="artifact-block__title">{block.title}</span>
-              {actions}
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setExpanded(false)}
-                aria-label="Close full-screen view"
-              >
-                ×
-              </button>
+      {expanded &&
+        createPortal(
+          // Rendered on document.body, NOT in place here -- real, reported bug with the
+          // first version: nested deep inside the scrolling message list, this
+          // position:fixed overlay was getting trapped inside an ancestor's own
+          // stacking/containing context instead of actually covering the real
+          // viewport, so it rendered at the wrong size with the composer/chat text
+          // visibly painting on top of it ("the text from the chatbox bleeds
+          // through"). A portal sidesteps every possible ancestor CSS trap by
+          // construction -- this element's DOM parent really is <body>, not a div
+          // three layers inside a chat bubble.
+          <div className="artifact-viewer-overlay" onClick={() => setExpanded(false)}>
+            <div
+              className="artifact-viewer-panel"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label={title}
+            >
+              <div className="artifact-viewer-panel__header">
+                <span className="artifact-block__kind">{kindLabel}</span>
+                <span className="artifact-block__title">{title}</span>
+                {actions}
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setExpanded(false)}
+                  aria-label="Close full-screen view"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="artifact-viewer-panel__body">{renderBody("artifact-viewer-panel__frame")}</div>
             </div>
-            <div className="artifact-viewer-panel__body">{renderBody("artifact-viewer-panel__frame")}</div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
