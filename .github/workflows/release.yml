@@ -108,6 +108,18 @@ jobs:
           # this step, which is the correct, honest failure mode -- not a workflow bug.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Real, PUBLIC production origins -- Vite statically inlines any VITE_-prefixed
+          # process.env var into the build (same mechanism infra/website.Dockerfile uses
+          # for apps/web's own build, just via CI env here instead of a Docker ARG,
+          # since this build runs directly on the runner, not in a container). Without
+          # these, apps/desktop/src/api.ts's own `?? "http://127.0.0.1:5800x"` fallbacks
+          # ship baked into the real public release -- confirmed as a real, live bug:
+          # desktop-v0.2.0 sent a real user's "Sign in" click to 127.0.0.1:58180, a dev
+          # SSH-tunnel address nobody outside this session can reach. Not secrets (same
+          # URLs are already public in every API response/page source), so plain env
+          # vars here, no repo secret needed.
+          VITE_API_URL: https://api.newton.best
+          VITE_KEYCLOAK_URL: https://auth.newton.best
         with:
           projectPath: apps/desktop
           tagName: desktop-v__VERSION__
