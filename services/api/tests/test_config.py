@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.config import Settings, check_no_default_secrets
+from app.core.config import DESKTOP_APP_ORIGINS, Settings, check_no_default_secrets, get_cors_origins
 
 # Deliberately pinned explicitly in every test below, rather than relying on ambient
 # env / .env to leave these fields at Settings' own class defaults: pydantic-settings
@@ -54,3 +54,30 @@ def test_app_module_imports_cleanly_with_default_dev_settings():
     """End-to-end sanity check that the guard doesn't accidentally block the normal
     (dev) app startup path this whole test suite already depends on."""
     import app.main  # noqa: F401 -- import success is the assertion
+
+
+def test_get_cors_origins_always_includes_the_desktop_app_regardless_of_deployment_config():
+    """The real incident this guards against: the newton.best cutover's own
+    CORS_ALLOW_ORIGINS override (reasonably, from a web-only point of view) replaced
+    cors_allow_origins' Python default entirely -- pydantic-settings/any env-var-driven
+    list setting REPLACES, it doesn't merge -- which silently broke every real
+    desktop-app user's login until caught live. get_cors_origins() must always append
+    DESKTOP_APP_ORIGINS on top of whatever cors_allow_origins is configured to, so a
+    deployment overriding one can never accidentally drop the other."""
+    settings = Settings(cors_allow_origins=["https://newton.best", "https://www.newton.best"])
+
+    origins = get_cors_origins(settings)
+
+    assert "https://newton.best" in origins
+    assert "https://www.newton.best" in origins
+    for desktop_origin in DESKTOP_APP_ORIGINS:
+        assert desktop_origin in origins
+
+
+def test_get_cors_origins_dev_default_also_includes_the_desktop_app():
+    settings = Settings()
+
+    origins = get_cors_origins(settings)
+
+    assert "tauri://localhost" in origins
+    assert "https://tauri.localhost" in origins

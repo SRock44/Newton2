@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.core.config import check_no_default_secrets, get_settings
+from app.core.config import check_no_default_secrets, get_cors_origins, get_settings
 from app.core.logging import configure_logging, correlation_id_scope, get_correlation_id, new_correlation_id
 from app.core.sentry import init_sentry, report_exception
 from app.routers import (
@@ -59,7 +59,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_allow_origins,
+    allow_origins=get_cors_origins(settings),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

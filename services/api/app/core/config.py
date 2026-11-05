@@ -3,6 +3,16 @@ from functools import lru_cache
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# The custom-protocol origins WebView2 (Windows)/WKWebView (macOS/Linux) stamp onto
+# every request's Origin header for a packaged Tauri app -- identical in every
+# deployment (dev, this box, any future one) because they come from the Tauri runtime
+# itself, never from anything a deployment's own domain/config affects. Deliberately a
+# fixed module-level constant, NOT part of Settings.cors_allow_origins -- see that
+# field's own comment for the real incident (a deployment's CORS_ALLOW_ORIGINS override
+# silently dropped these, breaking every real desktop-app user's login) this split
+# exists to make structurally impossible to repeat.
+DESKTOP_APP_ORIGINS = ["tauri://localhost", "https://tauri.localhost"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -49,22 +59,26 @@ class Settings(BaseSettings):
     whisper_asr_url: str = "http://whisper-asr:9000"
     piper_tts_url: str = "http://piper-tts:8000"
 
-    # Origins the Tauri webview runs under (Vite dev server, and the custom-protocol
-    # origins WebView2/WKWebView use for a packaged app in production), plus
-    # apps/website's own Next.js dev origin — apps/web (the real signed-in app) is proxied
-    # under http://localhost:3000/chat by that Next.js (see apps/website/next.config.ts),
-    # so a real browser's Origin header on every fetch/WebSocket from apps/web is this
-    # port, 3000, NOT apps/web's own underlying Vite dev port (5173) a browser never talks
-    # to directly. A real public web deployment adds its own real https:// origin(s) via
-    # the CORS_ALLOW_ORIGINS env var (pydantic-settings parses it as a JSON array
-    # automatically, same as any other list-typed setting here) rather than editing this
-    # hardcoded dev-convenience default.
-    cors_allow_origins: list[str] = [
-        "http://localhost:1420",
-        "tauri://localhost",
-        "https://tauri.localhost",
-        "http://localhost:3000",
-    ]
+    # The REAL web origin(s) a deployment's visitors actually browse from -- apps/web
+    # (the real signed-in app) is proxied under http://localhost:3000/chat by apps/
+    # website's own Next.js dev server (see apps/website/next.config.ts), so a real
+    # browser's Origin header on every fetch/WebSocket from apps/web is THIS port, 3000,
+    # NOT apps/web's own underlying Vite dev port (5173) a browser never talks to
+    # directly. A real public deployment overrides this (CORS_ALLOW_ORIGINS env var,
+    # pydantic-settings parses it as a JSON array automatically) to its own real
+    # https:// origin(s) -- e.g. ["https://newton.best", "https://www.newton.best"].
+    #
+    # DELIBERATELY does NOT include the Tauri desktop app's own origins (see
+    # DESKTOP_APP_ORIGINS below, and get_cors_origins()) -- a real incident: an earlier
+    # version of this field DID include them as part of the same default list, and the
+    # newton.best cutover's own CORS_ALLOW_ORIGINS override (reasonably, from a web-only
+    # point of view) replaced the whole list with just the website's origins, silently
+    # breaking every real desktop-app user's login (pydantic-settings/any env-var-driven
+    # list setting REPLACES the Python default entirely, it doesn't merge). Splitting
+    # "the web origins a deployment configures" from "the desktop app's own origins,
+    # which never change and aren't this deployment's call to make" makes that class of
+    # bug structurally impossible to repeat.
+    cors_allow_origins: list[str] = ["http://localhost:1420", "http://localhost:3000"]
 
     # Provider adapter: our own cost-conscious defaults (Groq/OpenRouter), tried in this
     # order. If neither key is set, agents fall back to the keyless EchoProvider so the
@@ -203,6 +217,16 @@ class Settings(BaseSettings):
     # DSN set, never a startup failure either way. See infra/docker-compose.yml's
     # SENTRY_DSN comment for where to get one (Sentry project settings > Client Keys).
     sentry_dsn: SecretStr | None = None
+
+
+def get_cors_origins(settings: Settings) -> list[str]:
+    """The real, full CORS allowlist app/main.py's CORSMiddleware should use: this
+    deployment's own configured web origin(s) PLUS the Tauri desktop app's own fixed
+    origins (DESKTOP_APP_ORIGINS above) -- always both, every deployment, never just
+    one or the other. Call this instead of reading settings.cors_allow_origins
+    directly, or a future CORS_ALLOW_ORIGINS override will silently break the desktop
+    app the exact same way it already did once (see cors_allow_origins's own comment)."""
+    return [*settings.cors_allow_origins, *DESKTOP_APP_ORIGINS]
 
 
 def check_no_default_secrets(settings: Settings) -> None:
