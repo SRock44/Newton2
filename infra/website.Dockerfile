@@ -35,10 +35,13 @@ RUN npm ci
 COPY apps/website .
 COPY --from=web-build /repo/apps/web/dist ./public/chat
 # Also inlined at build time (Next's own NEXT_PUBLIC_* convention, same rule as Vite's
-# above) -- apps/website/src/lib/env.ts's APP_URL falls back to a dev-only localhost
-# address without this.
+# above) -- apps/website/src/lib/env.ts's APP_URL and apps/website/src/lib/
+# authRedirect.ts's own SEPARATE KEYCLOAK_URL constant (authRedirect.ts talks to
+# Keycloak directly, bypassing apps/web entirely -- see its own header comment) both
+# fall back to dev-only loopback addresses without these.
 ARG NEXT_PUBLIC_APP_URL
-RUN NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL npm run build
+ARG NEXT_PUBLIC_KEYCLOAK_URL
+RUN NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL NEXT_PUBLIC_KEYCLOAK_URL=$NEXT_PUBLIC_KEYCLOAK_URL npm run build
 
 FROM node:22-slim AS runtime
 WORKDIR /app

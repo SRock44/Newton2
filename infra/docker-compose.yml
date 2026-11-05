@@ -381,16 +381,22 @@ services:
       context: ..
       dockerfile: infra/website.Dockerfile
       args:
-        # All three inlined into their respective bundles AT BUILD TIME (Vite's
+        # All four inlined into their respective bundles AT BUILD TIME (Vite's
         # import.meta.env.VITE_* and Next's NEXT_PUBLIC_* are compile-time constants,
-        # not read at container startup) -- a real deployment overrides all three in its
+        # not read at container startup) -- a real deployment overrides all four in its
         # own .env to real public HTTPS origins. The defaults below reproduce exactly
         # what `npm run dev` already does locally, so an unconfigured `docker compose
         # build website` still produces a working (dev-pointed) image rather than a
-        # broken one.
+        # broken one. NEXT_PUBLIC_KEYCLOAK_URL exists because apps/website/src/lib/
+        # authRedirect.ts talks to Keycloak directly (the "Chat Now"/Sign In/Sign Up
+        # buttons skip the extra stop at apps/web) -- a SEPARATE hardcoded dev default
+        # from apps/web's own VITE_KEYCLOAK_URL above, found live and fixed after
+        # VITE_KEYCLOAK_URL was already deployed: "Chat Now" was still sending real
+        # visitors to 127.0.0.1:58180 because this second one had never been wired up.
         VITE_API_URL: ${VITE_API_URL:-http://127.0.0.1:58001}
         VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://127.0.0.1:58180}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000/chat}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://127.0.0.1:58180}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${WEBSITE_PORT:-53000}:3000"
