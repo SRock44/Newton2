@@ -290,4 +290,104 @@ describe("ArtifactBlock", () => {
       expect(screen.queryByRole("button", { name: /^copy$/i })).not.toBeInTheDocument();
     });
   });
+
+  describe("retry on a failed load", () => {
+    it("shows a Retry button alongside the error, and a click re-fetches", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockRejectedValueOnce(new Error("network error")).mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => new TextEncoder().encode(ARTIFACT_HTML).buffer,
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const { container } = render(<ArtifactBlock json={BLOCK_JSON} token="tok-123" />);
+
+      expect(await screen.findByText("Couldn't load this artifact.")).toBeInTheDocument();
+      const retryButton = screen.getByRole("button", { name: /retry/i });
+
+      await user.click(retryButton);
+
+      const frame = await findFrame(container);
+      expect(frame.getAttribute("srcdoc")).toBe(ARTIFACT_HTML);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("full-screen viewer", () => {
+    it("Expand opens a real full-screen dialog with the artifact rendered inside it", async () => {
+      const user = userEvent.setup();
+      mockRawFetch();
+      const { container } = render(<ArtifactBlock json={BLOCK_JSON} token="tok-123" />);
+      await findFrame(container);
+
+      await user.click(screen.getByRole("button", { name: /expand/i }));
+
+      const dialog = screen.getByRole("dialog", { name: "Nitrogen Cycle" });
+      const frameInDialog = dialog.querySelector("iframe");
+      expect(frameInDialog?.getAttribute("srcdoc")).toBe(ARTIFACT_HTML);
+      // The inline card no longer shows its own live iframe while expanded — only the
+      // one inside the dialog, not two copies of the same artifact's JS running at once.
+      expect(container.querySelectorAll("iframe").length).toBe(1);
+    });
+
+    it("Shrink closes the dialog and restores the inline card's own iframe", async () => {
+      const user = userEvent.setup();
+      mockRawFetch();
+      const { container } = render(<ArtifactBlock json={BLOCK_JSON} token="tok-123" />);
+      await findFrame(container);
+      await user.click(screen.getByRole("button", { name: /expand/i }));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /shrink/i }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await findFrame(container);
+    });
+
+    it("the × close button also closes the dialog", async () => {
+      const user = userEvent.setup();
+      mockRawFetch();
+      render(<ArtifactBlock json={BLOCK_JSON} token="tok-123" />);
+      await user.click(screen.getByRole("button", { name: /expand/i }));
+
+      await user.click(screen.getByRole("button", { name: /close full-screen view/i }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("Escape closes the dialog", async () => {
+      const user = userEvent.setup();
+      mockRawFetch();
+      render(<ArtifactBlock json={BLOCK_JSON} token="tok-123" />);
+      await user.click(screen.getByRole("button", { name: /expand/i }));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      await user.keyboard("{Escape}");
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("clicking the backdrop closes the dialog, clicking inside the panel does not", async () => {
+      const user = userEvent.setup();
+      mockRawFetch();
+      render(<ArtifactBlock json={BLOCK_JSON} token="tok-123" />);
+      await user.click(screen.getByRole("button", { name: /expand/i }));
+      const dialog = screen.getByRole("dialog");
+
+      await user.click(dialog);
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+      await user.click(dialog.parentElement as HTMLElement);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("the viewer's own iframe is sandboxed identically to the inline one", async () => {
+      const user = userEvent.setup();
+      mockRawFetch();
+      render(<ArtifactBlock json={BLOCK_JSON} token="tok-123" />);
+      await user.click(screen.getByRole("button", { name: /expand/i }));
+
+      const frameInDialog = screen.getByRole("dialog").querySelector("iframe");
+      expect(frameInDialog?.getAttribute("sandbox")).toBe(ARTIFACT_SANDBOX);
+    });
+  });
 });

@@ -103,6 +103,13 @@ function ArtifactBlock({ json, token }: ArtifactBlockProps) {
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // Bumped to re-run the load effect on a manual retry — real, observed failure mode:
+  // an artifact block can stream into the chat a moment before its own document row
+  // is fully committed/visible (or the API briefly bounces for an unrelated reason,
+  // e.g. a deploy), and the one-shot fetch below had no way back from that short of a
+  // full reload. A real "Retry" button, not a silent auto-retry, so a genuinely broken
+  // artifact still fails loudly rather than retrying forever unseen.
+  const [retryCount, setRetryCount] = useState(0);
   // Kept as bytes as well as text: the download writes the EXACT stored bytes rather
   // than re-encoding the string, the same rule lib/download.ts's own docstring sets out.
   const bytesRef = useRef<Uint8Array | null>(null);
@@ -130,7 +137,16 @@ function ArtifactBlock({ json, token }: ArtifactBlockProps) {
     return () => {
       cancelled = true;
     };
-  }, [documentId, token]);
+  }, [documentId, token, retryCount]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setExpanded(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [expanded]);
 
   if (!block) {
     return <div className="artifact-block artifact-block--error">Couldn't render this artifact.</div>;
@@ -153,48 +169,77 @@ function ArtifactBlock({ json, token }: ArtifactBlockProps) {
   }
 
   const kindLabel = KIND_LABELS[block.kind] ?? "Artifact";
+  // Captured as a plain local, not read as block.title below -- TS can't carry the
+  // `if (!block) return` narrowing above into a nested function declaration's body.
+  const title = block.title;
+
+  // A function, not a single JSX value, so the inline card and the full-screen viewer
+  // each get their own iframe sized for their own box (the viewer fills most of the
+  // screen; the inline card is the small fixed height it's always been) rather than
+  // sharing one element whose size would be wrong in at least one of the two places.
+  function renderBody(frameClassName: string) {
+    if (error) {
+      return (
+        <div className="banner banner--error">
+          {error}
+          <button type="button" className="btn-secondary-sm" onClick={() => setRetryCount((c) => c + 1)}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    if (html === null) {
+      return <div className="artifact-block__loading">Loading artifact…</div>;
+    }
+    return (
+      <iframe
+        className={frameClassName}
+        title={title}
+        srcDoc={html}
+        /* See this file's contract comment. allow-same-origin must never be added
+           here: with allow-scripts it would give artifact JS the app's own origin. */
+        sandbox={ARTIFACT_SANDBOX}
+        referrerPolicy="no-referrer"
+        loading="lazy"
+      />
+    );
+  }
+
+  const actions = (
+    <div className="artifact-block__actions">
+      <button type="button" className="btn-secondary-sm" onClick={() => setExpanded((v) => !v)} aria-pressed={expanded}>
+        {expanded ? "Shrink" : "Expand"}
+      </button>
+      <button
+        type="button"
+        className="btn-secondary-sm"
+        onClick={handleDownload}
+        disabled={!html}
+        aria-label={`Download ${block.title}`}
+      >
+        Download
+      </button>
+    </div>
+  );
 
   return (
-    <div className={`artifact-block${expanded ? " artifact-block--expanded" : ""}`}>
+    <div className="artifact-block">
       <div className="artifact-block__header">
         <span className="artifact-block__kind">{kindLabel}</span>
         <span className="artifact-block__title">{block.title}</span>
-        <div className="artifact-block__actions">
-          <button
-            type="button"
-            className="btn-secondary-sm"
-            onClick={() => setExpanded((v) => !v)}
-            aria-pressed={expanded}
-          >
-            {expanded ? "Shrink" : "Expand"}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary-sm"
-            onClick={handleDownload}
-            disabled={!html}
-            aria-label={`Download ${block.title}`}
-          >
-            Download
-          </button>
-        </div>
+        {/* The full-screen viewer's own header owns these controls while it's open --
+            showing them here too would put two "Shrink"/"Download" buttons on screen
+            at once, one of them behind the modal. */}
+        {!expanded && actions}
       </div>
 
-      {error ? (
-        <div className="banner banner--error">{error}</div>
-      ) : html === null ? (
-        <div className="artifact-block__loading">Loading artifact…</div>
+      {/* While expanded, the full-screen viewer below owns the one live iframe — this
+          spot holds a calm placeholder instead of a second iframe running the same
+          artifact HTML (and its JS/state) in parallel, unseen, behind the modal. */}
+      {expanded ? (
+        <div className="artifact-block__expanded-placeholder">Viewing in full screen…</div>
       ) : (
-        <iframe
-          className="artifact-block__frame"
-          title={block.title}
-          srcDoc={html}
-          /* See this file's contract comment. allow-same-origin must never be added
-             here: with allow-scripts it would give artifact JS the app's own origin. */
-          sandbox={ARTIFACT_SANDBOX}
-          referrerPolicy="no-referrer"
-          loading="lazy"
-        />
+        renderBody("artifact-block__frame")
       )}
 
       {saveStatus && <div className="item-status">{saveStatus}</div>}
@@ -202,6 +247,33 @@ function ArtifactBlock({ json, token }: ArtifactBlockProps) {
         Built by a coding agent and saved to your files. It runs isolated — it can't see
         anything else in Newton.
       </p>
+
+      {expanded && (
+        <div className="artifact-viewer-overlay" onClick={() => setExpanded(false)}>
+          <div
+            className="artifact-viewer-panel"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={block.title}
+          >
+            <div className="artifact-viewer-panel__header">
+              <span className="artifact-block__kind">{kindLabel}</span>
+              <span className="artifact-block__title">{block.title}</span>
+              {actions}
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setExpanded(false)}
+                aria-label="Close full-screen view"
+              >
+                ×
+              </button>
+            </div>
+            <div className="artifact-viewer-panel__body">{renderBody("artifact-viewer-panel__frame")}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6597,12 +6597,79 @@ body.is-resizing-panel * {
   display: block;
 }
 
-.artifact-block--expanded .artifact-block__frame {
-  height: 720px;
+.artifact-block__expanded-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+  font-size: var(--font-size-sm);
 }
 
 .artifact-block__footnote {
   margin: 0;
   font-size: var(--font-size-2xs);
   color: var(--color-text-faint);
+}
+
+/* Full-screen artifact viewer — "Expand" used to just grow the inline iframe to a
+   taller fixed height, still squeezed to the chat column's own width; direct
+   feedback was that it "feels a little crammed." This is a real full-viewport modal
+   instead, same overlay/escape/backdrop-click conventions as every other modal in the
+   app (.modal-overlay/.modal-close), just sized to actually use the screen rather than
+   .modal-panel's own small fixed width. */
+.artifact-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 15, 20, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--space-4);
+}
+
+.artifact-viewer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 96vw;
+  height: 94vh;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
+}
+
+.artifact-viewer-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.artifact-viewer-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.artifact-viewer-panel__frame {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: #ffffff;
+  display: block;
+}
+
+@media (max-width: 720px) {
+  .artifact-viewer-panel {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
 }
