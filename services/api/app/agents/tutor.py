@@ -842,6 +842,7 @@ CONVERSATION_PRACTICE_LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
     "es": "Spanish",
     "fr": "French",
+    "zh": "Mandarin Chinese",
 }
 
 

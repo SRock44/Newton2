@@ -738,6 +738,13 @@ def test_conversation_practice_addendum_names_the_real_language_and_stays_brief_
     assert "lecture" in lowered or "derail" in lowered
 
 
+def test_conversation_practice_addendum_supports_mandarin():
+    """Mandarin (zh) was added alongside Spanish/French — same real-language-name
+    requirement as the Spanish/French test above, not a generic placeholder."""
+    addendum = tutor.conversation_practice_addendum("zh")
+    assert "mandarin" in addendum.lower()
+
+
 def test_conversation_practice_addendum_falls_back_gracefully_for_an_unknown_language_code():
     """A missing/unrecognized language must still produce a coherent instruction (using
     whatever string was given, or a generic phrase for nothing at all) rather than

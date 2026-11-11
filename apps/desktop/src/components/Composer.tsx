@@ -17,6 +17,7 @@ import Toggle from "./Toggle";
 export const CONVERSATION_PRACTICE_LANGUAGES: { code: string; label: string }[] = [
   { code: "es", label: "Spanish" },
   { code: "fr", label: "French" },
+  { code: "zh", label: "Mandarin" },
   { code: "en", label: "English" },
 ];
 

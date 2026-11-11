@@ -15,7 +15,7 @@ from app.core.config import get_settings
 # process) as the API layer's own copy of the same fact, same "two independent sources
 # of truth that are expected to agree, verified by the live_smoke tests" pattern as
 # app/agents/tutor.py's CONVERSATION_PRACTICE_LANGUAGE_NAMES.
-SUPPORTED_LANGUAGES = frozenset({"en", "es", "fr"})
+SUPPORTED_LANGUAGES = frozenset({"en", "es", "fr", "zh"})
 DEFAULT_LANGUAGE = "en"
 
 
