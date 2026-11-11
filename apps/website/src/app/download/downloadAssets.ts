@@ -14,6 +14,9 @@ export const RELEASE_TAG = "desktop-v0.2.7";
 export const RELEASE_URL = `https://github.com/SRock44/Newton2/releases/tag/${RELEASE_TAG}`;
 const RELEASE_BASE = `https://github.com/SRock44/Newton2/releases/download/${RELEASE_TAG}`;
 
+// "windows" stays in this union even though ASSETS below has no windows entries —
+// page.tsx's detectPlatform() still needs to recognize a Windows visitor so it can
+// honestly NOT show them a false "Detected: your computer" badge on the Mac card.
 export type Platform = "mac" | "windows";
 
 export interface DownloadAsset {
@@ -39,19 +42,12 @@ export const ASSETS: DownloadAsset[] = [
     detail: "Intel-based Mac. .dmg",
     url: `${RELEASE_BASE}/Newton_0.2.7_x64.dmg`,
   },
-  {
-    platform: "windows",
-    label: "Windows — Installer",
-    detail: "Recommended for most people. .exe",
-    primary: true,
-    url: `${RELEASE_BASE}/Newton_0.2.7_x64-setup.exe`,
-  },
-  {
-    platform: "windows",
-    label: "Windows — MSI",
-    detail: "For managed/enterprise installs. .msi",
-    url: `${RELEASE_BASE}/Newton_0.2.7_x64_en-US.msi`,
-  },
+  // No Windows entries: removed from public distribution per the advising professor's
+  // verdict after an in-class test (2026-11-11) -- real quality concerns found testing
+  // it live, not a build failure. The release workflow (.github/workflows/release.yml)
+  // still produces real Windows installers on every tag for the team's own testing;
+  // they're just not linked from this public page anymore. See RELEASE_TAG's GitHub
+  // Release page directly if you need one of those builds.
 ];
 
 export function primaryAssetFor(platform: Platform): DownloadAsset {

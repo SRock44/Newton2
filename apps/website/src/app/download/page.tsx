@@ -34,14 +34,13 @@ export default function DownloadPage() {
   }, []);
 
   const macAsset = primaryAssetFor("mac");
-  const windowsAsset = primaryAssetFor("windows");
 
   return (
     <ContentPage>
       <ContentHero
         eyebrow="Get Newton"
         title="Download Newton."
-        subtitle="Free to start. Windows and macOS today — a web version is on the way, and Linux isn't published yet."
+        subtitle="Free to start. Chat right now at newton.best/chat, no download needed, or install the native macOS app below. Windows isn't publicly distributed yet, and Linux isn't published yet."
       />
 
       <section className={styles.section} aria-label="Download">
@@ -54,25 +53,14 @@ export default function DownloadPage() {
             <span className={styles.primaryCardTitle}>Download for Mac</span>
             <span className={styles.primaryCardDetail}>{macAsset.detail}</span>
           </a>
-          <a
-            href={windowsAsset.url}
-            className={`${styles.primaryCard} ${platform === "windows" ? styles.primaryCardDetected : ""}`}
-          >
-            {platform === "windows" && <span className={styles.detectedBadge}>Detected: your computer</span>}
-            <span className={styles.primaryCardTitle}>Download for Windows</span>
-            <span className={styles.primaryCardDetail}>{windowsAsset.detail}</span>
-          </a>
         </div>
 
-        <p className={styles.signingNote}>
-          These installers aren&apos;t code-signed with a paid Microsoft/Apple certificate
-          yet, so Windows SmartScreen or macOS Gatekeeper will warn about an unrecognized
-          publisher the first time you run one. They&apos;re real, unmodified builds from
-          this project&apos;s own public release pipeline — not a sign anything&apos;s
-          wrong — and update-signature verification (a separate mechanism) already
-          applies to every automatic update after install.
-        </p>
-
+        {/* Mac is real Apple Developer ID signed + notarized (see .github/workflows/
+            release.yml) -- no Gatekeeper "unrecognized publisher" warning. Windows has
+            no public download to carry a signing note about: removed from distribution
+            per the advising professor's verdict after the in-class test (2026-11-11);
+            the release workflow still builds it for the team's own testing, it's just
+            not linked here. */}
         <h2 className={styles.allDownloadsHeading}>Every build</h2>
         <div className={styles.platformGroups}>
           <div className={styles.platformGroup}>
@@ -90,16 +78,7 @@ export default function DownloadPage() {
           </div>
           <div className={styles.platformGroup}>
             <p className={styles.platformGroupLabel}>Windows</p>
-            <ul className={styles.assetList}>
-              {ASSETS.filter((a) => a.platform === "windows").map((asset) => (
-                <li key={asset.url} className={styles.assetItem}>
-                  <a href={asset.url} className={styles.assetLink}>
-                    {asset.label}
-                  </a>
-                  <span className={styles.assetDetail}>{asset.detail}</span>
-                </li>
-              ))}
-            </ul>
+            <p className={styles.notYet}>Not publicly distributed right now.</p>
           </div>
           <div className={styles.platformGroup}>
             <p className={styles.platformGroupLabel}>Linux</p>
