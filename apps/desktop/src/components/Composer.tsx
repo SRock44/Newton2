@@ -1,9 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { ChangeEvent, KeyboardEvent } from "react";
+import type { ChangeEvent, DragEvent, KeyboardEvent } from "react";
 import { ApiError, getBillingStatus, listDocuments, setLearnMode, uploadChatImage, uploadDocument } from "../api";
 import type { UploadedDocument } from "../types";
 import { selectionActivityLabel } from "../lib/selectionActivity";
 import type { SelectionActivity } from "../lib/selectionActivity";
+import { CODE_EXTENSIONS } from "../lib/fileType";
 import { useVoiceRecorder } from "../lib/useVoiceRecorder";
 import Toggle from "./Toggle";
 
@@ -14,6 +15,30 @@ import Toggle from "./Toggle";
  * offering a language Piper has no voice for would just mean an honest-but-confusing
  * silent fallback to English audio under a Spanish/French conversation. Mirrors
  * services/piper-tts/app/main.py's VOICE_MODELS keys exactly. */
+/** The file picker's (and drop zone's) `accept` list -- mirrors
+ * services/api/app/services/documents.py's real upload allowlist (images stay the
+ * ephemeral vision-attachment path, everything else goes through uploadDocument; see
+ * attachFile below). Previously missing .pptx/.docx here even though the backend
+ * already accepted them -- fixed as part of adding source-code support so this list
+ * is honest end to end, not just appended to. */
+const ATTACHABLE_FILE_ACCEPT = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "text/plain",
+  "text/markdown",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".txt",
+  ".md",
+  ".pdf",
+  ".pptx",
+  ".docx",
+  ...CODE_EXTENSIONS,
+].join(",");
+
 export const CONVERSATION_PRACTICE_LANGUAGES: { code: string; label: string }[] = [
   { code: "es", label: "Spanish" },
   { code: "fr", label: "French" },
@@ -152,6 +177,12 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   const [attachedDocuments, setAttachedDocuments] = useState<{ id: string; name: string }[]>([]);
   const [attaching, setAttaching] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
+  // Drag-and-drop onto the composer (ROADMAP.md): visual-only state, mirrors
+  // `attaching`'s existing disabled/busy treatment rather than adding a new one.
+  // `dragDepth` (not a boolean) is the standard fix for dragenter/dragleave firing once
+  // per child element as the pointer crosses them -- a plain boolean flickers off
+  // every time the pointer passes over a child node inside the drop zone.
+  const [dragDepth, setDragDepth] = useState(0);
 
   // Learn Mode's PRIMARY toggle control -- visible and switchable directly in the chat
   // interface (not buried in Settings, though SettingsPanel.tsx mirrors it there too
@@ -413,16 +444,16 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     }
   }
 
-  // A file picked via "Upload from your computer" — images stay the existing ephemeral
-  // vision-attachment flow (uploadChatImage, "[Attached image: <id>]"); anything else
-  // (.txt/.md/.pdf) goes through the real, permanent document-upload endpoint instead
-  // and gets tagged with the new document marker (see MessageBubble's
-  // AttachedDocumentChip for how that renders).
-  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-selecting the same file later
-    if (!file || !sessionId) return;
-
+  // A file picked via "Upload from your computer" (or dropped, see handleDrop below) —
+  // images stay the existing ephemeral vision-attachment flow (uploadChatImage,
+  // "[Attached image: <id>]"); anything else (.txt/.md/.pdf/.pptx/.docx/source code —
+  // see ATTACHABLE_FILE_ACCEPT) goes through the real, permanent document-upload
+  // endpoint instead and gets tagged with the new document marker (see MessageBubble's
+  // AttachedDocumentChip for how that renders). Only the image path replaces the
+  // single attachedImage slot; documents accumulate (addAttachedDocument), so this is
+  // safe to call once per dropped/selected file in a loop.
+  async function attachFile(file: File) {
+    if (!sessionId) return;
     setAttaching(true);
     setAttachError(null);
     try {
@@ -440,9 +471,51 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     }
   }
 
+  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // allow re-selecting the same file(s) later
+    for (const file of files) {
+      await attachFile(file);
+    }
+  }
+
   function handleUploadMenuItem() {
     setMenuOpen(false);
     fileInputRef.current?.click();
+  }
+
+  // Drag-and-drop: dragenter/dragleave fire once per child crossed, not once for the
+  // whole zone, so a depth counter (not a boolean) is what keeps the highlight from
+  // flickering as the pointer moves over text/buttons inside the composer. dragOver
+  // must call preventDefault or the browser's own "navigate to this file" drop handler
+  // wins instead of ours.
+  function handleDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (disabled || !sessionId) return;
+    e.preventDefault();
+    setDragDepth((d) => d + 1);
+  }
+
+  function handleDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragDepth((d) => Math.max(0, d - 1));
+  }
+
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+  }
+
+  async function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragDepth(0);
+    if (disabled || !sessionId) return;
+    const files = Array.from(e.dataTransfer.files);
+    // Sequential, not Promise.all: attachFile shares the one `attaching`/`attachError`
+    // state pair (matching the file-input path above), so concurrent calls would race
+    // on which error/busy state wins. A multi-file drop is rare enough that this isn't
+    // a real latency concern.
+    for (const file of files) {
+      await attachFile(file);
+    }
   }
 
   async function handleExistingDocumentMenuItem() {
@@ -479,9 +552,18 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     <div
       className={`composer${editing ? " composer--editing" : ""}${
         !editing && requestingChangesFor ? " composer--requesting-changes" : ""
-      }`}
+      }${dragDepth > 0 ? " composer--drag-active" : ""}`}
       data-tour="composer"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
+      {dragDepth > 0 && (
+        <div className="composer-drop-overlay" aria-hidden="true">
+          <span>Drop to attach</span>
+        </div>
+      )}
       {editing ? (
         <div className="composer-editing-banner" role="status">
           <span className="composer-editing-label">Editing message</span>
@@ -609,7 +691,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+            accept={ATTACHABLE_FILE_ACCEPT}
+            multiple
             className="composer-file-input"
             onChange={handleFileSelected}
             disabled={disabled || !sessionId}

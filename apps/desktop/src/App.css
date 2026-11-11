@@ -4196,11 +4196,38 @@ body.is-resizing-panel * {
 /* ---------- Composer ---------- */
 
 .composer {
+  position: relative;
   max-width: 720px;
   width: 100%;
   margin: 0 auto;
   padding: var(--space-2) var(--space-5) var(--space-4);
   flex-shrink: 0;
+}
+
+/* Drag-and-drop file attach (ROADMAP.md) -- a dashed accent outline on the whole
+   composer plus a centered "Drop to attach" overlay while a file is dragged over it,
+   same accent-tint treatment composer-editing-banner above already uses so this reads
+   as the same visual language, not a new one. */
+.composer--drag-active {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent-tint);
+}
+
+.composer-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+  border-radius: var(--radius-md);
 }
 
 /* Message editing (ROADMAP.md): a quiet accent-colored banner above the composer row

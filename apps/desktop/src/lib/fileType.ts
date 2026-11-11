@@ -5,6 +5,41 @@
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+/** Mirrors services/api/app/services/documents.py's _CODE_EXTENSIONS exactly (same
+ * "two independent sources of truth expected to agree" pattern as
+ * CONVERSATION_PRACTICE_LANGUAGE_NAMES/SUPPORTED_LANGUAGES) -- a real coursework source
+ * file gets its own "CODE" badge instead of falling through to the generic "DOC" one. */
+export const CODE_EXTENSIONS = [
+  ".py",
+  ".ipynb",
+  ".java",
+  ".c",
+  ".h",
+  ".cpp",
+  ".hpp",
+  ".cc",
+  ".cs",
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".go",
+  ".rs",
+  ".rb",
+  ".php",
+  ".swift",
+  ".kt",
+  ".r",
+  ".sql",
+  ".sh",
+  ".json",
+  ".yaml",
+  ".yml",
+  ".xml",
+  ".html",
+  ".css",
+];
+
 /** Whether a document's ORIGINAL bytes can be shown in the embedded viewer — true only
  * for real PDFs. The backend marks every non-text document as non-editable (see
  * is_editable), but "not editable" and "renderable in an <iframe>" are different
@@ -28,5 +63,6 @@ export function documentTypeLabel(doc: { filename: string; mime_type: string | n
   if (name.endsWith(".docx") || doc.mime_type === DOCX_MIME) return "DOCX";
   if (name.endsWith(".md") || name.endsWith(".markdown") || doc.mime_type === "text/markdown") return "MD";
   if (name.endsWith(".txt") || doc.mime_type === "text/plain") return "TXT";
+  if (CODE_EXTENSIONS.some((ext) => name.endsWith(ext))) return "CODE";
   return "DOC";
 }

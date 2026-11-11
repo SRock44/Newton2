@@ -26,7 +26,44 @@ logger = logging.getLogger("newton.documents")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20MB
 
 _TEXT_MIME_TYPES = {"text/plain", "text/markdown"}
-_TEXT_EXTENSIONS = (".txt", ".md", ".markdown")
+# Source code and other plain-text formats a student might actually submit as real
+# coursework -- requested directly by the advising professor (2026-11-11) after seeing
+# the app in a real class setting, so a .py/.java/.cpp homework file needs to work the
+# exact same way a .txt one already does: no special parser, just decode as UTF-8 (see
+# _extract_text below), same as any other _TEXT_EXTENSIONS entry. Picked for breadth
+# across a real CS curriculum (not just Python) plus the plain-text config/data formats
+# that often travel alongside code, rather than guessing at just one language.
+_CODE_EXTENSIONS = (
+    ".py",
+    ".ipynb",
+    ".java",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".cc",
+    ".cs",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
+    ".swift",
+    ".kt",
+    ".r",
+    ".sql",
+    ".sh",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".html",
+    ".css",
+)
+_TEXT_EXTENSIONS = (".txt", ".md", ".markdown") + _CODE_EXTENSIONS
 _PDF_EXTENSION = ".pdf"
 # Office Open XML -- lecture slides and essays/handouts, by far the two most common
 # things a student is actually handed after a PDF. Both are really zip archives of XML,
@@ -37,7 +74,10 @@ _PPTX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.
 _DOCX_EXTENSION = ".docx"
 _DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-SUPPORTED_TYPES_MESSAGE = "Unsupported file type — upload .txt, .md, .pdf, .pptx, or .docx"
+SUPPORTED_TYPES_MESSAGE = (
+    "Unsupported file type — upload .txt, .md, .pdf, .pptx, .docx, or a source code "
+    "file (.py, .java, .cpp, .js, .ts, and more)"
+)
 
 
 def _extract_pdf_text(raw: bytes) -> str:
