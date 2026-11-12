@@ -29,6 +29,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Local UI drafts
+/docs/ui-dev/
+
 # Data
 infra/data/
 *.log
