@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 
 /** A genuine integration smoke test, not a unit test: proves the whole cross-package
  * setup (vitest.config.ts's react/react-dom alias, apps/desktop/src/bootstrap.tsx's own
@@ -14,10 +14,12 @@ describe("apps/web entry point", () => {
   });
 
   it("mounts the real Newton app via the shared apps/desktop bootstrap, and shows the login screen when signed out", async () => {
-    await import("../main");
-    expect(await screen.findByRole("button", { name: /sign in/i })).toBeInTheDocument();
+    await act(async () => { await import("../main"); });
+    const { webSidebarsEnabled } = await import("../../../desktop/src/lib/webSidebars");
+    expect(webSidebarsEnabled()).toBe(true);
+    expect((await screen.findByRole("button", { name: /sign in/i })).isConnected).toBe(true);
     // Proves this really is the SAME LoginScreen apps/desktop uses, not a stand-in —
     // the exact copy text is apps/desktop/src/components/LoginScreen.tsx's own.
-    expect(screen.getByText(/Opens your browser to sign in with Google/i)).toBeInTheDocument();
+    expect(screen.getByText(/Opens your browser to sign in with Google/i).isConnected).toBe(true);
   });
 });
