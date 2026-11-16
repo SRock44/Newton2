@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 # Non-root user the sandboxed subprocess (and the FastAPI server itself) runs as.
 # Deliberately no home directory, no shell, no login — it never needs either.
