@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 # Non-root user the FastAPI server runs as.
 RUN useradd --system --create-home --home-dir /home/piper --shell /usr/sbin/nologin --uid 10002 piper
