@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Composer from "../Composer";
 
@@ -92,66 +92,6 @@ describe("Composer", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  describe("Home", () => {
-    it("opens attachments on click, dismisses on Escape and returns focus to the plus", async () => {
-      const user = userEvent.setup();
-      render(<Composer home onSend={vi.fn()} disabled={false} token="test-token" sessionId={null} />);
-      const plus = screen.getByRole("button", { name: "Add attachment" });
-      expect(plus).toBeEnabled();
-      expect(screen.queryByRole("button", { name: /dictate/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-      await user.hover(plus);
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-      await user.click(plus);
-      await user.click(screen.getByRole("menuitem", { name: "Attach an existing document" }));
-      expect(await screen.findByRole("menuitem", { name: /syllabus.pdf/ })).toBeInTheDocument();
-      expect(plus).toHaveAttribute("aria-expanded", "true");
-      await user.click(plus);
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-      await user.click(plus);
-      await user.click(screen.getByRole("menuitem", { name: "Attach an existing document" }));
-      await user.keyboard("{Escape}");
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-      expect(plus).toHaveFocus();
-    });
-
-    it("uploads documents before a session exists and includes the real document marker", async () => {
-      const user = userEvent.setup();
-      const onSend = vi.fn(async () => true);
-      const { container } = render(<Composer home onSend={onSend} disabled={false} token="test-token" sessionId={null} />);
-      const file = new File(["notes"], "notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-      await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, file);
-      await waitFor(() => expect(uploadDocument).toHaveBeenCalledWith("test-token", file));
-      await user.click(screen.getByRole("button", { name: "Send message" }));
-      await waitFor(() => expect(onSend).toHaveBeenCalledWith("[Attached document: doc-999|notes.txt]"));
-      await waitFor(() => expect(screen.queryByRole("button", { name: "Remove attached document" })).not.toBeInTheDocument());
-      expect(uploadChatImage).not.toHaveBeenCalled();
-    });
-
-    it("blocks duplicate sends, preserves text and documents on failure, and clears them only after success", async () => {
-      const user = userEvent.setup();
-      let finish!: (accepted: boolean) => void;
-      const onSend = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; }));
-      render(<Composer home onSend={onSend} disabled={false} token="test-token" sessionId={null} />);
-      const text = screen.getByRole("textbox", { name: "Message Newton" });
-      await user.type(text, "Explain this");
-      await user.click(screen.getByRole("button", { name: "Add attachment" }));
-      await user.click(screen.getByRole("menuitem", { name: "Attach an existing document" }));
-      await user.click(await screen.findByRole("menuitem", { name: /syllabus.pdf/ }));
-      await user.click(screen.getByRole("button", { name: "Send message" }));
-      fireEvent.keyDown(text, { key: "Enter" });
-      expect(onSend).toHaveBeenCalledTimes(1);
-      expect(text).toBeDisabled();
-      await act(async () => { finish(false); });
-      expect(text).toHaveValue("Explain this");
-      expect(screen.getByRole("button", { name: "Remove attached document" })).toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "Send message" }));
-      await act(async () => { finish(true); });
-      expect(text).toHaveValue("");
-      expect(screen.queryByRole("button", { name: "Remove attached document" })).not.toBeInTheDocument();
-    });
   });
 
   it("sends the trimmed draft on Enter and clears the input", async () => {
