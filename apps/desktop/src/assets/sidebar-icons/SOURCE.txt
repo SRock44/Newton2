@@ -1,0 +1,4 @@
+Lucide Icons
+https://github.com/lucide-icons/lucide
+Commit: 03eae6069edfc373673bd05d723491f05ba936e3
+Unmodified SVG assets. The web-only sidebar stylesheet bundles them as CSS masks. See LICENSE.

@@ -1,20 +1,14 @@
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import type { ChatSession, MainView } from "../types";
 import { sessionDisplayTitle } from "../lib/sessionTitle";
-import {
-  SIDEBAR_DEFAULT_WIDTH,
-  SIDEBAR_MAX_WIDTH,
-  SIDEBAR_MIN_WIDTH,
-  getSidebarCollapsed,
-  getSidebarWidth,
-  setSidebarCollapsed,
-  setSidebarWidth,
-} from "../lib/preferences";
-import { usePanelResize } from "../lib/usePanelResize";
 import NewtonMark from "./NewtonMark";
-import PanelResizeHandle from "./PanelResizeHandle";
+import SidebarFrame from "./SidebarFrame";
+import { webSidebarsEnabled } from "../lib/webSidebars";
+import SidebarIcon from "./web/SidebarIcon";
+import type { SidebarIconName } from "./web/SidebarIcon";
 
-interface SidebarProps {
+export interface SidebarProps {
   sessions: ChatSession[];
   activeSessionId: string | null;
   firstMessageBySession: Record<string, string>;
@@ -38,29 +32,13 @@ interface SidebarProps {
   mainView: MainView;
 }
 
-/** A compact icon-only label for the collapsed rail's nav buttons — first letter of
- * the full label, same idea as the existing "?" help button's single-glyph circle
- * (see .sidebar-help-btn), not a new icon set. */
-function CollapsedNavButton({
-  label,
-  active,
-  onClick,
-}: {
+interface SidebarLink {
+  action: string;
   label: string;
+  icon: SidebarIconName;
   active?: boolean;
+  disabled?: boolean;
   onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`sidebar-rail-btn${active ? " sidebar-rail-btn--active" : ""}`}
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-    >
-      {label.charAt(0)}
-    </button>
-  );
 }
 
 function formatSessionDate(iso: string): string {
@@ -69,7 +47,7 @@ function formatSessionDate(iso: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function Sidebar({
+export default function Sidebar({
   sessions,
   activeSessionId,
   firstMessageBySession,
@@ -89,109 +67,107 @@ function Sidebar({
   onOpenHelp,
   mainView,
 }: SidebarProps) {
-  const [now, setNow] = useState(new Date());
-  // Collapsible sidebar: a slim icon-only rail when true. Persisted locally (see
-  // lib/preferences.ts) so it survives a restart — a window-chrome preference, same
-  // pattern as the existing study-reminders toggle.
-  const [collapsed, setCollapsed] = useState(() => getSidebarCollapsed());
-  // Drag-to-resize, persisted alongside the collapse flag. The width is published as a
-  // CSS custom property on the <aside> itself rather than an inline `width`, so
-  // App.css's `.sidebar` rule keeps owning the layout (and the collapsed rail keeps
-  // ignoring it entirely) instead of an inline style overriding the stylesheet.
-  const resize = usePanelResize({
-    initial: getSidebarWidth(),
-    defaultWidth: SIDEBAR_DEFAULT_WIDTH,
-    min: SIDEBAR_MIN_WIDTH,
-    max: SIDEBAR_MAX_WIDTH,
-    direction: 1,
-    persist: setSidebarWidth,
-  });
+  const web = webSidebarsEnabled();
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      setSidebarCollapsed(next);
-      return next;
-    });
-  }
+  const links: SidebarLink[] = [
+    { action: "home", label: "Home", icon: "house", onClick: onOpenHome, active: mainView === "home" },
+    { action: "new-chat", label: "New chat", icon: "square-pen", onClick: onNewChat, disabled: creatingChat },
+    { action: "documents", label: "Documents", icon: "files", onClick: onOpenDocuments, active: mainView === "documents" },
+    { action: "study-plan", label: "Study plan", icon: "clipboard-list", onClick: onOpenStudyPlan },
+    { action: "calendar", label: "Calendar", icon: "calendar-days", onClick: onOpenCalendar },
+    { action: "flashcards", label: "Flashcards", icon: "layers", onClick: onOpenFlashcards },
+    { action: "exams", label: "Practice exams", icon: "clipboard-check", onClick: onOpenPracticeExams },
+  ];
+  const footer: SidebarLink[] = [
+    { action: "settings", label: "Settings", icon: "settings", onClick: onOpenSettings },
+    { action: "help", label: "What Newton can do", icon: "circle-question-mark", onClick: onOpenHelp },
+  ];
+  const signOut: SidebarLink = { action: "signout", label: "Sign out", icon: "log-out", onClick: onSignOut };
 
-  if (collapsed) {
+  function renderRailLink(link: SidebarLink) {
     return (
-      <aside className="sidebar sidebar--collapsed">
-        <div className="sidebar-header sidebar-header--collapsed">
-          <button
-            type="button"
-            className={`sidebar-rail-brand${mainView === "home" ? " sidebar-rail-btn--active" : ""}`}
-            onClick={onOpenHome}
-            aria-label="Home"
-            title="Home"
-          >
-            <NewtonMark size={15} />
-          </button>
-          <button
-            type="button"
-            className="sidebar-collapse-toggle"
-            onClick={toggleCollapsed}
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
-          >
-            »
-          </button>
-        </div>
-
-        <div className="sidebar-rail">
-          <CollapsedNavButton label="New chat" onClick={onNewChat} />
-          <CollapsedNavButton label="Documents" active={mainView === "documents"} onClick={onOpenDocuments} />
-          <CollapsedNavButton label="Study plan" onClick={onOpenStudyPlan} />
-          <CollapsedNavButton label="Calendar" onClick={onOpenCalendar} />
-          <CollapsedNavButton label="Flashcards" onClick={onOpenFlashcards} />
-          <CollapsedNavButton label="Practice exams" onClick={onOpenPracticeExams} />
-          <CollapsedNavButton label="Settings" onClick={onOpenSettings} />
-          <CollapsedNavButton label="What Newton can do" onClick={onOpenHelp} />
-        </div>
-
-        <div className="sidebar-rail sidebar-rail--footer">
-          <CollapsedNavButton label="Sign out" onClick={onSignOut} />
-        </div>
-      </aside>
+      <button
+        key={link.action} type="button" onClick={link.onClick} aria-label={link.label} title={link.label}
+        className={web
+          ? `web-sidebar-rail-button${link.action === "signout" ? " web-sidebar-signout" : ""}`
+          : `sidebar-rail-btn${link.active ? " sidebar-rail-btn--active" : ""}`}
+        data-sidebar-action={web ? link.action : undefined}
+        aria-current={web && link.active ? "page" : undefined}
+        disabled={web ? link.disabled : undefined}
+      >
+        {web ? <SidebarIcon name={link.icon} /> : link.label.charAt(0)}
+      </button>
     );
   }
 
-  return (
-    <>
-      <aside
-        className="sidebar"
-        style={{ ["--sidebar-width" as string]: `${resize.width}px` }}
+  function renderLink(link: SidebarLink) {
+    return (
+      <button
+        key={link.action} type="button" onClick={link.onClick} disabled={link.disabled}
+        className={web
+          ? `web-sidebar-link${link.active ? " web-sidebar-link--active" : ""}`
+          : `sidebar-nav-more sidebar-nav-more--active${link.active ? " sidebar-nav-more--current" : ""}`}
+        data-sidebar-action={web ? link.action : undefined}
+        aria-current={web && link.active ? "page" : undefined}
       >
+        {web ? <><SidebarIcon name={link.icon} /><span>{link.action === "new-chat" && creatingChat ? "Starting…" : link.label}</span></> : link.label}
+      </button>
+    );
+  }
+
+  const sessionList = (
+    <nav className="session-list" aria-label="Chat sessions">
+      {sessions.length === 0 && <p className="empty-state-text">No chats yet.</p>}
+      {sessions.map((session, i) => {
+        const isActive = session.id === activeSessionId;
+        return (
+          <div
+            key={session.id}
+            className={`session-item${web ? "" : " fade-up"}${isActive ? " session-item--active" : ""}`}
+            style={web ? undefined : { animationDelay: `${Math.min(i, 12) * 20}ms` }}
+            data-context-menu="session" data-session-id={session.id}
+          >
+            <button type="button" className="session-item-main" onClick={() => onSelectSession(session.id)} aria-current={isActive}>
+              <span className="session-item-title">{sessionDisplayTitle(session, firstMessageBySession[session.id])}</span>
+              <span className="session-item-date">{formatSessionDate(session.created_at)}</span>
+            </button>
+            <button
+              type="button" className="session-item-delete" aria-label="Delete chat" title="Delete chat"
+              onClick={(event) => { event.stopPropagation(); onDeleteSession(session.id); }}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
+    </nav>
+  );
+
+  function renderContent(toggle: ReactNode, open: boolean) {
+    return (
+      <>
         <div className="sidebar-header">
           <button
             type="button"
-            className={`sidebar-brand${mainView === "home" ? " sidebar-brand--active" : ""}`}
+            className={`sidebar-brand${!web && mainView === "home" ? " sidebar-brand--active" : ""}`}
             onClick={onOpenHome}
-            aria-label="Home"
-            title="Home"
-            data-tour="sidebar-brand"
+            aria-label={web ? "Newton home" : "Home"}
+            title={web ? undefined : "Home"}
+            data-tour={open ? "sidebar-brand" : undefined}
           >
             <span className="sidebar-brand-mark">
               <NewtonMark size={15} />
             </span>
             <span className="sidebar-brand-name">Newton</span>
           </button>
-          <div className="sidebar-header-actions">
-            <button
-              type="button"
-              className="sidebar-collapse-toggle"
-              onClick={toggleCollapsed}
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar"
-            >
-              «
-            </button>
+          {web ? toggle : <div className="sidebar-header-actions">
+            {toggle}
             <button
               type="button"
               className="sidebar-help-btn"
@@ -201,7 +177,7 @@ function Sidebar({
             >
               ?
             </button>
-          </div>
+          </div>}
         </div>
 
         <div className="sidebar-clock">
@@ -214,88 +190,63 @@ function Sidebar({
           </div>
         </div>
 
-        <div className="sidebar-nav">
+        {web ? (
+          <div className="web-sidebar-scroll">
+            <nav className="web-sidebar-links" aria-label="Main navigation">{links.map(renderLink)}</nav>
+            <div className="web-sidebar-recent"><h2>Recent conversations</h2>{sessionList}</div>
+          </div>
+        ) : <div className="sidebar-nav">
           <button type="button" className="btn-primary" onClick={onNewChat} disabled={creatingChat}>
             <span aria-hidden="true">+</span> {creatingChat ? "Starting…" : "New chat"}
           </button>
 
-          <nav className="session-list" aria-label="Chat sessions">
-            {sessions.length === 0 && <p className="empty-state-text">No chats yet.</p>}
-            {sessions.map((session, i) => {
-              const isActive = session.id === activeSessionId;
-              return (
-                <div
-                  key={session.id}
-                  className={`session-item fade-up${isActive ? " session-item--active" : ""}`}
-                  style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
-                  data-context-menu="session"
-                  data-session-id={session.id}
-                >
-                  <button
-                    type="button"
-                    className="session-item-main"
-                    onClick={() => onSelectSession(session.id)}
-                    aria-current={isActive}
-                  >
-                    <span className="session-item-title">
-                      {sessionDisplayTitle(session, firstMessageBySession[session.id])}
-                    </span>
-                    <span className="session-item-date">{formatSessionDate(session.created_at)}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="session-item-delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteSession(session.id);
-                    }}
-                    aria-label="Delete chat"
-                    title="Delete chat"
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
-          </nav>
-        </div>
+          {sessionList}
+        </div>}
 
         <div className="sidebar-footer">
-          <button
-            type="button"
-            className={`sidebar-nav-more sidebar-nav-more--active${mainView === "documents" ? " sidebar-nav-more--current" : ""}`}
-            onClick={onOpenDocuments}
-          >
-            Documents
-          </button>
-          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenStudyPlan}>
-            Study plan
-          </button>
-          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenCalendar}>
-            Calendar
-          </button>
-          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenFlashcards}>
-            Flashcards
-          </button>
-          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenPracticeExams}>
-            Practice exams
-          </button>
-          <button type="button" className="sidebar-nav-more sidebar-nav-more--active" onClick={onOpenSettings}>
-            Settings
-          </button>
+          {(web ? footer : [...links.slice(2), footer[0]]).map(renderLink)}
           <div className="sidebar-user">
             <span className="sidebar-user-name">{username}</span>
-            <button type="button" className="btn-secondary-sm" onClick={onSignOut}>
-              Sign out
+            <button
+              type="button" className={`btn-secondary-sm${web ? " web-sidebar-signout-button" : ""}`} onClick={onSignOut}
+              data-sidebar-action={web ? "signout" : undefined}
+            >
+              {web ? <><SidebarIcon name="log-out" /><span>Sign out</span></> : "Sign out"}
             </button>
           </div>
         </div>
-      </aside>
-      {/* Follows the <aside> because it sits on the sidebar's RIGHT edge — see
-          PanelResizeHandle's own comment for why it's a sibling rather than a child. */}
-      <PanelResizeHandle label="Resize sidebar" min={SIDEBAR_MIN_WIDTH} max={SIDEBAR_MAX_WIDTH} {...resize} />
-    </>
+      </>
+    );
+  }
+
+  return (
+    <SidebarFrame
+      side="left" label="sidebar"
+      rail={({ toggle, open }) => {
+        const home = (
+          <button
+            type="button" onClick={onOpenHome} aria-label="Home" title="Home"
+            className={web ? "web-sidebar-rail-button" : `sidebar-rail-brand${mainView === "home" ? " sidebar-rail-btn--active" : ""}`}
+            aria-current={web && mainView === "home" ? "page" : undefined}
+            data-sidebar-action={web ? "home" : undefined} data-tour={web && !open ? "sidebar-brand" : undefined}
+          >
+            <NewtonMark size={web ? 18 : 15} />
+          </button>
+        );
+        const navigation = [...links.slice(1), ...footer].map(renderRailLink);
+        const signout = renderRailLink(signOut);
+        return web ? <>{home}{toggle}{navigation}{signout}</> : (
+          <>
+            <div className="sidebar-header sidebar-header--collapsed">{home}{toggle}</div>
+            <div className="sidebar-rail">{navigation}</div>
+            <div className="sidebar-rail sidebar-rail--footer">{signout}</div>
+          </>
+        );
+      }}
+    >
+      {({ toggle, open }) => web
+        ? <div className="web-sidebar-content">{renderContent(toggle, open)}</div>
+        : renderContent(toggle, open)}
+    </SidebarFrame>
   );
 }
-
-export default Sidebar;
