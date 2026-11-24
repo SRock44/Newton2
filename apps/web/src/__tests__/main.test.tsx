@@ -17,9 +17,12 @@ describe("apps/web entry point", () => {
     await act(async () => { await import("../main"); });
     const { webSidebarsEnabled } = await import("../../../desktop/src/lib/webSidebars");
     expect(webSidebarsEnabled()).toBe(true);
+    const { webComposerEnabled } = await import("../../../desktop/src/lib/webComposer");
+    expect(webComposerEnabled()).toBe(true);
     expect((await screen.findByRole("button", { name: /sign in/i })).isConnected).toBe(true);
     // Proves this really is the SAME LoginScreen apps/desktop uses, not a stand-in —
     // the exact copy text is apps/desktop/src/components/LoginScreen.tsx's own.
     expect(screen.getByText(/Opens your browser to sign in with Google/i).isConnected).toBe(true);
-  });
+  // This integration test cold-loads the full shared app, including its editors.
+  }, 30_000);
 });

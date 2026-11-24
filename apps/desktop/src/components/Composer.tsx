@@ -21,11 +21,7 @@ import Toggle from "./Toggle";
  * attachFile below). Previously missing .pptx/.docx here even though the backend
  * already accepted them -- fixed as part of adding source-code support so this list
  * is honest end to end, not just appended to. */
-const ATTACHABLE_FILE_ACCEPT = [
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
+const ATTACHABLE_DOCUMENT_ACCEPT = [
   "text/plain",
   "text/markdown",
   "application/pdf",
@@ -38,6 +34,7 @@ const ATTACHABLE_FILE_ACCEPT = [
   ".docx",
   ...CODE_EXTENSIONS,
 ].join(",");
+const ATTACHABLE_FILE_ACCEPT = `image/png,image/jpeg,image/webp,image/gif,${ATTACHABLE_DOCUMENT_ACCEPT}`;
 
 export const CONVERSATION_PRACTICE_LANGUAGES: { code: string; label: string }[] = [
   { code: "es", label: "Spanish" },
@@ -70,7 +67,9 @@ interface ComposerProps {
    * ConversationPracticeOptions) -- every other call site (a plain typed/dictated
    * message, an "options"-picker/paper-plan-approval auto-send from MessageContent,
    * the attached-image auto-send) calls this with just `text`, unaffected. */
-  onSend: (text: string, options?: ConversationPracticeOptions) => void;
+  onSend: (text: string, options?: ConversationPracticeOptions) => void | Promise<boolean | void>;
+  /** Home accepts permanent documents before a chat exists and waits for submission. */
+  home?: boolean;
   onStop?: () => void;
   disabled: boolean;
   /** True specifically while a reply is being generated — distinct from `disabled`,
@@ -150,6 +149,7 @@ function formatElapsed(totalSeconds: number): string {
 const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   {
     onSend,
+    home = false,
     onStop,
     disabled,
     streaming,
@@ -171,6 +171,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   ref,
 ) {
   const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [attachedImage, setAttachedImage] = useState<{ id: string; name: string } | null>(null);
   // Several documents can ride along on one message (e.g. lab notes AND a project synopsis for a
   // paper), each tagged with its own "[Attached document: ...]" marker on send.
@@ -284,6 +286,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
 
   useEffect(() => {
     let cancelled = false;
+    if (home) return;
     setLearnModeLoaded(false);
     getBillingStatus(token)
       .then((status) => {
@@ -300,7 +303,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, home]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -375,6 +378,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
       if (e.key === "Escape") {
         setMenuOpen(false);
         setPickerOpen(false);
+        if (home) attachWrapRef.current?.querySelector<HTMLButtonElement>(".composer-attach")?.focus();
       }
     }
     document.addEventListener("mousedown", handlePointerDown);
@@ -383,7 +387,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [menuOpen, pickerOpen]);
+  }, [menuOpen, pickerOpen, home]);
 
   /** Same optimistic-update-then-reconcile-on-failure pattern as SettingsPanel.tsx's
    * handleToggleFocusMode: flips the checkbox immediately, persists in the background,
@@ -408,7 +412,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
 
   function handleSend() {
     const trimmed = draft.trim();
-    if ((!trimmed && !attachedImage && attachedDocuments.length === 0) || disabled) return;
+    if ((!trimmed && !attachedImage && attachedDocuments.length === 0) || disabled || attaching || submittingRef.current) return;
     let text = trimmed;
     if (attachedImage) text = `${text}\n\n[Attached image: ${attachedImage.id}]`.trim();
     if (attachedDocuments.length > 0) {
@@ -422,6 +426,23 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     // Omits the 2nd arg entirely (rather than passing `undefined` positionally) for
     // an ordinary send, so every existing caller's onSend(text) contract -- and every
     // test asserting a single-argument call -- stays completely unchanged.
+    if (home) {
+      submittingRef.current = true;
+      setSubmitting(true);
+      setAttachError(null);
+      void Promise.resolve().then(() => onSend(text)).then((accepted) => {
+        if (accepted !== false) {
+          setDraft("");
+          setAttachedDocuments([]);
+        }
+      }).catch(() => {
+        setAttachError("Couldn't send your message. Please try again.");
+      }).finally(() => {
+        submittingRef.current = false;
+        setSubmitting(false);
+      });
+      return;
+    }
     if (conversationPracticeEnabled) {
       onSend(text, { conversationPractice: true, targetLanguage: conversationPracticeLanguage });
     } else {
@@ -438,7 +459,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
@@ -453,11 +474,15 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   // single attachedImage slot; documents accumulate (addAttachedDocument), so this is
   // safe to call once per dropped/selected file in a loop.
   async function attachFile(file: File) {
-    if (!sessionId) return;
+    if (!sessionId && !home) return;
+    if (!sessionId && file.type.startsWith("image/")) {
+      setAttachError("Start a chat to attach an image.");
+      return;
+    }
     setAttaching(true);
     setAttachError(null);
     try {
-      if (file.type.startsWith("image/")) {
+      if (sessionId && file.type.startsWith("image/")) {
         const imageId = await uploadChatImage(token, sessionId, file);
         setAttachedImage({ id: imageId, name: file.name });
       } else {
@@ -490,7 +515,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   // must call preventDefault or the browser's own "navigate to this file" drop handler
   // wins instead of ours.
   function handleDragEnter(e: DragEvent<HTMLDivElement>) {
-    if (disabled || !sessionId) return;
+    if (disabled || (!sessionId && !home)) return;
     e.preventDefault();
     setDragDepth((d) => d + 1);
   }
@@ -507,7 +532,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
   async function handleDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setDragDepth(0);
-    if (disabled || !sessionId) return;
+    if (disabled || (!sessionId && !home)) return;
     const files = Array.from(e.dataTransfer.files);
     // Sequential, not Promise.all: attachFile shares the one `attaching`/`attachError`
     // state pair (matching the file-input path above), so concurrent calls would race
@@ -548,22 +573,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
     setPickerOpen(false);
   }
 
-  return (
-    <div
-      className={`composer${editing ? " composer--editing" : ""}${
-        !editing && requestingChangesFor ? " composer--requesting-changes" : ""
-      }${dragDepth > 0 ? " composer--drag-active" : ""}`}
-      data-tour="composer"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {dragDepth > 0 && (
-        <div className="composer-drop-overlay" aria-hidden="true">
-          <span>Drop to attach</span>
-        </div>
-      )}
+  const contents = (
+    <>
       {editing ? (
         <div className="composer-editing-banner" role="status">
           <span className="composer-editing-label">Editing message</span>
@@ -590,7 +601,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           </div>
         )
       )}
-      <div className="composer-controls">
+      {!home && <div className="composer-controls">
         <div
           className="composer-learn-mode-toggle"
           title="Newton checks your work step by step and asks you to try things yourself"
@@ -641,7 +652,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             </select>
           )}
         </div>
-      </div>
+      </div>}
       {(attachedImage || attachedDocuments.length > 0) && (
         <div className="composer-attachments">
           {attachedImage && (
@@ -687,25 +698,37 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
         </div>
       )}
       <div className="composer-row">
-        <div className="composer-attach-wrap" ref={attachWrapRef}>
+        <div className="composer-attach-wrap" ref={attachWrapRef} onBlur={home ? (event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setMenuOpen(false);
+            setPickerOpen(false);
+          }
+        } : undefined}>
           <input
             ref={fileInputRef}
             type="file"
-            accept={ATTACHABLE_FILE_ACCEPT}
+            accept={home ? ATTACHABLE_DOCUMENT_ACCEPT : ATTACHABLE_FILE_ACCEPT}
             multiple
             className="composer-file-input"
             onChange={handleFileSelected}
-            disabled={disabled || !sessionId}
+            disabled={disabled || (!sessionId && !home)}
           />
           <button
             type="button"
             className="composer-attach"
-            onClick={() => setMenuOpen((v) => !v)}
-            disabled={disabled || !sessionId || attaching}
+            onClick={() => {
+              if (home && pickerOpen) {
+                setPickerOpen(false);
+                setMenuOpen(false);
+              } else {
+                setMenuOpen((v) => !v);
+              }
+            }}
+            disabled={disabled || (!sessionId && !home) || attaching}
             aria-label="Add attachment"
             aria-haspopup="true"
-            aria-expanded={menuOpen}
-            title="Attach a photo, screenshot, or document"
+            aria-expanded={home ? menuOpen || pickerOpen : menuOpen}
+            title={home ? "Attach a document" : "Attach a photo, screenshot, or document"}
           >
             {attaching ? "…" : "+"}
           </button>
@@ -765,7 +788,7 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
         {/* Dictation. One button, two states — click to start, click again to stop and
             transcribe — mirroring the Notepad's Record/Stop control rather than a
             press-and-hold, which is awkward for anything longer than a few words. */}
-        <button
+        {!home && <button
           type="button"
           className={`composer-mic${recording ? " composer-mic--recording" : ""}`}
           onClick={() => (recording ? stopRecording() : void startRecording())}
@@ -786,17 +809,18 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
               🎙
             </span>
           )}
-        </button>
+        </button>}
         <textarea
           ref={textareaRef}
           className="composer-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Newton is responding…" : placeholder ?? "Ask Newton anything…"}
+          placeholder={disabled && !home ? "Newton is responding…" : placeholder ?? "Ask Newton anything…"}
           disabled={disabled}
           rows={1}
           data-context-menu="editable"
+          aria-label={home ? "Message Newton" : undefined}
         />
         {streaming ? (
           <button
@@ -814,14 +838,37 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             type="button"
             className="btn-primary composer-send"
             onClick={handleSend}
-            disabled={disabled || (!draft.trim() && !attachedImage && attachedDocuments.length === 0)}
+            disabled={disabled || attaching || (!draft.trim() && !attachedImage && attachedDocuments.length === 0)}
             aria-label={editing ? "Save edit" : "Send message"}
           >
-            {editing ? "Save edit" : "Send"}
+            {submitting ? "Starting chat…" : editing ? "Save edit" : "Send"}
           </button>
         )}
       </div>
-      <div className="composer-hint">Enter to send · Shift+Enter for a new line</div>
+      {!home && <div className="composer-hint">Enter to send · Shift+Enter for a new line</div>}
+    </>
+  );
+
+  return (
+    <div
+      className={`composer${home ? " composer--home" : ""}${editing ? " composer--editing" : ""}${
+        !editing && requestingChangesFor ? " composer--requesting-changes" : ""
+      }${dragDepth > 0 ? " composer--drag-active" : ""}`}
+      data-tour="composer"
+      aria-busy={home ? submitting : undefined}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {dragDepth > 0 && (
+        <div className="composer-drop-overlay" aria-hidden="true">
+          <span>Drop to attach</span>
+        </div>
+      )}
+      {home ? (
+        <fieldset className="composer-fieldset" disabled={disabled || submitting}>{contents}</fieldset>
+      ) : contents}
     </div>
   );
 });

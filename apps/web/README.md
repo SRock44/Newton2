@@ -39,6 +39,12 @@ Everything that needed a real platform-specific implementation lives in
 
 ## Running it locally
 
+The web Home page includes the compact floating composer approved in `docs/ui-dev`.
+Its left-hand plus opens document upload and library options on click. Sending starts
+a new conversation after chat authentication; a failed connection retains the draft
+and attachments for retry. This is an explicit web-entry feature, so desktop keeps its
+existing Home layout and chat controls.
+
 No `.env` needed for local development against the same dev box the desktop app's README
 documents — `api.ts`'s `VITE_API_URL`/`VITE_KEYCLOAK_URL` defaults already point at the
 same `127.0.0.1:58001`/`127.0.0.1:58180` loopback ports that box's SSH tunnel publishes

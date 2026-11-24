@@ -20,6 +20,7 @@ import type { TokenSet } from "./auth";
 import { notifyStudyReminders } from "./notifications";
 import { getStudyRemindersEnabled } from "./lib/preferences";
 import { isTauri } from "./lib/platform";
+import { webComposerEnabled } from "./lib/webComposer";
 import { hasSeenOnboarding, markOnboardingSeen, hasSeenTour, markTourSeen } from "./lib/onboarding";
 import type {
   AccountConsentStatus,
@@ -44,6 +45,7 @@ import type { ComposerHandle, ConversationPracticeOptions } from "./components/C
 import DocumentsPanel from "./components/DocumentsPanel";
 import DocumentViewerPanel from "./components/DocumentViewerPanel";
 import HomeView from "./components/HomeView";
+import HomeComposer, { HomeLayout } from "./components/HomeComposer";
 import StudyPlanPanel from "./components/StudyPlanPanel";
 import CalendarPanel from "./components/CalendarPanel";
 import FlashcardsPanel from "./components/FlashcardsPanel";
@@ -73,6 +75,7 @@ const RECONNECT_MAX_DELAY_MS = 30_000;
 // path (background-tab power throttling, an SSH tunnel's own idle timeout, a proxy, ...)
 // -- see services/api/app/routers/chat.py's chat_ws "ping"/"pong" handling.
 const PING_INTERVAL_MS = 25_000;
+const HOME_CONNECT_TIMEOUT_MS = 15_000;
 
 // Tauri's event API is loaded via dynamic import (never a static one) purely so this
 // same component tree still renders under a bare jsdom test runner (Vitest), which has
@@ -211,6 +214,24 @@ function App() {
   // quick-actions/"Continue a conversation" widgets, or finishing "Chat about this
   // document" (see the handlers below).
   const [mainView, setMainView] = useState<MainView>("home");
+  const [homeSending, setHomeSending] = useState(false);
+  const [homeSendError, setHomeSendError] = useState<string | null>(null);
+  const homeSessionRef = useRef<string | null>(null);
+  const homeSendBusyRef = useRef(false);
+  const cancelHomeSendRef = useRef<(() => void) | null>(null);
+  const pendingHomeSendRef = useRef<{
+    sessionId: string;
+    text: string;
+    finish: (accepted: boolean, error?: string) => void;
+  } | null>(null);
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
+
+  // Leaving Home, signing out or unmounting must never send a delayed opener.
+  useEffect(() => () => {
+    cancelHomeSendRef.current?.();
+    homeSessionRef.current = null;
+  }, [mainView, userId]);
   // Set when an attached-document chip in a chat message (see MessageBubble /
   // AttachedDocumentChip) sends the student to a specific document — read once by
   // DocumentsPanel as its initial selection when it mounts fresh into the "documents"
@@ -821,6 +842,7 @@ function App() {
           wsAuthedRef.current = true;
           reconnectAttempt = 0;
           setWsStatus("open");
+          sendHomeOpening(socket, activeSessionId as string);
           clearPing();
           pingInterval = setInterval(() => {
             if (socket.readyState === WebSocket.OPEN) {
@@ -965,6 +987,10 @@ function App() {
             return updated;
           });
         } else if (payload.type === "error") {
+          if (!wsAuthedRef.current && pendingHomeSendRef.current?.sessionId === activeSessionId) {
+            pendingHomeSendRef.current.finish(false, payload.content ?? "Couldn't connect. Please try again.");
+            return;
+          }
           setIsStreaming(false);
           setMessages((prev) => {
             const last = prev[prev.length - 1];
@@ -1039,6 +1065,24 @@ function App() {
     setRequestingChangesFor(null);
     setSelectionActivity(null);
 
+    sendConnectedMessage(socket, activeSessionId, text, conversationPractice);
+  }
+
+  // Shared by chat sends and Home's authenticated, session-scoped opening message.
+  function sendConnectedMessage(
+    socket: WebSocket,
+    sessionId: string,
+    text: string,
+    conversationPractice?: ConversationPracticeOptions,
+  ) {
+    socket.send(JSON.stringify({
+      type: "user_message",
+      content: text,
+      ...(conversationPractice
+        ? { conversation_practice: true, target_language: conversationPractice.targetLanguage }
+        : {}),
+    }));
+
     // The user's message AND an immediate "Newton is thinking" placeholder land in the
     // same synchronous update, before any WebSocket frame can possibly arrive -- so
     // there is always visible activity from the instant Send is pressed, not just once
@@ -1066,17 +1110,66 @@ function App() {
         ttsLanguage: conversationPractice?.targetLanguage,
       },
     ]);
-    rememberFirstMessage(activeSessionId, text);
-    socket.send(
-      JSON.stringify({
-        type: "user_message",
-        content: text,
-        ...(conversationPractice
-          ? { conversation_practice: true, target_language: conversationPractice.targetLanguage }
-          : {}),
-      }),
-    );
+    rememberFirstMessage(sessionId, text);
     setIsStreaming(true);
+  }
+
+  function sendHomeOpening(socket: WebSocket, sessionId: string) {
+    const pending = pendingHomeSendRef.current;
+    if (!pending || pending.sessionId !== sessionId || !wsAuthedRef.current || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      sendConnectedMessage(socket, sessionId, pending.text);
+      pending.finish(true);
+      homeSessionRef.current = null;
+      setChatDocumentPanel(null);
+      setMainView("chat");
+    } catch {
+      pending.finish(false, "Couldn't send your message. Please try again.");
+    }
+  }
+
+  async function handleHomeSend(text: string): Promise<boolean> {
+    if (homeSendBusyRef.current || creatingChat || !tokenManager.hasSession()) return false;
+    homeSendBusyRef.current = true;
+    setHomeSending(true);
+    setHomeSendError(null);
+    let cancelled = false;
+    const cancel = () => {
+      cancelled = true;
+      pendingHomeSendRef.current?.finish(false);
+    };
+    cancelHomeSendRef.current = cancel;
+    try {
+      const id = homeSessionRef.current ?? await createNewSession(() => !cancelled);
+      if (cancelled) return false;
+      if (!id) {
+        setHomeSendError("Couldn't start a new chat. Your draft is still here; please try again.");
+        return false;
+      }
+      homeSessionRef.current = id;
+      return await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => pending.finish(false, "Couldn't connect to your new chat. Your draft is still here; please try again."), HOME_CONNECT_TIMEOUT_MS);
+        const pending = {
+          sessionId: id,
+          text,
+          finish(accepted: boolean, error?: string) {
+            if (pendingHomeSendRef.current !== pending) return;
+            pendingHomeSendRef.current = null;
+            clearTimeout(timeout);
+            if (error && !cancelled) setHomeSendError(error);
+            resolve(accepted);
+          },
+        };
+        pendingHomeSendRef.current = pending;
+        const socket = wsRef.current;
+        // A retry may reuse the empty session once its connection has recovered.
+        if (activeSessionIdRef.current === id && socket) sendHomeOpening(socket, id);
+      });
+    } finally {
+      if (cancelHomeSendRef.current === cancel) cancelHomeSendRef.current = null;
+      homeSendBusyRef.current = false;
+      setHomeSending(false);
+    }
   }
 
   // ContextMenu's "Edit message" (user-role messages only, and only once a real,
@@ -1115,12 +1208,14 @@ function App() {
   // Shared by handleNewChat and handleChatAboutDocument — the only place that knows
   // how to create a session and make it the active one. Returns the new session id,
   // or null if creation failed (already surfaced via sessionsError).
-  async function createNewSession(): Promise<string | null> {
+  async function createNewSession(shouldActivate: () => boolean = () => true): Promise<string | null> {
     if (!tokenManager.hasSession() || creatingChat) return null;
     setCreatingChat(true);
+    setSessionsError(null);
     try {
       const accessToken = await tokenManager.getValidAccessToken();
       const id = await createSession(accessToken);
+      if (!shouldActivate()) return null;
       const newSession: ChatSession = {
         id,
         title: null,
@@ -1386,20 +1481,25 @@ function App() {
           ) : mainView === "home" ? (
             // The default landing view (see the mainView comment above) — same "real
             // page in the main pane, not a modal" treatment as Documents.
-            <HomeView
-              token={token}
-              userId={userId}
-              sessions={sessions}
-              firstMessageBySession={firstMessageBySession}
-              onSelectSession={handleSelectSession}
-              onNewChat={handleNewChat}
-              creatingChat={creatingChat}
-              onOpenDocument={handleOpenDocument}
-              onOpenDocuments={handleToggleDocuments}
-              onOpenStudyPlan={() => setShowStudyPlan(true)}
-              onOpenFlashcards={handleOpenFlashcards}
-              onOpenPracticeExams={handleOpenPracticeExams}
-            />
+            <HomeLayout enabled={webComposerEnabled()}>
+              <HomeView
+                token={token}
+                userId={userId}
+                sessions={sessions}
+                firstMessageBySession={firstMessageBySession}
+                onSelectSession={handleSelectSession}
+                onNewChat={handleNewChat}
+                creatingChat={creatingChat}
+                onOpenDocument={handleOpenDocument}
+                onOpenDocuments={handleToggleDocuments}
+                onOpenStudyPlan={() => setShowStudyPlan(true)}
+                onOpenFlashcards={handleOpenFlashcards}
+                onOpenPracticeExams={handleOpenPracticeExams}
+              />
+              {webComposerEnabled() && (
+                <HomeComposer token={token} busy={homeSending || creatingChat} error={homeSendError} onSend={handleHomeSend} />
+              )}
+            </HomeLayout>
           ) : (
             <>
               {sessionsError && <div className="banner banner--error chat-pane-banner">{sessionsError}</div>}

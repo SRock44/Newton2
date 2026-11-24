@@ -5,6 +5,9 @@ import userEvent from "@testing-library/user-event";
 import App from "./App";
 import type { ChatMessage, ChatSession } from "./types";
 
+const webUi = vi.hoisted(() => ({ composer: false }));
+vi.mock("./lib/webComposer", () => ({ webComposerEnabled: () => webUi.composer }));
+
 const sessions: ChatSession[] = [
   { id: "s1", title: null, status: "active", created_at: new Date().toISOString() },
   { id: "s2", title: "Physics review", status: "active", created_at: new Date().toISOString() },
@@ -194,10 +197,12 @@ vi.mock("./auth", async () => {
 });
 
 import {
+  createSession,
   deleteMessageAndAfter,
   deleteSession,
   getAccountStatus,
   getDocumentContent,
+  getMessages,
   getPracticeExam,
   getSelectionTopic,
   listDocuments,
@@ -240,6 +245,9 @@ async function messageList() {
 
 describe("App", () => {
   beforeEach(() => {
+    webUi.composer = false;
+    vi.mocked(createSession).mockReset().mockResolvedValue("new-session-id");
+    vi.mocked(getMessages).mockClear();
     vi.mocked(openChatSocket).mockClear();
     vi.mocked(signInWithBrowser).mockClear();
     vi.mocked(deleteSession).mockClear();
@@ -263,6 +271,127 @@ describe("App", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  describe("web Home composer", () => {
+    it("waits for the new session's auth, then sends its document opener exactly once", async () => {
+      webUi.composer = true;
+      const user = await signIn();
+      const text = await screen.findByRole("textbox", { name: "Message Newton" });
+      await waitFor(() => expect(openChatSocket).toHaveBeenCalledWith("s1"));
+      const oldSocket = vi.mocked(openChatSocket).mock.results[0].value;
+      const newSocket = makeFakeSocketNoAutoAuth();
+      vi.mocked(openChatSocket).mockReturnValueOnce(newSocket);
+      vi.mocked(listDocuments).mockResolvedValueOnce([{
+        id: "home-doc", filename: "notes.pdf", mime_type: "application/pdf", created_at: "2026-11-14T12:00:00Z",
+      }]);
+      await user.type(text, "Explain my notes");
+      await user.click(screen.getByRole("button", { name: "Add attachment" }));
+      await user.click(screen.getByRole("menuitem", { name: "Attach an existing document" }));
+      await user.click(await screen.findByRole("menuitem", { name: /notes.pdf/ }));
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+      await waitFor(() => expect(openChatSocket).toHaveBeenCalledWith("new-session-id"));
+      expect(newSocket.send).not.toHaveBeenCalled();
+      expect(oldSocket.send).not.toHaveBeenCalledWith(expect.stringContaining('"type":"user_message"'));
+      expect(screen.getByRole("textbox", { name: "Message Newton" })).toHaveValue("Explain my notes");
+      await act(async () => { newSocket.onmessage?.({ data: JSON.stringify({ type: "auth_ok" }) } as MessageEvent); });
+      const expected = JSON.stringify({ type: "user_message", content: "Explain my notes\n\n[Attached document: home-doc|notes.pdf]" });
+      expect(newSocket.send).toHaveBeenCalledWith(expected);
+      await act(async () => { newSocket.onmessage?.({ data: JSON.stringify({ type: "auth_ok" }) } as MessageEvent); });
+      expect(vi.mocked(newSocket.send).mock.calls.filter(([frame]) => frame === expected)).toHaveLength(1);
+      expect(await screen.findByTestId("message-list")).toHaveTextContent("Explain my notes");
+      expect(getMessages).not.toHaveBeenCalledWith(expect.anything(), "new-session-id");
+    });
+
+    it("retains the draft on creation failure and can retry", async () => {
+      webUi.composer = true;
+      const user = await signIn();
+      const text = await screen.findByRole("textbox", { name: "Message Newton" });
+      await user.type(text, "Help with derivatives");
+      vi.mocked(createSession).mockRejectedValueOnce(new Error("offline"));
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't start a new chat");
+      expect(text).toHaveValue("Help with derivatives");
+      await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+      expect(await screen.findByTestId("message-list")).toHaveTextContent("Help with derivatives");
+    });
+
+    it("retains the opener on auth failure and reuses the empty session on retry", async () => {
+      webUi.composer = true;
+      const user = await signIn();
+      await waitFor(() => expect(openChatSocket).toHaveBeenCalledWith("s1"));
+      const socket = makeFakeSocketNoAutoAuth();
+      vi.mocked(openChatSocket).mockReturnValueOnce(socket);
+      await user.type(await screen.findByRole("textbox", { name: "Message Newton" }), "Keep this draft");
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+      await waitFor(() => expect(openChatSocket).toHaveBeenCalledWith("new-session-id"));
+      await act(async () => { socket.onmessage?.({ data: JSON.stringify({ type: "error", content: "Authentication failed" }) } as MessageEvent); });
+      expect(await screen.findByRole("alert")).toHaveTextContent("Authentication failed");
+      expect(screen.getByRole("textbox", { name: "Message Newton" })).toHaveValue("Keep this draft");
+      await act(async () => { socket.onmessage?.({ data: JSON.stringify({ type: "auth_ok" }) } as MessageEvent); });
+      expect(socket.send).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+      expect(await screen.findByTestId("message-list")).toHaveTextContent("Keep this draft");
+      expect(createSession).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels a delayed opener when the student switches chats", async () => {
+      webUi.composer = true;
+      const user = await signIn();
+      await waitFor(() => expect(openChatSocket).toHaveBeenCalledWith("s1"));
+      const socket = makeFakeSocketNoAutoAuth();
+      vi.mocked(openChatSocket).mockReturnValueOnce(socket);
+      await user.type(await screen.findByRole("textbox", { name: "Message Newton" }), "Do not send in another chat");
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+      await waitFor(() => expect(openChatSocket).toHaveBeenCalledWith("new-session-id"));
+      fireEvent.click(document.querySelector('[data-session-id="s2"] .session-item-main')!);
+      await act(async () => { socket.onmessage?.({ data: JSON.stringify({ type: "auth_ok" }) } as MessageEvent); });
+      expect(socket.send).not.toHaveBeenCalled();
+      expect(await screen.findByTestId("message-list")).toHaveTextContent("Reply in s2");
+    });
+
+    it("times out safely and does not send when late authentication arrives", async () => {
+      webUi.composer = true;
+      const user = await signIn();
+      await waitFor(() => expect(openChatSocket).toHaveBeenCalledWith("s1"));
+      const socket = makeFakeSocketNoAutoAuth();
+      vi.mocked(openChatSocket).mockReturnValueOnce(socket);
+      await user.type(await screen.findByRole("textbox", { name: "Message Newton" }), "Keep this until connected");
+      // Only fake the bounded handoff timer; sign-in and user events have completed.
+      vi.useFakeTimers();
+      try {
+        await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Send message" })); });
+        expect(openChatSocket).toHaveBeenCalledWith("new-session-id");
+        await act(async () => { vi.advanceTimersByTime(15_000); });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(screen.getByRole("alert")).toHaveTextContent("Couldn't connect to your new chat");
+      expect(screen.getByRole("textbox", { name: "Message Newton" })).toHaveValue("Keep this until connected");
+      await act(async () => { socket.onmessage?.({ data: JSON.stringify({ type: "auth_ok" }) } as MessageEvent); });
+      expect(socket.send).not.toHaveBeenCalledWith(expect.stringContaining('"type":"user_message"'));
+      expect(screen.queryByTestId("message-list")).not.toBeInTheDocument();
+    });
+
+    it("does not activate a session created after leaving Home", async () => {
+      webUi.composer = true;
+      const user = await signIn();
+      let finishCreation!: (id: string) => void;
+      vi.mocked(createSession).mockReturnValueOnce(new Promise(resolve => { finishCreation = resolve; }));
+      await user.type(await screen.findByRole("textbox", { name: "Message Newton" }), "Cancelled opener");
+      await user.click(screen.getByRole("button", { name: "Send message" }));
+      fireEvent.click(document.querySelector('[data-session-id="s2"] .session-item-main')!);
+      await act(async () => { finishCreation("late-session"); });
+      expect(openChatSocket).not.toHaveBeenCalledWith("late-session");
+      expect(await screen.findByTestId("message-list")).toHaveTextContent("Reply in s2");
+    });
+
+    it("keeps the Home composer out of the desktop build", async () => {
+      await signIn();
+      await screen.findByRole("heading", { name: "Recent documents & notes" });
+      expect(screen.queryByRole("textbox", { name: "Message Newton" })).not.toBeInTheDocument();
+    });
   });
 
   // Regression test for "clicking between chats says invalid or expired token": the bug
