@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Composer from "../Composer";
 
@@ -226,6 +226,43 @@ describe("Composer", () => {
       await user.keyboard("{Enter}");
 
       expect(onSend).toHaveBeenCalledWith("summarize this\n\n[Attached document: doc-999|notes.txt]");
+    });
+
+    it("uploading a selected .py file routes through the real document-upload endpoint, same as any other text format", async () => {
+      const user = userEvent.setup();
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      await user.click(screen.getByRole("button", { name: /add attachment/i }));
+      await user.click(screen.getByRole("menuitem", { name: /upload from your computer/i }));
+
+      const file = new File(["print('hi')"], "homework.py", { type: "text/x-python" });
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await user.upload(fileInput, file);
+
+      await waitFor(() => expect(uploadDocument).toHaveBeenCalledWith("test-token", file));
+      expect(uploadChatImage).not.toHaveBeenCalled();
+    });
+
+    it("dropping a file onto the composer attaches it the same way as picking it from the file dialog", async () => {
+      const onSend = vi.fn();
+      render(<Composer onSend={onSend} disabled={false} token="test-token" sessionId="test-session" />);
+
+      const dropTarget = document.querySelector(".composer") as HTMLElement;
+      const file = new File(["hello"], "dropped.txt", { type: "text/plain" });
+      const dataTransfer = {
+        files: [file],
+        items: [{ kind: "file", type: file.type, getAsFile: () => file }],
+        types: ["Files"],
+      };
+
+      fireEvent.dragEnter(dropTarget, { dataTransfer });
+      expect(dropTarget.className).toContain("composer--drag-active");
+
+      fireEvent.drop(dropTarget, { dataTransfer });
+
+      await waitFor(() => expect(uploadDocument).toHaveBeenCalledWith("test-token", file));
+      expect(dropTarget.className).not.toContain("composer--drag-active");
     });
 
     it("picking an existing document fetches listDocuments and inserts its marker without re-uploading", async () => {

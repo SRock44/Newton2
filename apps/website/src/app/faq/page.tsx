@@ -28,7 +28,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "What platforms does it run on?",
     answer:
-      "Windows, macOS, and Linux as a native desktop app built on Tauri, plus a real browser-based version at newton.best/chat for signed-in users — no download required, and genuinely useful on a school-managed Chromebook that can't run the desktop app at all.",
+      "A real browser-based version at newton.best/chat for signed-in users — no download required, and genuinely useful on a school-managed Chromebook that can't run a desktop app at all — plus a native macOS app, signed and notarized by Apple. Windows and Linux builds aren't publicly distributed yet.",
   },
   {
     question: "Does it work without an internet connection?",

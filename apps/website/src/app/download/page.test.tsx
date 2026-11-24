@@ -29,8 +29,6 @@ describe("DownloadPage", () => {
     const real = [
       ["macOS — Apple Silicon", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.7/Newton_0.2.7_aarch64.dmg"],
       ["macOS — Intel", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.7/Newton_0.2.7_x64.dmg"],
-      ["Windows — Installer", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.7/Newton_0.2.7_x64-setup.exe"],
-      ["Windows — MSI", "https://github.com/SRock44/Newton2/releases/download/desktop-v0.2.7/Newton_0.2.7_x64_en-US.msi"],
     ] as const;
     for (const [label, url] of real) {
       expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", url);
@@ -43,10 +41,16 @@ describe("DownloadPage", () => {
     expect(screen.queryByText(/\.appimage|\.deb/i)).not.toBeInTheDocument();
   });
 
-  it("warns honestly about the unsigned installers rather than hiding it", () => {
+  // Windows was pulled from public distribution (2026-11-11, advising professor's
+  // verdict after an in-class test) — the release pipeline still builds it for the
+  // team's own testing, it's just not linked from this page anymore, and there's
+  // honestly no Windows installer link left to warn about.
+  it("removed Windows from public distribution — no download link, no stale signing warning", () => {
     render(<DownloadPage />);
-    expect(screen.getByText(/smartscreen/i)).toBeInTheDocument();
-    expect(screen.getByText(/gatekeeper/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /download for windows/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /windows.*installer|windows.*msi/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/not publicly distributed/i)).toBeInTheDocument();
+    expect(screen.queryByText(/smartscreen/i)).not.toBeInTheDocument();
   });
 
   it("links out to the real GitHub release notes", () => {
@@ -65,12 +69,10 @@ describe("DownloadPage", () => {
     expect(macCard).toContainElement(screen.getByText(/detected: your computer/i));
   });
 
-  it("detects Windows and marks the Windows primary button, not the Mac one", async () => {
+  it("detects Windows but marks no button, since there is no Windows download to highlight", () => {
     stubUserAgent(WINDOWS_UA);
     render(<DownloadPage />);
-    expect(await screen.findByText(/detected: your computer/i)).toBeInTheDocument();
-    const winCard = screen.getByRole("link", { name: /download for windows/i });
-    expect(winCard).toContainElement(screen.getByText(/detected: your computer/i));
+    expect(screen.queryByText(/detected: your computer/i)).not.toBeInTheDocument();
   });
 
   it("marks neither button on an undetected platform (e.g. Linux) rather than guessing", () => {

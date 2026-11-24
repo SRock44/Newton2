@@ -44,6 +44,7 @@ VOICE_MODELS: dict[str, str] = {
     "en": "en_US-lessac-medium",
     "es": "es_ES-davefx-medium",
     "fr": "fr_FR-siwis-medium",
+    "zh": "zh_CN-huayan-medium",
 }
 DEFAULT_LANGUAGE = "en"
 

@@ -4,9 +4,14 @@
   padding: 8px 32px 96px;
 }
 
+/* One primary card now (Mac only -- Windows removed from distribution, see
+   downloadAssets.ts). Was a 2-column grid for Mac+Windows; a single remaining grid
+   child would otherwise sit at half-width with dead space beside it, so this caps a
+   sensible max-width and centers it instead of stretching full-bleed. */
 .primaryCards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 420px);
+  justify-content: center;
   gap: 16px;
   margin-bottom: 20px;
 }
